@@ -16,6 +16,7 @@ export function validate(s){
   if(p.basketCount!==undefined)check(int(p.basketCount,1),'籃數必須為正整數');
   check(typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=100,'專案名稱不正確');
   check(Array.isArray(p.parts)&&object(p.inventory),'零件或庫存格式不正確');const parts=new Set();
+  const materialLogs=p.materialLogs??[];check(Array.isArray(materialLogs)&&materialLogs.length<=2000,'收領料紀錄格式不正確');for(const entry of materialLogs){check(object(entry)&&typeof entry.time==='string'&&typeof entry.actor==='string'&&Array.isArray(entry.received)&&Array.isArray(entry.issued),'收領料紀錄格式不正確');for(const item of [...entry.received,...entry.issued])check(object(item)&&typeof item.name==='string'&&int(item.qty,1),'收領料紀錄內容不正確');}
   for(const i of [...p.parts,...(p.archivedParts??[]).map(x=>x.part)]){
    check(object(i)&&typeof i.id==='string'&&!parts.has(i.id),'零件編號重複');parts.add(i.id);
    check(typeof i.name==='string'&&i.name.trim()&&typeof i.spec==='string','零件名稱或規格不正確');
@@ -65,7 +66,8 @@ function warehouseChangeAllowed(before,after){
  const a=structuredClone(before),b=structuredClone(after);a.logs=[];b.logs=[];
  if(a.projects.length!==b.projects.length)return false;
  for(const next of b.projects){
-  const prev=a.projects.find(p=>p.id===next.id);if(!prev||prev.parts.length!==next.parts.length)return false;
+ const prev=a.projects.find(p=>p.id===next.id);if(!prev||prev.parts.length!==next.parts.length)return false;
+  const oldMaterial=prev.materialLogs||[],newMaterial=next.materialLogs||[];if(newMaterial.length<oldMaterial.length||JSON.stringify(newMaterial.slice(newMaterial.length-oldMaterial.length))!==JSON.stringify(oldMaterial))return false;if(prev.materialLogs===undefined)delete next.materialLogs;else next.materialLogs=structuredClone(prev.materialLogs);
   const active=new Set(prev.parts.map(i=>i.id));
   for(const key of new Set([...Object.keys(prev.inventory),...Object.keys(next.inventory)]))if(!active.has(key)&&next.inventory[key]!==prev.inventory[key])return false;
   for(const part of next.parts){const old=prev.parts.find(i=>i.id===part.id);if(!old)return false;const received=part.received-old.received,oldStock=Number(prev.inventory[part.id]||0),newStock=Number(next.inventory[part.id]||0);if(!int(received)||newStock>oldStock+received)return false;part.received=old.received;}
