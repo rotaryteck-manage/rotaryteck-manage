@@ -8,7 +8,8 @@ function applyRoleUI(){
  if(header&&!$('#account-actions')){const wrap=document.createElement('span');wrap.id='account-actions';wrap.innerHTML='<button type="button" class="small" id="change-password">修改密碼</button> <button type="button" class="small" id="logout">登出</button>';header.append(wrap);$('#change-password').onclick=passwordDialog;$('#logout').onclick=logout;}
  if(role==='supervisor')return;
  for(const selector of ['#edit-site','#new-project','#deleted-projects','#new-case','#export-cases','#export-warehouse','[data-case-status]','[data-case-edit]','[data-case-up]','[data-case-down]','[data-project-up]','[data-project-down]','.project-order-controls','#rename-project','#delete-project','#import-bom','#add-part','#restore-part','[data-remove]','#save-custom','.audit-fold','#content-admin'])document.querySelectorAll(selector).forEach(el=>el.remove());
- document.querySelectorAll('.name-input,.spec-input,.demand-input,.sets-input,.location-input input,#receipt-form input[name="basketCount"],#receipt-form .admin-card input').forEach(el=>el.readOnly=true);
+ document.querySelectorAll('.name-input,.spec-input,.demand-input,.sets-input,.location-input input,.location-input select,#receipt-form input[name="basketCount"],#receipt-form .admin-card input').forEach(el=>el.readOnly=true);
+ document.querySelectorAll('.location-input select').forEach(el=>el.disabled=true);
  document.querySelectorAll('#receipt-form .admin-card select').forEach(el=>el.disabled=true);
  if(role==='viewer'){document.querySelectorAll('#receipt-form input,#receipt-form select').forEach(el=>{if(el.type!=='hidden')el.disabled=true;});document.querySelectorAll('#receipt-form button[type="submit"],#upload-receipts,#receipt-files').forEach(el=>el.remove());}
 }
