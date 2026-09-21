@@ -98,25 +98,25 @@ export async function employeesApi(request,env){
   const current=await employeeFor(request,env);if(!current||current.role!=='supervisor')return json({error:'只有主管可以管理員工權限'},403);
   if(request.method==='GET'){const result=await env.DB.prepare("SELECT id,email,name,role,status,created_at,last_login_at,account_user_id FROM employees ORDER BY CASE role WHEN 'supervisor' THEN 1 WHEN 'warehouse' THEN 2 ELSE 3 END,name").all();return json({items:result.results||[],currentEmployeeId:current.id});}
   if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
-  const input=await request.json(),roles=['viewer','warehouse','supervisor'],email=String(input.email||'').trim().toLowerCase(),name=String(input.name||'').trim(),password=String(input.password||''),role=String(input.role||''),status=String(input.status||'active');
+  const input=await request.json(),roles=['viewer','warehouse','supervisor'],email=String(input.email||'').trim().toLowerCase(),name=String(input.name||'').trim(),role=String(input.role||''),status=String(input.status||'active');
   check(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email),'請填寫有效的員工信箱');check(name&&name.length<=80,'請填寫員工姓名');check(roles.includes(role),'權限層級不正確');check(['active','disabled'].includes(status),'帳號狀態不正確');
   const now=new Date().toISOString();
   if(request.method==='POST'){
-   check(password.length>=8&&/[A-Za-z]/.test(password)&&/\d/.test(password),'初始密碼至少 8 碼，需包含英文字母與數字');
-   const created=await supabaseAdmin(env,'/auth/v1/admin/users','POST',{email,password,email_confirm:true,user_metadata:{name}});let result;
+   const redirect=new URL('/?invited=1',request.url).toString();
+   const created=await supabaseAdmin(env,'/auth/v1/invite?redirect_to='+encodeURIComponent(redirect),'POST',{email,data:{name}});let result;
    try{result=await env.DB.prepare('INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').bind(created.id,email,name,role,status,now,now).run();}
    catch(e){await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(created.id),'DELETE');throw e;}
    return json({id:result.meta.last_row_id},201);
   }
   const id=Number(input.id);check(Number.isSafeInteger(id)&&id>0,'員工編號不正確');const target=await env.DB.prepare('SELECT id,account_user_id,email,role,status FROM employees WHERE id=?').bind(id).first();check(target,'找不到員工');
   if((target.role==='supervisor'&&target.status==='active')&&(role!=='supervisor'||status!=='active')){const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM employees WHERE role='supervisor' AND status='active' AND id<>?").bind(id).first();check(Number(count?.total)>0,'至少必須保留一位啟用中的主管');}
-  if(request.method==='PUT'){let accountId=target.account_user_id;if(accountId){const authUpdate={email,email_confirm:true,user_metadata:{name}};if(password){check(password.length>=8&&/[A-Za-z]/.test(password)&&/\d/.test(password),'新密碼至少 8 碼，需包含英文字母與數字');authUpdate.password=password;}await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(accountId),'PUT',authUpdate);}else if(password){check(password.length>=8&&/[A-Za-z]/.test(password)&&/\d/.test(password),'初始密碼至少 8 碼，需包含英文字母與數字');const created=await supabaseAdmin(env,'/auth/v1/admin/users','POST',{email,password,email_confirm:true,user_metadata:{name}});accountId=created.id;}await env.DB.prepare('UPDATE employees SET account_user_id=?,email=?,name=?,role=?,status=?,updated_at=? WHERE id=?').bind(accountId||null,email,name,role,status,now,id).run();return json({updated:true});}
+  if(request.method==='PUT'){let accountId=target.account_user_id;if(accountId)await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(accountId),'PUT',{email,email_confirm:true,user_metadata:{name}});else{const redirect=new URL('/?invited=1',request.url).toString(),created=await supabaseAdmin(env,'/auth/v1/invite?redirect_to='+encodeURIComponent(redirect),'POST',{email,data:{name}});accountId=created.id;}await env.DB.prepare('UPDATE employees SET account_user_id=?,email=?,name=?,role=?,status=?,updated_at=? WHERE id=?').bind(accountId||null,email,name,role,status,now,id).run();return json({updated:true});}
   if(request.method==='DELETE'){if(id===current.id)check(false,'不能刪除目前登入的主管帳號');if(target.account_user_id)await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(target.account_user_id),'DELETE');await env.DB.prepare('DELETE FROM employees WHERE id=?').bind(id).run();return json({deleted:true});}
   return json({error:'不支援的操作'},405);
  }catch(e){console.error('employee request failed',e.message);const status=String(e.message).includes('UNIQUE')?409:400;return json({error:status===409?'此信箱已存在':e.message||'員工設定未完成'},status);}
 }
 async function supabaseAdmin(env,path,method,body){
- check(supabaseReady(env),'登入服務尚未完成設定');const response=await fetch(env.SUPABASE_URL+path,{method,headers:{apikey:env.SUPABASE_SECRET_KEY,Authorization:'Bearer '+env.SUPABASE_SECRET_KEY,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(response.status===204)return{};const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.msg||data.message||data.error_description||'員工登入帳號設定失敗');return data;
+ check(supabaseReady(env),'登入服務尚未完成設定');const response=await fetch(env.SUPABASE_URL+path,{method,headers:{apikey:env.SUPABASE_SECRET_KEY,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(response.status===204)return{};const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.msg||data.message||data.error_description||'員工登入帳號設定失敗');return data;
 }
 async function scopeKey(user){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(user)))).map(x=>x.toString(16).padStart(2,'0')).join('');}
 export async function images(request,env){
