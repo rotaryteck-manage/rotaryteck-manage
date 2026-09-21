@@ -147,9 +147,14 @@ export async function images(request,env){
    const file=await env.UPLOADS.get(key);if(!file)return json({error:'找不到圖片'},404);
    return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
   }
-  if(request.method==='DELETE'&&!logo&&!id){
+  if(request.method==='DELETE'&&!logo){
    if(request.headers.get('origin')!==url.origin)return json({error:'來源驗證失敗'},403);
-   if(employee.role!=='supervisor')return json({error:'只有主管可以永久刪除照片'},403);
+   if(id){
+    if(!['supervisor','warehouse'].includes(employee.role))return json({error:'一般員工只有查看權限'},403);
+    const file=await env.UPLOADS.head(key);if(!file)return json({error:'找不到圖片'},404);
+    await env.UPLOADS.delete(key);return json({deleted:true});
+   }
+   if(employee.role!=='supervisor')return json({error:'只有主管可以永久刪除全部照片'},403);
    let cursor;do{const result=await env.UPLOADS.list({prefix,limit:1000,cursor});if(result.objects.length)await env.UPLOADS.delete(result.objects.map(o=>o.key));cursor=result.truncated?result.cursor:undefined;}while(cursor);
    return json({deleted:true});
   }
