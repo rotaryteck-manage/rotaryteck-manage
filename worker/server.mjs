@@ -12,6 +12,7 @@ export function validate(s){
  const deleted=s.deletedProjects??[];check(Array.isArray(deleted),'刪除資料格式不正確');
  for(const p of [...s.projects,...deleted.map(x=>x.project)]){
   check(object(p)&&typeof p.id==='string'&&p.id.length>0&&!ids.has(p.id),'專案編號重複或缺少');ids.add(p.id);
+  if(p.projectDate!==undefined)check(typeof p.projectDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(p.projectDate),'專案日期不正確');
   check(typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=100,'專案名稱不正確');
   check(Array.isArray(p.parts)&&object(p.inventory),'零件或庫存格式不正確');const parts=new Set();
   for(const i of [...p.parts,...(p.archivedParts??[]).map(x=>x.part)]){
