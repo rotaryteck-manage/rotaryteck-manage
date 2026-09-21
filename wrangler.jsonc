@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rotaryteck-manage",
+  "main": "dist/server/index.js",
+  "compatibility_date": "2026-09-21",
+  "keep_vars": true,
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rotaryteck-manage-db",
+      "database_id": "78ee9ddb-c8be-4e29-aac9-adca3aa9f08b",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "rotaryteck-manage-uploads"
+    }
+  ]
+}

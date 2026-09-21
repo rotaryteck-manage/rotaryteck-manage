@@ -1,0 +1,25 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import fs from 'node:fs';
+import {images} from '../worker/server.mjs';
+globalThis.fetch=async(input,init={})=>{const auth=new Headers(init.headers).get('authorization')||'';const id=auth.slice(7);return id?Response.json({id,email:id+'@example.com',user_metadata:{name:id}}):Response.json({}, {status:401});};
+function database(){const db=new DatabaseSync(':memory:');for(const name of ['0000_whole_gertrude_yorkes.sql','0001_calm_fenris.sql'])db.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));const now=new Date().toISOString();db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('owner','owner@example.com','主管','supervisor','active',now,now);db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('viewer','viewer@example.com','一般','viewer','active',now,now);db.prepare("INSERT INTO company_state (company_id,body,revision,updated_at) VALUES (?,?,?,?)").run('warehouse-main',JSON.stringify({projects:[],deletedProjects:[{project:{id:'A'}}]}),1,now);return{prepare(sql){const stmt=db.prepare(sql),call=args=>({first:async()=>stmt.get(...args),all:async()=>({results:stmt.all(...args)}),run:async()=>{const r=stmt.run(...args);return{meta:{changes:r.changes,last_row_id:Number(r.lastInsertRowid)}};}});return{bind:(...args)=>call(args),first:async()=>stmt.get(),all:async()=>({results:stmt.all()})};}};}
+test('private images, role enforcement, project ownership and persistent receipts',async()=>{const objects=new Map(),env={SUPABASE_URL:'https://test.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable',SUPABASE_SECRET_KEY:'secret',DB:database(),UPLOADS:{async put(key,body,meta){objects.set(key,{body,...meta,key,uploaded:new Date()});},async get(key){return objects.get(key);},async head(key){return objects.get(key);},async list({prefix}){return {objects:[...objects.values()].filter(x=>x.key.startsWith(prefix)),truncated:false};},async delete(keys){for(const key of Array.isArray(keys)?keys:[keys])objects.delete(key);}}};
+ const req=(path,method='GET',body,user='owner',origin='https://test.local')=>new Request('https://test.local'+path,{method,headers:{...(user?{Authorization:'Bearer '+user}:{}),origin,'X-File-Name':encodeURIComponent('收據.png')},body});
+ const png=Uint8Array.from([137,80,78,71,13,10,26,10,0]);
+ assert.equal((await images(req('/api/logo','GET',undefined,''),env)).status,401);
+ assert.equal((await images(req('/api/logo','POST',png,'owner','https://evil.local'),env)).status,403);
+ assert.equal((await images(req('/api/logo','POST','<svg/>'),env)).status,415);
+ assert.equal((await images(req('/api/logo','POST',new Uint8Array(2097153)),env)).status,413);
+ assert.equal((await images(req('/api/logo','POST',png),env)).status,200);
+ assert.equal((await (await images(req('/api/logo?meta=1'),env)).json()).exists,true);
+ assert.equal((await images(req('/api/logo'),env)).headers.get('Content-Type'),'image/png');
+ assert.equal((await images(req('/api/logo','POST',png,'viewer'),env)).status,403);
+ const uploaded=await (await images(req('/api/receipts?project=A','POST',png),env)).json();assert.ok(uploaded.id);
+ const list=await (await images(req('/api/receipts?project=A'),env)).json();assert.equal(list.items.length,1);assert.equal(list.items[0].name,'收據.png');
+ assert.equal((await images(req('/api/receipts?project=A&id='+uploaded.id),env)).status,200);
+ assert.equal((await images(req('/api/receipts?project=A','DELETE',undefined,'viewer'),env)).status,403);
+ assert.equal((await images(req('/api/receipts?project=A','DELETE'),env)).status,200);assert.equal((await (await images(req('/api/receipts?project=A'),env)).json()).items.length,0);
+ assert.equal((await images(req('/api/receipts?project=missing','POST',png),env)).status,404);
+});

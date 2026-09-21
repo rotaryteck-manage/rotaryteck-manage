@@ -1,0 +1,1 @@
+{"name":"rotaryteck-manage","private":true,"type":"module","scripts":{"build":"node build.mjs","deploy":"npm run build && npx --yes wrangler@4.118.0 d1 migrations apply rotaryteck-manage-db --remote && npx --yes wrangler@4.118.0 deploy","db:generate":"drizzle-kit generate","test":"node --test"},"devDependencies":{"drizzle-kit":"0.31.4","drizzle-orm":"0.44.5"}}
