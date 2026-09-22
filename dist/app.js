@@ -102,6 +102,7 @@ const siteTextFields=[
  ['warehouseReceiptUploadButton','收據上傳按鈕','上傳收據',30,true,'warehouse'],
  ['warehousePhotoExportButton','單一專案照片匯出按鈕','匯出本案照片',40,true,'warehouse'],
  ['warehouseAllPhotoExportButton','全部照片匯出按鈕','匯出全部照片',40,true,'warehouse'],
+ ['warehouseReceiptListLabel','收據圖片清單標題','收據圖片',30,true,'warehouse'],
  ['warehouseHistoryLabel','文字紀錄標題','文字紀錄',30,true,'warehouse'],
  ['footer','頁尾說明','同名零件依專案分開記錄 · 收料增加庫存，領料扣除庫存',300,false,'warehouse'],
  ['badge','網站名稱旁標籤','簡易版',40,false,'global'],
