@@ -21,8 +21,8 @@ const cabinetOptions=Array.from({length:26},(_,i)=>String.fromCharCode(65+i)),sh
 function warehouseLocation(value=''){const raw=String(value).trim().toUpperCase(),exact=raw.match(/^([A-Z])(?:櫃|[\s_-]*)([1-8])(?:層)?$/),numbers=raw.match(/[1-8]/g)||[];return{cabinet:exact?.[1]||raw.match(/[A-Z]/)?.[0]||'A',shelf:exact?.[2]||numbers.at(-1)||'1'};}
 function locationFields(value='',cabinetValue,shelfValue){const parsed=warehouseLocation(value),cabinet=cabinetValue||parsed.cabinet,shelf=String(shelfValue||parsed.shelf);return `<label class="field location-input">庫房櫃<select name="cabinet">${cabinetOptions.map(x=>`<option value="${x}" ${x===cabinet?'selected':''}>${x}櫃</option>`).join('')}</select></label><label class="field location-input">庫房層<select name="shelf">${shelfOptions.map(x=>`<option value="${x}" ${x===shelf?'selected':''}>${x}層</option>`).join('')}</select></label>`;}
 function locationFromForm(fd){return `${fd.get('cabinet')}櫃 ${fd.get('shelf')}層`;}
-function render(){ document.title=siteText('brand')+'｜一頁式簡易版'; $('#app').innerHTML=`<header class="header"><div class="brand"><span class="mark">▤</span>${esc(siteText('brand'))}<span class="version">${esc(siteText('badge'))}</span></div><div class="header-actions"><button id="edit-site" class="small">編輯網站文字</button></div></header><main><div class="demo"><span>示範資料 · 變更只存在這個瀏覽器</span><span>個人試用</span></div><div class="heading"><div><h1>${esc(siteText('heading'))}</h1><p>${esc(siteText('description'))}</p></div><button id="new-project" class="primary">＋ 建立專案</button></div><section class="workspace"><div class="toolbar"><strong>${esc(siteText('listTitle'))} <span class="muted">· ${state.projects.length} 案</span></strong>${state.deletedProjects?.length?`<button id="deleted-projects" class="small">已刪除專案（${state.deletedProjects.length}）</button>`:''}<input id="search" placeholder="搜尋專案名稱或日期" aria-label="搜尋專案" value="${esc(query)}"></div><div class="column-head"><span>專案</span><span>點收料</span><span>庫房位置</span><span>現有庫存</span><span></span></div><div id="projects">${rows()}</div></section><p class="footer-note">${esc(siteText('footer'))}</p></main>`;$('#deleted-projects')?.addEventListener('click',deletedProjectsDialog);$('#edit-site').onclick=editSiteText;$('#new-project').onclick=newProject;$('#search').oninput=e=>{query=e.target.value;$('#projects').innerHTML=rows();bindRows();};bindRows();}
-function rows(){const list=state.projects.filter(p=>`${projectDate(p)} ${p.name}`.toLowerCase().includes(query.toLowerCase()));return list.length?list.map(p=>{const ready=p.parts.filter(i=>i.received>=totalNeed(i)).length,stockKinds=p.parts.filter(i=>inStock(p,i.id)>0).length;return `<article class="project ${selectedId===p.id?'expanded':''}"><button class="project-row" data-project="${esc(p.id)}" aria-expanded="${selectedId===p.id}"><span class="project-name"><strong>${esc(p.name)}</strong><small>${esc(projectDate(p))} · ${esc(siteText('basketCountLabel'))} ${p.basketCount??p.defaultSets??1}${p.owner?' · '+esc(p.owner):''}</small></span><span class="receipt-status"><span class="mobile-label">點收料</span>${p.parts.length?`<strong>${ready}<span class="muted"> / ${p.parts.length} 項已收齊</span></strong><small>${p.parts.some(i=>i.received<totalNeed(i))?`尚有 ${p.parts.filter(i=>i.received<totalNeed(i)).length} 項待收`:'全部已收齊'}</small>`:'<span class="muted">尚未建立零件</span>'}</span><span class="locations"><span class="mobile-label">庫房位置</span><span class="location ${p.location?'':'unset'}">${esc(p.location||'未填寫')}</span></span><span><span class="mobile-label">現有庫存</span><strong class="stock-number">${stockKinds} 種 <span class="muted">· 共 ${totalStock(p)} 件</span></strong></span><span class="expand-label">${selectedId===p.id?'收合 −':'展開 ＋'}</span></button>${selectedId===p.id?expanded(p):''}</article>`;}).join(''):'<div class="empty">沒有符合條件的專案</div>';}
+function render(){ document.title=siteText('brand')+'｜一頁式簡易版'; $('#app').innerHTML=`<header class="header"><div class="brand"><span class="mark">▤</span>${esc(siteText('brand'))}<span class="version">${esc(siteText('badge'))}</span></div><div class="header-actions"><button id="edit-site" class="small">編輯網站文字</button></div></header><main><div class="demo"><span>示範資料 · 變更只存在這個瀏覽器</span><span>個人試用</span></div><div class="heading"><div><h1>${esc(siteText('heading'))}</h1><p>${esc(siteText('description'))}</p></div><button id="new-project" class="primary">${esc(siteText('warehouseNewButton'))}</button></div><section class="workspace"><div class="toolbar"><strong>${esc(siteText('listTitle'))} <span class="muted">· ${state.projects.length} 案</span></strong>${state.deletedProjects?.length?`<button id="deleted-projects" class="small">已刪除專案（${state.deletedProjects.length}）</button>`:''}<input id="search" placeholder="${esc(siteText('warehouseSearchPlaceholder'))}" aria-label="${esc(siteText('warehouseSearchPlaceholder'))}" value="${esc(query)}"></div><div class="column-head"><span>${esc(siteText('warehouseProjectColumn'))}</span><span>${esc(siteText('warehouseReceiptColumn'))}</span><span>${esc(siteText('warehouseLocationColumn'))}</span><span>${esc(siteText('warehouseStockColumn'))}</span><span></span></div><div id="projects">${rows()}</div></section><p class="footer-note">${esc(siteText('footer'))}</p></main>`;$('#deleted-projects')?.addEventListener('click',deletedProjectsDialog);$('#edit-site').onclick=()=>editSiteText('global');$('#new-project').onclick=newProject;$('#search').oninput=e=>{query=e.target.value;$('#projects').innerHTML=rows();bindRows();};bindRows();}
+function rows(){const list=state.projects.filter(p=>`${projectDate(p)} ${p.name}`.toLowerCase().includes(query.toLowerCase()));return list.length?list.map(p=>{const ready=p.parts.filter(i=>i.received>=totalNeed(i)).length,stockKinds=p.parts.filter(i=>inStock(p,i.id)>0).length;return `<article class="project ${selectedId===p.id?'expanded':''}"><button class="project-row" data-project="${esc(p.id)}" aria-expanded="${selectedId===p.id}"><span class="project-name"><strong>${esc(p.name)}</strong><small>${esc(projectDate(p))} · ${esc(siteText('basketCountLabel'))} ${p.basketCount??p.defaultSets??1}${p.owner?' · '+esc(p.owner):''}</small></span><span class="receipt-status"><span class="mobile-label">${esc(siteText('warehouseReceiptColumn'))}</span>${p.parts.length?`<strong>${ready}<span class="muted"> / ${p.parts.length} 項已收齊</span></strong><small>${p.parts.some(i=>i.received<totalNeed(i))?`尚有 ${p.parts.filter(i=>i.received<totalNeed(i)).length} 項待收`:'全部已收齊'}</small>`:'<span class="muted">尚未建立零件</span>'}</span><span class="locations"><span class="mobile-label">${esc(siteText('warehouseLocationColumn'))}</span><span class="location ${p.location?'':'unset'}">${esc(p.location||'未填寫')}</span></span><span><span class="mobile-label">${esc(siteText('warehouseStockColumn'))}</span><strong class="stock-number">${stockKinds} 種 <span class="muted">· 共 ${totalStock(p)} 件</span></strong></span><span class="expand-label">${selectedId===p.id?esc(siteText('warehouseCollapseButton'))+' −':esc(siteText('warehouseExpandButton'))+' ＋'}</span></button>${selectedId===p.id?expanded(p):''}</article>`;}).join(''):'<div class="empty">沒有符合條件的專案</div>';}
 function registerTools(){if(!document.modelContext?.registerTool)return;const lifecycle=new AbortController();window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});for(const tool of [{name:'read_warehouse_overview',description:'Read local prototype projects, receiving totals, basket locations and current stock.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:()=>({demo:true,projects:state.projects.map(p=>({id:p.id,name:p.name,stock:totalStock(p),parts:p.parts.map(i=>({name:i.name,need:i.need,sets:i.sets,totalNeed:totalNeed(i),received:i.received,stock:inStock(p,i.id)})),location:p.location}))})},{name:'start_project_receiving',description:'Expand a project on the single page for receiving. Does not record a receipt.',inputSchema:{type:'object',properties:{projectId:{type:'string'}},required:['projectId'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute:input=>{const p=state.projects.find(p=>p.id===input?.projectId);if(!p||!p.parts.length)throw new Error('Project is unavailable for receiving');selectedId=p.id;filter='all';query='';render();return{projectId:p.id,expanded:true,receiptRecorded:false};}}]){try{Promise.resolve(document.modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}}}
 
 function seed(){return {projects:[
@@ -52,22 +52,60 @@ function deleteProjectDialog(){captureDraft();const p=project();if(!p)return;mod
 function deletedProjectsDialog(){captureDraft();modal('已刪除專案',`<p>復原會還原專案的零件、庫存及庫房位置。永久刪除後無法復原。</p>${(state.deletedProjects||[]).map((x,n)=>`<div class="deleted-project-row"><div><strong>${esc(x.project.name)}</strong><small>${esc(projectDate(x.project))} · ${x.project.parts.length} 項零件 · 庫存 ${totalStock(x.project)} 件</small></div><span><button type="button" class="small" data-restore-project="${n}">復原專案</button> <button type="button" class="small danger-button" data-purge-project="${n}">永久刪除</button></span></div>`).join('')||'<p>目前沒有已刪除專案。</p>'}`,null);document.querySelectorAll('[data-restore-project]').forEach(el=>el.onclick=()=>{const index=Number(el.dataset.restoreProject),entry=state.deletedProjects[index];if(!entry)return;if(state.projects.some(p=>p.id===entry.project.id)){$('#form-error').textContent='目前已有相同資料，無法復原。';return;}state.deletedProjects.splice(index,1);state.projects.splice(Math.min(entry.index,state.projects.length),0,entry.project);if(entry.draft)drafts[entry.project.id]=entry.draft;selectedId=entry.project.id;query='';log(entry.project,'復原專案','還原零件、庫存與位置');done('專案已復原');});document.querySelectorAll('[data-purge-project]').forEach(el=>el.onclick=async()=>{const index=Number(el.dataset.purgeProject),entry=state.deletedProjects[index];if(!entry||!confirm('確定永久刪除「'+entry.project.name+'」？零件、庫存、位置與收據圖片都會刪除，且無法復原。'))return;el.disabled=true;try{const response=await apiFetch('/api/receipts?project='+encodeURIComponent(entry.project.id),{method:'DELETE'}),data=await response.json();if(!response.ok)error(data.error||'收據圖片刪除失敗');addAudit('永久刪除庫房管理紀錄',entry.project.name,'庫房管理 > 已刪除專案',entry.project.id);state.deletedProjects.splice(index,1);persist();deletedProjectsDialog();toast('專案已永久刪除');}catch(err){el.disabled=false;$('#form-error').textContent=err.message||'永久刪除未完成。';}});}
 
 const siteTextFields=[
- ['casesTitle','案件管理區標題','案件管理',60,true],
- ['casesDescription','案件管理區說明','查看案件進度、廠商與日期',120,false],
- ['auditTitle','資訊庫標題','資訊庫',60,true],
- ['auditDescription','資訊庫說明','記錄案件、庫房與照片的操作時間',160,false],
- ['projectIdLabel','原「專案編號」欄位名稱','專案日期',40,true],
- ['basketCountLabel','籃數欄位名稱','籃數',40,true],
- ['setsLabel','套數欄位名稱','套數',40,true],
- ['needLabel','每套需求欄位名稱','每套需求',40,true],
- ['badge','網站名稱旁標籤','簡易版',40,false],
- ['banner','首頁提示文字','私人雲端庫房 · 同一帳號跨電腦使用',200,false],
- ['bannerBadge','提示列右側文字','雲端版',40,false],
- ['brand','網站名稱','專案庫房',60,true],
- ['heading','首頁大標題','收料入庫，領料扣庫存。',100,true],
- ['description','標題下方說明','點開專案，直接登記收料、庫房位置與領料。',300,false],
- ['listTitle','專案清單標題','專案清單',60,true],
- ['footer','頁尾說明','同名零件依專案分開記錄 · 收料增加庫存，領料扣除庫存',300,false]
+ ['casesTitle','區塊標題','案件管理',60,true,'cases'],
+ ['casesDescription','區塊說明','查看案件進度、廠商與日期',120,false,'cases'],
+ ['caseExportButton','匯出按鈕','匯出案件資料',40,true,'cases'],
+ ['caseNewButton','新增按鈕','＋ 建立案件',40,true,'cases'],
+ ['caseWaitingLabel','未開始欄標題','尚未開始',20,true,'cases'],
+ ['caseRunningLabel','進行中欄標題','進行中',20,true,'cases'],
+ ['caseClosedLabel','結案欄標題','結案',20,true,'cases'],
+ ['caseEmptyText','空白欄提示','目前沒有案件',40,false,'cases'],
+ ['caseEditButton','修改按鈕','修改',20,true,'cases'],
+ ['caseClosedDateLabel','結案日期文字','結案日',20,true,'cases'],
+ ['caseNameLabel','案件名稱欄位','案件名稱',30,true,'cases'],
+ ['caseVendorLabel','廠商欄位','案件廠商',30,true,'cases'],
+ ['caseBatchLabel','批次欄位','製作批次（第幾批）',30,true,'cases'],
+ ['caseQuantityLabel','套數欄位','製作套數',30,true,'cases'],
+ ['caseStatusLabel','狀態欄位','案件狀態',30,true,'cases'],
+ ['caseSaveButton','儲存按鈕','儲存案件',30,true,'cases'],
+ ['auditTitle','資訊庫標題','資訊庫',60,true,'audit'],
+ ['auditDescription','資訊庫說明','記錄案件、庫房與照片的操作時間',160,false,'audit'],
+ ['auditUnlockButton','解鎖按鈕','輸入密碼查看',30,true,'audit'],
+ ['auditJsonButton','JSON 匯出按鈕','輸出 JSON 備份',40,true,'audit'],
+ ['auditCsvButton','CSV 匯出按鈕','輸出 Excel 可開啟的 CSV',50,true,'audit'],
+ ['auditClearButton','清除紀錄按鈕','刪除全部紀錄',30,true,'audit'],
+ ['auditLockButton','鎖定按鈕','鎖定資訊庫',30,true,'audit'],
+ ['projectIdLabel','日期欄位名稱','專案日期',40,true,'warehouse'],
+ ['basketCountLabel','籃數欄位名稱','籃數',40,true,'warehouse'],
+ ['setsLabel','套數欄位名稱','套數',40,true,'warehouse'],
+ ['needLabel','每套需求欄位名稱','每套需求',40,true,'warehouse'],
+ ['heading','區塊標題','庫房管理',100,true,'warehouse'],
+ ['description','區塊說明','點開專案，直接登記收料、庫房位置與領料。',300,false,'warehouse'],
+ ['listTitle','清單標題','專案清單',60,true,'warehouse'],
+ ['warehouseExportButton','匯出按鈕','匯出庫房資料',40,true,'warehouse'],
+ ['warehouseNewButton','建立專案按鈕','＋ 建立專案',40,true,'warehouse'],
+ ['warehouseSearchPlaceholder','搜尋框提示','搜尋專案名稱或日期',60,false,'warehouse'],
+ ['warehouseProjectColumn','專案欄標題','專案',30,true,'warehouse'],
+ ['warehouseReceiptColumn','收料欄標題','點收料',30,true,'warehouse'],
+ ['warehouseLocationColumn','位置欄標題','庫房位置',30,true,'warehouse'],
+ ['warehouseStockColumn','庫存欄標題','現有庫存',30,true,'warehouse'],
+ ['warehouseExpandButton','展開文字','展開',20,true,'warehouse'],
+ ['warehouseCollapseButton','收合文字','收合',20,true,'warehouse'],
+ ['warehouseDetailTitle','零件區標題','零件與收／領料',40,true,'warehouse'],
+ ['warehouseRenameButton','修改名稱按鈕','修改專案名稱',30,true,'warehouse'],
+ ['warehouseDeleteButton','刪除專案按鈕','刪除專案',30,true,'warehouse'],
+ ['warehouseImportButton','匯入按鈕','匯入 Excel BOM',40,true,'warehouse'],
+ ['warehouseAddPartButton','新增零件按鈕','＋ 手動新增零件',40,true,'warehouse'],
+ ['warehouseRestorePartButton','復原零件按鈕','復原上次刪除',30,true,'warehouse'],
+ ['warehouseSaveButton','收領料儲存按鈕','儲存變更與收／領料',40,true,'warehouse'],
+ ['warehouseReceiptChooseLabel','收據選擇文字','選擇收據圖片（可多選）',50,true,'warehouse'],
+ ['warehouseReceiptUploadButton','收據上傳按鈕','上傳收據',30,true,'warehouse'],
+ ['warehouseHistoryLabel','文字紀錄標題','文字紀錄',30,true,'warehouse'],
+ ['footer','頁尾說明','同名零件依專案分開記錄 · 收料增加庫存，領料扣除庫存',300,false,'warehouse'],
+ ['badge','網站名稱旁標籤','簡易版',40,false,'global'],
+ ['banner','首頁提示文字','私人雲端庫房 · 同一帳號跨電腦使用',200,false,'global'],
+ ['bannerBadge','提示列右側文字','雲端版',40,false,'global'],
+ ['brand','網站名稱','專案庫房',60,true,'global']
 ];
 function siteText(key){const stored=state.siteText?.[key];if(key==='basketCountLabel')return stored??state.siteText?.setsLabel??'籃數';if(key==='setsLabel'&&(!stored||stored==='籃數'))return '套數';if(key==='needLabel'&&(!stored||stored==='每籃需求'))return '每套需求';return stored??siteTextFields.find(f=>f[0]===key)[2];}
 function saveEditState(candidate){
@@ -75,16 +113,17 @@ function saveEditState(candidate){
  catch{error('無法儲存，請確認瀏覽器允許網站儲存資料後再試。');}
  state=candidate;
 }
-function editSiteText(){
+function editSiteText(section='global'){
  captureDraft();
- modal('編輯網站文字','<p>修改後按「儲存文字」，會保存在私人雲端。</p>'+siteTextFields.map(([key,label,value,max,required])=>field(label,key,siteText(key),'maxlength="'+max+'" '+(required?'required':''))).join(''),'儲存文字',fd=>{
+ const sectionNames={global:'網站共用',cases:'案件管理',warehouse:'庫房管理',audit:'資訊庫'},fields=siteTextFields.filter(x=>x[5]===section);
+ modal('修改'+(sectionNames[section]||'網站')+'文字','<p>此處只管理這個區域顯示的標題、說明與按鈕。</p>'+fields.map(([key,label,value,max,required])=>field(label,key,siteText(key),'maxlength="'+max+'" '+(required?'required':''))).join(''),'儲存文字',fd=>{
   const text={};
-  for(const [key,label,value,max,required] of siteTextFields){
+  for(const [key,label,value,max,required] of fields){
    text[key]=String(fd.get(key)??'').trim();
    if(required&&!text[key])error('請填寫'+label+'。');
    if(text[key].length>max)error(label+'最多 '+max+' 字。');
   }
-  addAudit('修改網站文字','更新可自訂標題與說明','管理後台 > 網站文字');
+  addAudit('修改網站文字','更新'+(sectionNames[section]||'網站')+'顯示文字','管理後台 > '+(sectionNames[section]||'網站文字'));
   saveEditState({...state,siteText:{...state.siteText,...text}});
   done('網站文字已儲存');
  });
