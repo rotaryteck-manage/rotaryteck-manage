@@ -142,7 +142,7 @@ export async function images(request,env){
    if(logo&&url.searchParams.get('meta')==='1'){const file=await env.UPLOADS.head(key);return json({exists:!!file,created:file?.uploaded??null});}
    if(!logo&&!id){
     const result=await env.UPLOADS.list({prefix,limit:1000,include:['customMetadata']});
-    return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',created:o.uploaded})),truncated:result.truncated});
+    return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',actor:o.customMetadata?.actor||'',created:o.uploaded})),truncated:result.truncated});
    }
    const file=await env.UPLOADS.get(key);if(!file)return json({error:'找不到圖片'},404);
    return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
@@ -162,17 +162,17 @@ export async function images(request,env){
   if(request.headers.get('origin')!==url.origin)return json({error:'來源驗證失敗'},403);
   if(logo&&employee.role!=='supervisor')return json({error:'只有主管可以更換 LOGO'},403);
   if(!logo&&!['supervisor','warehouse'].includes(employee.role))return json({error:'一般員工只有查看權限'},403);
-  const limit=(logo?2:10)*1024*1024;
+  const limit=2*1024*1024;
   const reader=request.body?.getReader();if(!reader)return json({error:'請選擇圖片'},400);
   const chunks=[];let size=0;
-  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();return json({error:logo?'LOGO 限 2 MB':'收據圖片限 10 MB'},413);}chunks.push(value);}
+  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();return json({error:logo?'LOGO 限 2 MB':'收據圖片壓縮後仍須小於 2 MB'},413);}chunks.push(value);}
   const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
   const hex=Array.from(bytes.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join('');
   const type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;
   if(!type)return json({error:'請上傳 PNG、JPG 或 WebP 圖片'},415);
   let name='圖片';try{name=decodeURIComponent(request.headers.get('x-file-name')||'圖片').slice(0,200);}catch{}
   const newId=crypto.randomUUID();
-  await env.UPLOADS.put(logo?key:prefix+newId,bytes,{httpMetadata:{contentType:type},customMetadata:{name}});
+  await env.UPLOADS.put(logo?key:prefix+newId,bytes,{httpMetadata:{contentType:type},customMetadata:{name,actor:employee.name||employee.email||'使用者'}});
   return json({id:newId,created:new Date().toISOString()});
  }catch(e){console.error('image operation failed',e.message);return json({error:'圖片操作未完成，請重試'},500);}
 }
