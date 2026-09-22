@@ -11,7 +11,7 @@ function applyRoleUI(){
  document.querySelectorAll('.name-input,.spec-input,.demand-input,.sets-input,.location-input input,.location-input select,#receipt-form input[name="basketCount"],#receipt-form .admin-card input').forEach(el=>el.readOnly=true);
  document.querySelectorAll('.location-input select').forEach(el=>el.disabled=true);
  document.querySelectorAll('#receipt-form .admin-card select').forEach(el=>el.disabled=true);
- if(role==='viewer'){document.querySelectorAll('#receipt-form input,#receipt-form select').forEach(el=>{if(el.type!=='hidden')el.disabled=true;});document.querySelectorAll('#receipt-form button[type="submit"],#upload-receipts,#receipt-files').forEach(el=>el.remove());}
+ if(role==='viewer'){document.querySelectorAll('#receipt-form input,#receipt-form select').forEach(el=>{if(el.type!=='hidden')el.disabled=true;});document.querySelectorAll('#receipt-form button[type="submit"],#upload-receipts,#receipt-files,#export-project-photos,#export-all-photos-main').forEach(el=>el.remove());}
 }
 async function loadEmployees(){
  const box=$('#employee-list');if(!box)return;
