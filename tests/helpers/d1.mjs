@@ -1,0 +1,4 @@
+import {DatabaseSync} from 'node:sqlite';
+import fs from 'node:fs';
+export function database(){const db=new DatabaseSync(':memory:');for(const name of ['0000_whole_gertrude_yorkes.sql','0001_calm_fenris.sql'])db.exec(fs.readFileSync(new URL('../../drizzle/'+name,import.meta.url),'utf8'));
+const DB={prepare(sql){const stmt=db.prepare(sql);function bound(args=[]){return {bind:(...a)=>bound(a),first:async()=>stmt.get(...args),all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:stmt.run(...args).changes}}),execute(){if(stmt.columns().length)return {results:stmt.all(...args)};return {results:[],meta:{changes:stmt.run(...args).changes}};}};}return bound();},async batch(statements){db.exec('BEGIN');try{const results=statements.map(s=>s.execute());db.exec('COMMIT');return results;}catch(e){db.exec('ROLLBACK');throw e;}}};return {db,DB};}
