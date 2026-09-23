@@ -40,7 +40,7 @@ test('private images, role enforcement, project ownership and persistent receipt
  const area=await (await images(req(photoUrl+'&kind=area','POST',png,'warehouse'),env)).json();
  assert.equal((await (await images(req(photoUrl),env)).json()).items.find(x=>x.id===area.id).kind,'area');
  assert.equal((await images(req(photoUrl+'&export=1','GET',undefined,'viewer'),env)).status,403);
- assert.equal((await images(req(photoUrl+'&export=1','GET',undefined,'warehouse'),env)).status,200);
+ assert.equal((await images(req(photoUrl+'&export=1','GET',undefined,'warehouse'),env)).status,403);
  await images(req(photoUrl+'&id='+area.id,'DELETE',undefined,'warehouse'),env);
  assert.equal((await images(req(photoUrl+'&id='+photo.id,'DELETE',undefined,'viewer'),env)).status,403);
  assert.equal((await images(req(photoUrl+'&id='+photo.id,'DELETE',undefined,'warehouse'),env)).status,200);
