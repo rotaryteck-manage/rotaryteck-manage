@@ -12,8 +12,8 @@ function enhanceAudit(){
  $('#lock-audit')?.addEventListener('click',()=>{auditUnlocked=false;auditExpanded=false;render();});
  $('#export-audit-json')?.addEventListener('click',()=>{addAudit('輸出資訊庫備份','JSON 格式','資訊庫');downloadJSON(state.logs||[],'資訊庫_操作紀錄備份.json');persist();render();});
  $('#export-audit-csv')?.addEventListener('click',exportAuditCSV);
- $('#clear-audit')?.addEventListener('click',()=>{if(!confirm('確定刪除資訊庫內的全部操作紀錄？此動作無法復原，請先輸出備份。'))return;state.logs=[];persist();render();toast('資訊庫紀錄已全部刪除');});
- document.querySelectorAll('[data-delete-audit]').forEach(el=>el.onclick=()=>{const index=Number(el.dataset.deleteAudit);if(!confirm('確定刪除這筆操作紀錄？'))return;state.logs.splice(index,1);persist();render();toast('操作紀錄已刪除');});
+ $('#clear-audit')?.addEventListener('click',async()=>{if(!(await confirmAction('確定刪除資訊庫內的全部操作紀錄？此動作無法復原，請先輸出備份。')))return;state.logs=[];persist();render();toast('資訊庫紀錄已全部刪除');});
+ document.querySelectorAll('[data-delete-audit]').forEach(el=>el.onclick=async()=>{const index=Number(el.dataset.deleteAudit);if(!(await confirmAction('確定刪除這筆操作紀錄？')))return;state.logs.splice(index,1);persist();render();toast('操作紀錄已刪除');});
 }
 function unlockAudit(){
  if(!state.auditSecurity?.hash){modal('資訊庫尚未設定密碼','<p>請先到管理後台設定資訊庫密碼，設定完成後才能查看操作紀錄。</p><button type="button" id="go-audit-admin">前往管理後台</button>',null);$('#go-audit-admin').onclick=()=>{$('#modal').close();location.hash='admin';renderAdmin();};return;}
