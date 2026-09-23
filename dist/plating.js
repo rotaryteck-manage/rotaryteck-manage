@@ -1,5 +1,5 @@
  'use strict';
-const platingWords={title:'電鍍管理',newProject:'新增案件',edit:'修改',save:'儲存',name:'案名',vendor:'電鍍廠商',newShipment:'新增送鍍',copy:'再次送鍍',number:'送鍍次數',sent:'寄出日期',returned:'回貨日期',groups:'環片配置',sets:'組數',ring:'環片名稱／規格',qty:'每組片數',addGroup:'新增配置',addRing:'新增環片',remove:'移除',inspection:'品檢',pending:'待品檢',passed:'合格',abnormal:'異常',note:'備註／異常說明',empty:'尚無紀錄',history:'文字紀錄',back:'返回案件',delete:'刪除',sending:'送鍍中',received:'已回貨待品檢',completed:'已完成',total:'合計',fixtures:'組治具',pieces:'片',previous:'前移',next:'後移',search:'搜尋案名',countPrefix:'第',countSuffix:'次送鍍',cancel:'取消',close:'關閉',processing:'處理中…',textSettings:'修改本區文字',open:'開啟電鍍管理',drag:'拖曳排序',deletePrompt:'確定刪除此筆送鍍紀錄？',deleteProjectPrompt:'確定刪除此案件及所有送鍍紀錄？',requiredName:'請填寫案名',duplicateName:'案名已存在',requiredVendor:'請填寫電鍍廠商',duplicateNumber:'送鍍次數重複，請修改',invalidReturn:'回貨日期不可早於寄出日期',requiredReturn:'請先填寫回貨日期',requiredNote:'請填寫異常說明',requiredRing:'請填寫環片名稱／規格'};
+const platingWords={title:'電鍍管理',photos:'出貨單照片',photoChoose:'選擇照片（可多選）',photoUpload:'上傳照片',photoSavedFirst:'儲存紀錄後即可上傳出貨單照片',photoEmpty:'尚無照片',photoLoading:'正在讀取照片…',photoUploading:'正在上傳…',photoDone:'照片已上傳',photoDelete:'確定刪除此張出貨單照片？',photoDeleted:'照片已刪除',photoLabel:'圖片',photoSelect:'請先選擇照片',photoCompress:'超過 2 MB 的照片會自動壓縮。',newProject:'新增案件',edit:'修改',save:'儲存',name:'案名',vendor:'電鍍廠商',newShipment:'新增送鍍',copy:'再次送鍍',number:'送鍍次數',sent:'寄出日期',returned:'回貨日期',groups:'環片配置',sets:'組數',ring:'環片名稱／規格',qty:'每組片數',addGroup:'新增配置',addRing:'新增環片',remove:'移除',inspection:'品檢',pending:'待品檢',passed:'合格',abnormal:'異常',note:'備註／異常說明',empty:'尚無紀錄',history:'文字紀錄',back:'返回案件',delete:'刪除',sending:'送鍍中',received:'已回貨待品檢',completed:'已完成',total:'合計',fixtures:'組治具',pieces:'片',previous:'前移',next:'後移',search:'搜尋案名',countPrefix:'第',countSuffix:'次送鍍',cancel:'取消',close:'關閉',processing:'處理中…',textSettings:'修改本區文字',open:'開啟電鍍管理',drag:'拖曳排序',deletePrompt:'確定刪除此筆送鍍紀錄？',deleteProjectPrompt:'確定刪除此案件及所有送鍍紀錄？',requiredName:'請填寫案名',duplicateName:'案名已存在',requiredVendor:'請填寫電鍍廠商',duplicateNumber:'送鍍次數重複，請修改',invalidReturn:'回貨日期不可早於寄出日期',requiredReturn:'請先填寫回貨日期',requiredNote:'請填寫異常說明',requiredRing:'請填寫環片名稱／規格'};
 function pt(key){return state.platingText?.[key]??platingWords[key]??key;}
 function pe(key){return esc(pt(key));}
 function platingModal(title,body,submit,handler){
@@ -89,6 +89,7 @@ function editPlatingShipment(projectId,shipmentId,copy=false){
  const g=document.createElement('div');g.className='plating-group';g.innerHTML='<div class="plating-actions"><label>'+pe('sets')+' <input data-sets type="number" min="1" max="1000000" value="'+value.sets+'" required></label>'+(can?'<button type="button" data-remove-group class="small">'+pe('remove')+'</button>':'')+'</div><div class="plating-rings"></div>'+(can?'<button type="button" data-add-ring class="small">＋ '+pe('addRing')+'</button>':'');
  $('#plating-groups').append(g);value.rings.forEach(r=>addRing(g,r));g.querySelector('[data-add-ring]')?.addEventListener('click',()=>addRing(g));g.querySelector('[data-remove-group]')?.addEventListener('click',()=>{if(document.querySelectorAll('.plating-group').length===1)return;g.remove();updateTotal();});g.oninput=updateTotal;
  }
+ attachPlatingPhotos(p,s,existing);
  s.groups.forEach(addGroup);$('#group-add')?.addEventListener('click',()=>addGroup());updateTotal();
  $('#shipment-copy')?.addEventListener('click',()=>editPlatingShipment(projectId,shipmentId,true));
  $('#shipment-delete')?.addEventListener('click',async()=>{if(!await confirmAction(pt('deletePrompt')))return;try{p.shipments=p.shipments.filter(x=>x.id!==s.id);await platingCommit('刪除送鍍紀錄',p,platingCount(s));openPlating(projectId);}catch(e){$('#form-error').textContent=e.message;}});
@@ -108,3 +109,40 @@ const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
  card.querySelectorAll('[data-plating-admin-move]').forEach(b=>b.onclick=async()=>{const i=platingProjects().findIndex(p=>p.id===b.dataset.platingAdminMove);await movePlating(b.dataset.platingAdminMove,platingProjects()[i+Number(b.dataset.delta)]?.id);renderAdmin();});
  $('#plating-text').onclick=()=>platingModal(pe('textSettings'),Object.keys(platingWords).map(k=>field(esc(platingWords[k]),k,pt(k),'required maxlength="100"')).join(''),pe('save'),async fd=>{const words=Object.fromEntries(Object.keys(platingWords).map(k=>[k,String(fd.get(k)).trim()]));if(Object.values(words).some(v=>!v))throw Error('文字不可空白');state.platingText=words;addAudit('修改電鍍管理文字','','管理後台');await saveCloud(state);if(failedCandidate)throw Error('儲存失敗');$('#modal').close();renderAdmin();});
 };
+
+function platingPhotoUrl(p,s){return '/api/plating-photos?project='+encodeURIComponent(p.id)+'&shipment='+encodeURIComponent(s.id);}
+function attachPlatingPhotos(p,s,saved){
+ const panel=document.createElement('section');panel.className='plating-photo-panel';
+ if(!saved){panel.innerHTML='<p class="muted">'+pe('photoSavedFirst')+'</p>';$('#plating-fields').after(panel);return;}
+ const can=platingEditAllowed(),url=platingPhotoUrl(p,s);
+ panel.innerHTML='<h3>'+pe('photos')+'</h3>'+(can?'<div class="receipt-upload-row"><label class="field">'+pe('photoChoose')+'<input type="file" multiple accept="image/jpeg,image/png,image/webp" data-photo-files></label><button type="button" data-photo-upload>'+pe('photoUpload')+'</button></div><small>'+pe('photoCompress')+'</small>':'')+'<p data-photo-status role="status"></p><details class="receipt-files-fold"><summary>'+pe('photos')+' <span data-photo-count></span></summary><div data-photo-list></div></details>';
+ $('#plating-fields').after(panel);
+ const list=panel.querySelector('[data-photo-list]'),status=panel.querySelector('[data-photo-status]');
+ async function load(){
+  list.textContent=pt('photoLoading');
+  try{const r=await apiFetch(url),d=await r.json();if(!r.ok)throw Error(d.error||'照片讀取失敗');
+   const items=(d.items||[]).sort((a,b)=>new Date(a.created)-new Date(b.created));panel.querySelector('[data-photo-count]').textContent='（'+items.length+'）';
+   list.innerHTML=items.map((item,i)=>'<div class="receipt-file-row"><a target="_blank" rel="noopener" href="'+esc(url+'&id='+encodeURIComponent(item.id))+'">'+pe('photoLabel')+' '+String(i+1).padStart(2,'0')+'｜'+esc(receiptTime(item.created))+'</a>'+(can?'<button type="button" class="small danger-button" data-photo-delete="'+esc(item.id)+'">'+pe('delete')+'</button>':'')+'</div>').join('')||pe('photoEmpty');
+   list.querySelectorAll('[data-photo-delete]').forEach(b=>b.onclick=async()=>{
+    if(!await confirmAction(pt('photoDelete')))return;
+    await operate(async()=>{const r=await apiFetch(url+'&id='+encodeURIComponent(b.dataset.photoDelete),{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'刪除失敗');addAudit('刪除出貨單照片',platingCount(s)+' · '+b.dataset.photoDelete,pt('title')+' > '+p.name,'plating:'+p.id);await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但文字紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');});
+   });
+  }catch(e){list.textContent=e.message;}
+ }
+ async function operate(action){
+  if(imageUploading||cloudBusy||failedCandidate)return;
+  const controls=[...$('#dialog-form').querySelectorAll('input,select,button')].map(el=>[el,el.disabled]);controls.forEach(([el])=>el.disabled=true);
+  const dialog=$('#modal'),cancel=e=>e.preventDefault();dialog.addEventListener('cancel',cancel);imageUploading=true;status.textContent='';
+  try{await action();}catch(e){status.textContent=e.message||'照片操作失敗';}
+  finally{imageUploading=false;dialog.removeEventListener('cancel',cancel);controls.forEach(([el,disabled])=>el.disabled=disabled);await load();}
+ }
+ panel.querySelector('[data-photo-upload]')?.addEventListener('click',async()=>{
+  const input=panel.querySelector('[data-photo-files]'),files=[...input.files];if(!files.length){status.textContent=pt('photoSelect');return;}
+  await operate(async()=>{
+   let count=0,failure='';
+   for(const file of files){try{status.textContent=pt('photoUploading')+' '+(count+1)+' / '+files.length;const result=await uploadImage(file,url,2);addAudit('上傳出貨單照片',platingCount(s)+' · '+file.name+' · '+receiptTime(result.created),pt('title')+' > '+p.name,'plating:'+p.id);count++;}catch(e){failure=e.message;break;}}
+   if(count){await saveCloud(state);if(failedCandidate)throw Error('已上傳 '+count+' 張，但文字紀錄未儲存，請處理上方提示');}
+   input.value='';status.textContent=failure?'已上傳 '+count+' / '+files.length+' 張；'+failure+'。未成功的照片請重新選取。':pt('photoDone')+'（'+count+'）';
+  });
+ });load();
+}
