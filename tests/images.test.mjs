@@ -34,6 +34,13 @@ test('private images, role enforcement, project ownership and persistent receipt
  assert.equal((await images(req(photoUrl+'&id='+photo.id,'GET',undefined,'viewer'),env)).status,200);
  for(const path of ['/api/plating-photos?project=P&shipment=S2','/api/plating-photos?project=Q&shipment=S1','/api/receipts?project=A']){assert.equal((await images(req(path+'&id='+photo.id),env)).status,404);}
  assert.equal((await images(req('/api/plating-photos?project=P&shipment=missing','POST',png),env)).status,404);
+ assert.equal(photos.items[0].kind,'dispatch');
+ assert.equal((await images(req(photoUrl+'&kind=invalid','POST',png,'warehouse'),env)).status,400);
+ const area=await (await images(req(photoUrl+'&kind=area','POST',png,'warehouse'),env)).json();
+ assert.equal((await (await images(req(photoUrl),env)).json()).items.find(x=>x.id===area.id).kind,'area');
+ assert.equal((await images(req(photoUrl+'&export=1','GET',undefined,'viewer'),env)).status,403);
+ assert.equal((await images(req(photoUrl+'&export=1','GET',undefined,'warehouse'),env)).status,200);
+ await images(req(photoUrl+'&id='+area.id,'DELETE',undefined,'warehouse'),env);
  assert.equal((await images(req(photoUrl+'&id='+photo.id,'DELETE',undefined,'viewer'),env)).status,403);
  assert.equal((await images(req(photoUrl+'&id='+photo.id,'DELETE',undefined,'warehouse'),env)).status,200);
  assert.equal((await (await images(req(photoUrl),env)).json()).items.length,0);
