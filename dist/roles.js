@@ -1,6 +1,6 @@
 'use strict';
 const roleNames={viewer:'一般員工',warehouse:'庫房管理',supervisor:'主管'};
-const roleDescriptions={viewer:'只能查看案件、庫存與照片',warehouse:'只能收料、領料及上傳照片',supervisor:'全區開放，可管理員工、案件、庫房、資訊庫與網站設定'};
+const roleDescriptions={viewer:'只能查看案件、庫存與照片',warehouse:'可收料、領料、管理照片與電鍍紀錄',supervisor:'全區開放，可管理員工、案件、庫房、資訊庫與網站設定'};
 let employeesCache=[];
 function applyRoleUI(){
  const role=currentUser.role,label=roleNames[role]||'未授權',header=$('.header-actions');

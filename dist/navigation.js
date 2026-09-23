@@ -1,6 +1,6 @@
 'use strict';
 function managementPages(){
- const pages=[{id:'cases',title:siteText('casesTitle')},{id:'warehouse',title:siteText('heading')}];
+ const pages=[{id:'cases',title:siteText('casesTitle')},{id:'warehouse',title:siteText('heading')},{id:'plating',title:typeof pt==='function'?pt('title'):'電鍍管理'}];
  for(const page of config().pages||[])pages.push({id:'page/'+page.id,title:page.title,page});
  if(currentUser.role==='supervisor')pages.push({id:'audit',title:siteText('auditTitle')});
  return pages;
