@@ -1,5 +1,5 @@
  'use strict';
-const platingWords={title:'電鍍管理',photoOverview:'照片',dispatch:'出貨單',area:'表面積',uploadDispatch:'上傳出貨單',uploadArea:'上傳表面積截圖',exportProjectPhotos:'匯出本案紀錄與圖片',exportAllPhotos:'匯出全部紀錄與圖片',exportWorking:'正在整理紀錄與圖片…',exportDone:'紀錄與圖片匯出完成',photoUnknownActor:'未記錄人員',photoRetry:'重新讀取照片',photos:'出貨單照片',photoChoose:'選擇照片（可多選）',photoUpload:'上傳照片',photoSavedFirst:'儲存紀錄後即可上傳出貨單照片',photoEmpty:'尚無照片',photoLoading:'正在讀取照片…',photoUploading:'正在上傳…',photoDone:'照片已上傳',photoDelete:'確定刪除此張出貨單照片？',photoDeleted:'照片已刪除',photoLabel:'圖片',photoSelect:'請先選擇照片',photoCompress:'超過 2 MB 的照片會自動壓縮。',newProject:'新增案件',edit:'修改',save:'儲存',name:'案名',vendor:'電鍍廠商',newShipment:'新增送鍍',copy:'再次送鍍',number:'送鍍次數',sent:'寄出日期',returned:'回貨日期',groups:'環片配置',sets:'組數',ring:'環片名稱／規格',qty:'每組片數',addGroup:'新增配置',addRing:'新增環片',remove:'移除',inspection:'品檢',pending:'待品檢',passed:'合格',abnormal:'異常',note:'備註／異常說明',empty:'尚無紀錄',history:'文字紀錄',back:'返回案件',delete:'刪除',sending:'送鍍中',received:'已回貨待品檢',completed:'已完成',total:'合計',fixtures:'組治具',pieces:'片',previous:'前移',next:'後移',search:'搜尋案名',countPrefix:'第',countSuffix:'次送鍍',cancel:'取消',close:'關閉',processing:'處理中…',textSettings:'修改本區文字',open:'開啟電鍍管理',drag:'拖曳排序',deletePrompt:'確定刪除此筆送鍍紀錄？',deleteProjectPrompt:'確定刪除此案件及所有送鍍紀錄？',requiredName:'請填寫案名',duplicateName:'案名已存在',requiredVendor:'請填寫電鍍廠商',duplicateNumber:'送鍍次數重複，請修改',invalidReturn:'回貨日期不可早於寄出日期',requiredReturn:'請先填寫回貨日期',requiredNote:'請填寫異常說明',requiredRing:'請填寫環片名稱／規格'};
+const platingWords={title:'電鍍管理',vendorSettings:'廠商選項設定',vendorAdd:'新增廠商',vendorEmpty:'請由主管在後台新增廠商',vendorChoose:'請選擇廠商',vendorOld:'原紀錄',vendorDeletePrompt:'確定移除此廠商選項？舊紀錄會保留。',photoOverview:'照片',dispatch:'出貨單',area:'表面積',uploadDispatch:'上傳出貨單',uploadArea:'上傳表面積截圖',exportProjectPhotos:'匯出本案紀錄與圖片',exportAllPhotos:'匯出全部紀錄與圖片',exportWorking:'正在整理紀錄與圖片…',exportDone:'紀錄與圖片匯出完成',photoUnknownActor:'未記錄人員',photoRetry:'重新讀取照片',photos:'出貨單照片',photoChoose:'選擇照片（可多選）',photoUpload:'上傳照片',photoSavedFirst:'儲存紀錄後即可上傳出貨單照片',photoEmpty:'尚無照片',photoLoading:'正在讀取照片…',photoUploading:'正在上傳…',photoDone:'照片已上傳',photoDelete:'確定刪除此張出貨單照片？',photoDeleted:'照片已刪除',photoLabel:'圖片',photoSelect:'請先選擇照片',photoCompress:'超過 2 MB 的照片會自動壓縮。',newProject:'新增案件',edit:'修改',save:'儲存',name:'案名',vendor:'電鍍廠商',newShipment:'新增送鍍',copy:'再次送鍍',number:'送鍍次數',sent:'寄出日期',returned:'回貨日期',groups:'環片配置',sets:'組數',ring:'環片名稱／規格',qty:'每組片數',addGroup:'新增配置',addRing:'新增環片',remove:'移除',inspection:'品檢',pending:'待品檢',passed:'合格',abnormal:'異常',note:'備註／異常說明',empty:'尚無紀錄',history:'文字紀錄',back:'返回案件',delete:'刪除',sending:'送鍍中',received:'已回貨待品檢',completed:'已完成',total:'合計',fixtures:'組治具',pieces:'片',previous:'前移',next:'後移',search:'搜尋案名',countPrefix:'第',countSuffix:'次送鍍',cancel:'取消',close:'關閉',processing:'處理中…',textSettings:'修改本區文字',open:'開啟電鍍管理',drag:'拖曳排序',deletePrompt:'確定刪除此筆送鍍紀錄？',deleteProjectPrompt:'確定刪除此案件及所有送鍍紀錄？',requiredName:'請填寫案名',duplicateName:'案名已存在',requiredVendor:'請填寫電鍍廠商',duplicateNumber:'送鍍次數重複，請修改',invalidReturn:'回貨日期不可早於寄出日期',requiredReturn:'請先填寫回貨日期',requiredNote:'請填寫異常說明',requiredRing:'請填寫環片名稱／規格'};
 function pt(key){return state.platingText?.[key]??platingWords[key]??key;}
 function pe(key){return esc(pt(key));}
 function platingModal(title,body,submit,handler){
@@ -14,9 +14,38 @@ function platingStatus(s){return !s.returned?'sending':s.inspection==='passed'?'
 function platingTotals(groups){return groups.reduce((t,g)=>({sets:t.sets+g.sets,pieces:t.pieces+g.sets*g.rings.reduce((n,r)=>n+r.qty,0)}),{sets:0,pieces:0});}
 function platingCount(s){return pt('countPrefix')+' '+s.number+' '+pt('countSuffix');}
 function platingDate(d){return d?d.replaceAll('-','/'):'—';}
+function platingVendors(){return state.platingVendors??[...new Set(platingProjects().flatMap(p=>p.shipments.map(s=>s.vendor.trim())).filter(Boolean))];}
+function platingVendorControl(value,existing){
+ const options=platingVendors(),old=existing&&value&&!options.includes(value);
+ return '<label class="field">'+pe('vendor')+'<select name="vendor" required><option value="">'+pe(options.length?'vendorChoose':'vendorEmpty')+'</option>'+[...options,...(old?[value]:[])].map(v=>'<option value="'+esc(v)+'" '+(v===value?'selected':'')+'>'+esc(v)+(old&&v===value?'（'+pe('vendorOld')+'）':'')+'</option>').join('')+'</select></label>';
+}
+async function savePlatingVendors(values,action,detail){
+ if(currentUser.role!=='supervisor')throw Error('只有主管可以修改廠商選項');
+ state.platingVendors=values;addAudit(action,detail,pt('title')+' > '+pt('vendorSettings'));
+ await saveCloud(state);if(failedCandidate)throw Error('選項尚未儲存，請處理上方提示');renderAdmin();
+}
+function managePlatingVendors(){
+ if(currentUser.role!=='supervisor')return;
+ platingModal(pe('vendorSettings'),platingVendors().map((v,i)=>'<div class="admin-row"><strong>'+esc(v)+'</strong><button type="button" data-vendor-edit="'+i+'">'+pe('edit')+'</button><button type="button" class="danger-button" data-vendor-delete="'+i+'">'+pe('delete')+'</button></div>').join('')+'<button type="button" id="vendor-add">＋ '+pe('vendorAdd')+'</button>','',null);
+ $('#vendor-add').onclick=()=>editPlatingVendor();
+ document.querySelectorAll('[data-vendor-edit]').forEach(b=>b.onclick=()=>editPlatingVendor(Number(b.dataset.vendorEdit)));
+ document.querySelectorAll('[data-vendor-delete]').forEach(b=>b.onclick=async()=>{if(!await confirmAction(pt('vendorDeletePrompt')))return;try{const values=[...platingVendors()],removed=values.splice(Number(b.dataset.vendorDelete),1)[0];await savePlatingVendors(values,'移除電鍍廠商選項',removed);managePlatingVendors();}catch(e){$('#form-error').textContent=e.message;}});
+}
+function editPlatingVendor(index){
+ if(currentUser.role!=='supervisor')return;
+ const values=[...platingVendors()],old=values[index];
+ platingModal(pe(old?'edit':'vendorAdd'),field(pe('vendor'),'vendorName',old||'','required maxlength="100"'),pe('save'),async fd=>{
+ const value=String(fd.get('vendorName')||'').trim();if(!value)throw Error(pt('requiredVendor'));
+ if(values.some((v,i)=>i!==index&&v.toLowerCase()===value.toLowerCase()))throw Error('廠商名稱已存在');
+ if(value===old){managePlatingVendors();return;}
+ if(index===undefined)values.push(value);else values[index]=value;
+ await savePlatingVendors(values,old?'修改電鍍廠商選項':'新增電鍍廠商選項',old?old+' → '+value:value);managePlatingVendors();
+ });
+}
 function platingShipmentDraft(p,source,copy=false){
  const s=JSON.parse(JSON.stringify(source||{vendor:'',groups:[{sets:1,rings:[{name:'',qty:1}]}],note:''}));
  if(!source||copy){s.id=crypto.randomUUID();s.number=Math.max(0,...p.shipments.map(x=>x.number))+1;s.sent=new Date().toLocaleDateString('sv-SE');s.returned='';s.inspection='pending';s.note='';}
+ if(!source||copy){const options=platingVendors();if(!options.includes(s.vendor))s.vendor=options[0]||'';}
  return s;
 }
 function platingFind(id){return platingProjects().find(p=>p.id===id);}
@@ -103,7 +132,7 @@ function editPlatingShipment(projectId,shipmentId,copy=false){
  const s=platingShipmentDraft(p,source,copy);
  const existing=!!source&&!copy;
  const select='<label class="field">'+pe('inspection')+'<select name="inspection">'+['pending','passed','abnormal'].map(k=>'<option value="'+k+'" '+(s.inspection===k?'selected':'')+'>'+pe(k)+'</option>').join('')+'</select></label>';
- platingModal(esc(p.name)+' · '+esc(platingCount(s)),'<button type="button" id="plating-back" class="small">← '+pe('back')+'</button><fieldset id="plating-fields" '+(!can?'disabled':'')+'><div class="form-grid">'+field(pe('vendor'),'vendor',s.vendor,'required maxlength="100"')+field(pe('number'),'number',s.number,'type="number" min="1" max="9999" required')+field(pe('sent'),'sent',s.sent,'type="date" required')+field(pe('returned'),'returned',s.returned,'type="date"')+'</div><h3>'+pe('groups')+'</h3><div id="plating-groups"></div>'+(can?'<button type="button" id="group-add" class="small">＋ '+pe('addGroup')+'</button>':'')+'<p id="plating-total"></p><div class="form-grid">'+select+field(pe('note'),'note',s.note,'maxlength="1000"')+'</div></fieldset>'+(can&&existing?'<div class="plating-actions"><button type="button" id="shipment-copy">'+pe('copy')+'</button><button type="button" id="shipment-delete" class="danger-button">'+pe('delete')+'</button></div>':''),can?pe('save'):'',async fd=>{
+ platingModal(esc(p.name)+' · '+esc(platingCount(s)),'<button type="button" id="plating-back" class="small">← '+pe('back')+'</button><fieldset id="plating-fields" '+(!can?'disabled':'')+'><div class="form-grid">'+platingVendorControl(s.vendor,existing)+field(pe('number'),'number',s.number,'type="number" min="1" max="9999" required')+field(pe('sent'),'sent',s.sent,'type="date" required')+field(pe('returned'),'returned',s.returned,'type="date"')+'</div><h3>'+pe('groups')+'</h3><div id="plating-groups"></div>'+(can?'<button type="button" id="group-add" class="small">＋ '+pe('addGroup')+'</button>':'')+'<p id="plating-total"></p><div class="form-grid">'+select+field(pe('note'),'note',s.note,'maxlength="1000"')+'</div></fieldset>'+(can&&existing?'<div class="plating-actions"><button type="button" id="shipment-copy">'+pe('copy')+'</button><button type="button" id="shipment-delete" class="danger-button">'+pe('delete')+'</button></div>':''),can?pe('save'):'',async fd=>{
  const groups=readGroups();const next={...s,vendor:String(fd.get('vendor')).trim(),number:Number(fd.get('number')),sent:String(fd.get('sent')),returned:String(fd.get('returned')),inspection:String(fd.get('inspection')),note:String(fd.get('note')).trim(),groups};
  if(groups.length>100||groups.some(g=>g.rings.length>100)||!Number.isSafeInteger(platingTotals(groups).pieces))throw Error('配置或數量超過上限');
  if(!next.vendor)throw Error(pt('requiredVendor'));if(p.shipments.some(x=>x.id!==next.id&&x.number===next.number))throw Error(pt('duplicateNumber'));
@@ -138,6 +167,7 @@ async function deletePlatingProject(id){
 const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
  renderAdminBeforePlating();if(currentUser.role!=='supervisor')return;
  const card=document.createElement('details');card.className='admin-card';card.innerHTML='<summary><h2>'+pe('title')+'</h2></summary><div class="admin-card-body"><div class="plating-actions"><button type="button" id="plating-text">'+pe('textSettings')+'</button><button type="button" id="admin-plating-new">＋ '+pe('newProject')+'</button><a href="#plating">'+pe('open')+'</a></div>'+platingProjects().map((p,i)=>'<div class="admin-row"><strong>'+esc(p.name)+'</strong><button type="button" data-plating-admin-open="'+esc(p.id)+'">'+pe('edit')+'</button><button type="button" data-plating-admin-move="'+esc(p.id)+'" data-delta="-1" '+(i===0?'disabled':'')+'>'+pe('previous')+'</button><button type="button" data-plating-admin-move="'+esc(p.id)+'" data-delta="1" '+(i===platingProjects().length-1?'disabled':'')+'>'+pe('next')+'</button><button type="button" class="danger-button" data-plating-admin-delete="'+esc(p.id)+'">'+pe('delete')+'</button></div>').join('')+'</div>';$('main').append(card);
+ const vendorButton=document.createElement('button');vendorButton.type='button';vendorButton.textContent=pt('vendorSettings');vendorButton.id='plating-vendors';vendorButton.onclick=managePlatingVendors;card.querySelector('.plating-actions').append(vendorButton);
  $('#admin-plating-new').onclick=()=>editPlatingProject();
  card.querySelectorAll('[data-plating-admin-open]').forEach(b=>b.onclick=()=>openPlating(b.dataset.platingAdminOpen));
  card.querySelectorAll('[data-plating-admin-delete]').forEach(b=>b.onclick=()=>deletePlatingProject(b.dataset.platingAdminDelete));
