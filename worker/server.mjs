@@ -150,14 +150,15 @@ async function scopeKey(user){return Array.from(new Uint8Array(await crypto.subt
 export async function images(request,env){
  if(!hasCredentials(request))return json({error:'請先登入'},401);
  if(!env.UPLOADS||!env.DB)return json({error:'圖片儲存空間尚未就緒'},503);
- const url=new URL(request.url),logo=url.pathname==='/api/logo',projectId=url.searchParams.get('project');
+ const url=new URL(request.url),logo=url.pathname==='/api/logo',plating=url.pathname==='/api/plating-photos',shipmentId=url.searchParams.get('shipment'),projectId=url.searchParams.get('project');
  try{
   const employee=await employeeFor(request,env);if(!employee)return json({error:'此帳號尚未由主管啟用'},403);
-  const root='images/'+await scopeKey(STORAGE_OWNER)+'/',prefix=root+'receipts/'+encodeURIComponent(projectId||'')+'/';
+  const root='images/'+await scopeKey(STORAGE_OWNER)+'/',prefix=root+(plating?'plating/':'receipts/')+encodeURIComponent(projectId||'')+'/'+(plating?encodeURIComponent(shipmentId||'')+'/':'');
   if(!logo){
    const row=await companyRow(env);
    const s=row?JSON.parse(row.body):null;
-   if(!s||![...s.projects,...(s.deletedProjects||[]).map(x=>x.project)].some(p=>p.id===projectId))return json({error:'找不到專案'},404);
+   if(plating){if(!s?.platingProjects?.some(p=>p.id===projectId&&p.shipments.some(x=>x.id===shipmentId)))return json({error:'找不到送鍍紀錄，請先儲存'},404);}
+   else if(!s||![...s.projects,...(s.deletedProjects||[]).map(x=>x.project)].some(p=>p.id===projectId))return json({error:'找不到專案'},404);
   }
   const id=url.searchParams.get('id');
   if(id&&!/^[a-f0-9-]{36}$/.test(id))return json({error:'圖片編號不正確'},400);
@@ -200,4 +201,4 @@ export async function images(request,env){
   return json({id:newId,created:new Date().toISOString()});
  }catch(e){console.error('image operation failed',e.message);return json({error:'圖片操作未完成，請重試'},500);}
 }
-export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
