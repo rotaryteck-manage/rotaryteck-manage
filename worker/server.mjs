@@ -166,8 +166,9 @@ export async function images(request,env){
   if(request.method==='GET'){
    if(logo&&url.searchParams.get('meta')==='1'){const file=await env.UPLOADS.head(key);return json({exists:!!file,created:file?.uploaded??null});}
    if(!logo&&!id){
-    const result=await env.UPLOADS.list({prefix,limit:1000,include:['customMetadata']});
-    return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',actor:o.customMetadata?.actor||'',created:o.uploaded})),truncated:result.truncated});
+    if(plating&&url.searchParams.get('export')==='1'&&!['warehouse','supervisor'].includes(employee.role))return json({error:'只有倉管與主管可以匯出照片'},403);
+    const result=await env.UPLOADS.list({prefix,limit:1000,cursor:url.searchParams.get('cursor')||undefined,include:['customMetadata']});
+    return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',actor:o.customMetadata?.actor||'',kind:o.customMetadata?.kind||'dispatch',created:o.uploaded})),truncated:result.truncated,cursor:result.truncated?result.cursor:undefined});
    }
    const file=await env.UPLOADS.get(key);if(!file)return json({error:'找不到圖片'},404);
    return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
@@ -187,6 +188,8 @@ export async function images(request,env){
   if(request.headers.get('origin')!==url.origin)return json({error:'來源驗證失敗'},403);
   if(logo&&employee.role!=='supervisor')return json({error:'只有主管可以更換 LOGO'},403);
   if(!logo&&!['supervisor','warehouse'].includes(employee.role))return json({error:'一般員工只有查看權限'},403);
+  const kind=url.searchParams.get('kind')||'dispatch';
+  if(plating&&!['dispatch','area'].includes(kind))return json({error:'照片類別不正確'},400);
   const limit=2*1024*1024;
   const reader=request.body?.getReader();if(!reader)return json({error:'請選擇圖片'},400);
   const chunks=[];let size=0;
@@ -197,7 +200,7 @@ export async function images(request,env){
   if(!type)return json({error:'請上傳 PNG、JPG 或 WebP 圖片'},415);
   let name='圖片';try{name=decodeURIComponent(request.headers.get('x-file-name')||'圖片').slice(0,200);}catch{}
   const newId=crypto.randomUUID();
-  await env.UPLOADS.put(logo?key:prefix+newId,bytes,{httpMetadata:{contentType:type},customMetadata:{name,actor:employee.name||employee.email||'使用者'}});
+  await env.UPLOADS.put(logo?key:prefix+newId,bytes,{httpMetadata:{contentType:type},customMetadata:{name,actor:employee.name||employee.email||'使用者',...(plating?{kind}: {})}});
   return json({id:newId,created:new Date().toISOString()});
  }catch(e){console.error('image operation failed',e.message);return json({error:'圖片操作未完成，請重試'},500);}
 }
