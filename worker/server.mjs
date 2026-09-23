@@ -1,3 +1,4 @@
+import {recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x);
 function check(ok,message){if(!ok)throw new Error(message);}
@@ -77,7 +78,7 @@ async function employeeFor(request,env){
  else if(row)await env.DB.prepare('UPDATE employees SET last_login_at=? WHERE id=?').bind(new Date().toISOString(),row.id).run();
  return row?.status==='active'?row:null;
 }
-async function companyRow(env){
+async function legacyCompanyRow(env){
  let row=await env.DB.prepare('SELECT body,revision FROM company_state WHERE company_id=?').bind(COMPANY_ID).first();
  if(row)return row;
  await env.DB.prepare("INSERT OR IGNORE INTO company_state (company_id,body,revision,updated_at) SELECT ?,body,revision,updated_at FROM warehouse_state ORDER BY updated_at DESC LIMIT 1").bind(COMPANY_ID).run();
@@ -98,26 +99,86 @@ export function warehouseChangeAllowed(before,after){
   for(const part of next.parts){const old=prev.parts.find(i=>i.id===part.id);if(!old)return false;const received=part.received-old.received,oldStock=Number(prev.inventory[part.id]||0),newStock=Number(next.inventory[part.id]||0);if(!int(received)||newStock>oldStock+received)return false;part.received=old.received;}
   next.inventory=structuredClone(prev.inventory);
  }
- return JSON.stringify(a)===JSON.stringify(b);
+ return stableJSON(a)===stableJSON(b);
+}
+const storageSchema=[
+ 'CREATE TABLE IF NOT EXISTS state_records (record_id INTEGER PRIMARY KEY AUTOINCREMENT,record_key TEXT NOT NULL UNIQUE,body TEXT,revision INTEGER NOT NULL)',
+ 'CREATE TABLE IF NOT EXISTS state_storage_meta (singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,source_revision INTEGER NOT NULL,migrated_at TEXT NOT NULL)',
+ 'CREATE TABLE IF NOT EXISTS state_commits (request_id TEXT PRIMARY KEY NOT NULL,signature TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),result TEXT NOT NULL,created_at TEXT NOT NULL)'
+];
+function recordChunks(entries){const chunks=[];let batch=[],size=0;for(const entry of entries){const bytes=new TextEncoder().encode(JSON.stringify(entry)).length;if(batch.length&&size+bytes>500000){chunks.push(batch);batch=[];size=0;}batch.push(entry);size+=bytes;}if(batch.length)chunks.push(batch);return chunks;}
+async function ensureRecordStorage(env){
+ await env.DB.batch(storageSchema.map(sql=>env.DB.prepare(sql)));
+ if(await env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1').first())return;
+ const legacy=await legacyCompanyRow(env),initial=normalizeLogIds(legacy?JSON.parse(legacy.body):{projects:[],deletedProjects:[],logs:[]});
+ const entries=Object.entries(splitState(initial)).map(([key,value])=>({key,body:JSON.stringify(value)}));
+ if(stableJSON(joinRecords(Object.fromEntries(entries.map(e=>[e.key,JSON.parse(e.body)]))))!==stableJSON({...initial,logs:initial.logs||[]}))throw Error('舊資料轉換驗證失敗，原始資料保留未修改');
+ const sourceRevision=legacy?.revision||0;
+ await env.DB.batch([
+  ...recordChunks(entries).map(chunk=>env.DB.prepare(`INSERT INTO state_records(record_key,body,revision) SELECT json_extract(value,'$.key'),json_extract(value,'$.body'),1 FROM json_each(?) WHERE NOT EXISTS(SELECT 1 FROM state_storage_meta WHERE singleton=1) AND COALESCE((SELECT revision FROM company_state WHERE company_id=?),0)=?`).bind(JSON.stringify(chunk),COMPANY_ID,sourceRevision)),
+  env.DB.prepare(`INSERT OR IGNORE INTO state_storage_meta(singleton,revision,source_revision,migrated_at) SELECT 1,0,?,? WHERE COALESCE((SELECT revision FROM company_state WHERE company_id=?),0)=?`).bind(sourceRevision,new Date().toISOString(),COMPANY_ID,sourceRevision)
+ ]);
+ check(await env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1').first(),'資料正在轉換，請重新整理；舊資料未刪除');
+}
+async function readRecordStorage(env){
+ const result=await env.DB.batch([env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1'),env.DB.prepare('SELECT record_key,body,revision FROM state_records ORDER BY record_id')]);
+ const records=Object.create(null),versions=Object.create(null);
+ for(const row of result[1].results){records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;}
+ return {state:joinRecords(records),records,versions,revision:result[0].results[0].revision};
+}
+async function companyRow(env){await ensureRecordStorage(env);const data=await readRecordStorage(env);return{body:JSON.stringify(data.state),revision:data.revision};}
+async function boundedJSON(request,maxBytes){
+ const reader=request.body?.getReader();check(reader,'缺少儲存資料');let size=0;const chunks=[];
+ while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>maxBytes){await reader.cancel();throw Error('這次修改的資料過大，請分次操作');}chunks.push(value);}
+ const bytes=new Uint8Array(size);let at=0;for(const chunk of chunks){bytes.set(chunk,at);at+=chunk.length;}return JSON.parse(new TextDecoder().decode(bytes));
+}
+function validateRecordChanges(changes){
+ check(Array.isArray(changes)&&changes.length>0&&changes.length<=30000,'修改資料格式不正確');const seen=new Set();
+ for(const c of changes){
+  check(object(c)&&typeof c.key==='string'&&c.key.length<=1000&&!seen.has(c.key)&&int(c.version)&&Object.hasOwn(c,'value'),'資料版本或編號不正確');seen.add(c.key);
+  const tuple=JSON.parse(c.key);check(Array.isArray(tuple)&&tuple.length===2&&tuple.every(v=>typeof v==='string'&&v.length>0)&&recordKey(...tuple)===c.key,'資料編號格式不正確');
+  check(c.deleted===undefined||typeof c.deleted==='boolean','刪除標記不正確');const [kind,id]=tuple;check(['root','order','log',...recordCollections].includes(kind),'資料類型不正確');
+  if(kind==='order')check(recordCollections.includes(id),'排序類型不正確');
+  if(!c.deleted&&recordCollections.includes(kind))check((kind==='deletedProjects'?c.value.project?.id:c.value.id)===id,'案件編號不一致');
+  if(!c.deleted&&kind==='log')check(c.value.id===id,'操作紀錄編號不一致');
+  check(new TextEncoder().encode(JSON.stringify(c.value)).length<=1000000,'單一案件資料過大，請先整理該案件的歷史紀錄');
+ }
 }
 export async function api(request,env){
  if(!hasCredentials(request))return json({error:'請先登入後再使用'},401);
  if(!env.DB)return json({error:'雲端資料庫尚未就緒'},503);
  try{
   const employee=await employeeFor(request,env);if(!employee)return json({error:'此帳號尚未由主管啟用'},403);
-  if(request.method==='GET'){const row=await companyRow(env);return json({state:row?JSON.parse(row.body):null,revision:row?.revision??0,currentUser:{name:employee.name,email:employee.email,role:employee.role}});}
-  if(request.method!=='PUT')return json({error:'不支援的操作'},405);
-  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
-  if(employee.role==='viewer')return json({error:'一般員工只有查看權限'},403);
-  if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'格式不正確'},415);
-  const raw=await request.text();if(new TextEncoder().encode(raw).length>1500000)return json({error:'資料超過 1.5 MB，請先匯出備份並聯絡管理者'},413);
-  const input=JSON.parse(raw);validate(input.state);check(int(input.revision),'版本不正確');
-  const current=await companyRow(env);if(employee.role==='warehouse'&&(!current||!warehouseChangeAllowed(JSON.parse(current.body),input.state)))return json({error:'庫房管理僅能收料、領料、管理照片與電鍍紀錄'},403);
-  const body=JSON.stringify(input.state),time=new Date().toISOString();let result;
-  if(input.revision===0)result=await env.DB.prepare('INSERT OR IGNORE INTO company_state (company_id,body,revision,updated_at) VALUES (?,?,1,?)').bind(COMPANY_ID,body,time).run();
-  else result=await env.DB.prepare('UPDATE company_state SET body=?,revision=revision+1,updated_at=? WHERE company_id=? AND revision=?').bind(body,time,COMPANY_ID,input.revision).run();
-  if(!result.meta.changes)return json({error:'另一位使用者已更新資料。請先下載未儲存資料，再重新載入最新版本。'},409);
-  return json({revision:input.revision+1});
+  if(request.method!=='GET'){
+   if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
+   if(employee.role==='viewer')return json({error:'一般員工只有查看權限'},403);
+   if(request.method==='PUT')return json({error:'網站已更新儲存方式，請先下載未儲存資料，再重新整理網頁。',code:'CLIENT_UPGRADE'},409);
+   if(request.method!=='PATCH')return json({error:'不支援的操作'},405);
+   if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'格式不正確'},415);
+  }
+  await ensureRecordStorage(env);
+  if(request.method==='GET'){const data=await readRecordStorage(env);return json({state:data.state,versions:data.versions,revision:data.revision,storageVersion:2,currentUser:{name:employee.name,email:employee.email,role:employee.role}});}
+  const input=await boundedJSON(request,8*1024*1024);check(input.storageVersion===2&&typeof input.requestId==='string'&&/^[a-f0-9-]{36}$/.test(input.requestId),'請重新整理至新版網站');validateRecordChanges(input.changes);
+  const signature=await scopeKey(employee.id+':'+stableJSON(input.changes));
+  for(let attempt=0;attempt<4;attempt++){
+   const committed=await env.DB.prepare('SELECT signature,result FROM state_commits WHERE request_id=?').bind(input.requestId).first();
+   if(committed){if(committed.signature!==signature)return json({error:'儲存編號重複，請重新載入'},409);return json(JSON.parse(committed.result));}
+   const current=await readRecordStorage(env);
+   const conflicts=input.changes.filter(c=>(current.versions[c.key]||0)!==c.version);
+   if(conflicts.length)return json({error:'你修改的同一筆資料已被其他人更新。請先下載未儲存資料，再重新載入。',code:'RECORD_CONFLICT',keys:conflicts.map(c=>c.key)},409);
+   const nextRecords={...current.records};for(const c of input.changes)nextRecords[c.key]=c.deleted?undefined:c.value;
+   const next=joinRecords(nextRecords);validate(next);
+   if(employee.role==='warehouse'&&!warehouseChangeAllowed(current.state,next))return json({error:'庫房管理僅能收料、領料、管理照片與電鍍紀錄'},403);
+   const nextRevision=current.revision+1,versions=Object.fromEntries(input.changes.map(c=>[c.key,c.version+1])),result={storageVersion:2,revision:nextRevision,versions},now=new Date().toISOString();
+   const writes=input.changes.map(c=>({key:c.key,body:c.deleted?null:JSON.stringify(c.value),revision:c.version+1}));
+   try{
+    await env.DB.batch([
+     env.DB.prepare(`INSERT INTO state_commits(request_id,signature,revision,result,created_at) VALUES (?,?,CASE WHEN (SELECT revision FROM state_storage_meta WHERE singleton=1)=? THEN ? ELSE NULL END,?,?)`).bind(input.requestId,signature,current.revision,nextRevision,JSON.stringify(result),now),
+     ...recordChunks(writes).map(chunk=>env.DB.prepare(`INSERT INTO state_records(record_key,body,revision) SELECT json_extract(value,'$.key'),json_extract(value,'$.body'),json_extract(value,'$.revision') FROM json_each(?) WHERE 1 ON CONFLICT(record_key) DO UPDATE SET body=excluded.body,revision=excluded.revision`).bind(JSON.stringify(chunk))),
+     env.DB.prepare('UPDATE state_storage_meta SET revision=? WHERE singleton=1').bind(nextRevision)
+    ]);return json(result);
+   }catch(e){const duplicate=await env.DB.prepare('SELECT request_id FROM state_commits WHERE request_id=?').bind(input.requestId).first();const latest=await env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1').first();if(!duplicate&&latest.revision===current.revision)throw e;}
+  }return json({error:'其他人正在儲存，請稍後重試。',code:'BUSY'},409);
  }catch(e){console.error('warehouse request failed',e.message);return json({error:e.message||'暫時無法儲存，請稍後重試'},400);}
 }
 export async function employeesApi(request,env){
