@@ -1,5 +1,5 @@
  'use strict';
-const platingWords={title:'電鍍管理',photos:'出貨單照片',photoChoose:'選擇照片（可多選）',photoUpload:'上傳照片',photoSavedFirst:'儲存紀錄後即可上傳出貨單照片',photoEmpty:'尚無照片',photoLoading:'正在讀取照片…',photoUploading:'正在上傳…',photoDone:'照片已上傳',photoDelete:'確定刪除此張出貨單照片？',photoDeleted:'照片已刪除',photoLabel:'圖片',photoSelect:'請先選擇照片',photoCompress:'超過 2 MB 的照片會自動壓縮。',newProject:'新增案件',edit:'修改',save:'儲存',name:'案名',vendor:'電鍍廠商',newShipment:'新增送鍍',copy:'再次送鍍',number:'送鍍次數',sent:'寄出日期',returned:'回貨日期',groups:'環片配置',sets:'組數',ring:'環片名稱／規格',qty:'每組片數',addGroup:'新增配置',addRing:'新增環片',remove:'移除',inspection:'品檢',pending:'待品檢',passed:'合格',abnormal:'異常',note:'備註／異常說明',empty:'尚無紀錄',history:'文字紀錄',back:'返回案件',delete:'刪除',sending:'送鍍中',received:'已回貨待品檢',completed:'已完成',total:'合計',fixtures:'組治具',pieces:'片',previous:'前移',next:'後移',search:'搜尋案名',countPrefix:'第',countSuffix:'次送鍍',cancel:'取消',close:'關閉',processing:'處理中…',textSettings:'修改本區文字',open:'開啟電鍍管理',drag:'拖曳排序',deletePrompt:'確定刪除此筆送鍍紀錄？',deleteProjectPrompt:'確定刪除此案件及所有送鍍紀錄？',requiredName:'請填寫案名',duplicateName:'案名已存在',requiredVendor:'請填寫電鍍廠商',duplicateNumber:'送鍍次數重複，請修改',invalidReturn:'回貨日期不可早於寄出日期',requiredReturn:'請先填寫回貨日期',requiredNote:'請填寫異常說明',requiredRing:'請填寫環片名稱／規格'};
+const platingWords={title:'電鍍管理',photoOverview:'照片',dispatch:'出貨單',area:'表面積',uploadDispatch:'上傳出貨單',uploadArea:'上傳表面積截圖',exportProjectPhotos:'匯出本案紀錄與圖片',exportAllPhotos:'匯出全部紀錄與圖片',exportWorking:'正在整理紀錄與圖片…',exportDone:'紀錄與圖片匯出完成',photoUnknownActor:'未記錄人員',photoRetry:'重新讀取照片',photos:'出貨單照片',photoChoose:'選擇照片（可多選）',photoUpload:'上傳照片',photoSavedFirst:'儲存紀錄後即可上傳出貨單照片',photoEmpty:'尚無照片',photoLoading:'正在讀取照片…',photoUploading:'正在上傳…',photoDone:'照片已上傳',photoDelete:'確定刪除此張出貨單照片？',photoDeleted:'照片已刪除',photoLabel:'圖片',photoSelect:'請先選擇照片',photoCompress:'超過 2 MB 的照片會自動壓縮。',newProject:'新增案件',edit:'修改',save:'儲存',name:'案名',vendor:'電鍍廠商',newShipment:'新增送鍍',copy:'再次送鍍',number:'送鍍次數',sent:'寄出日期',returned:'回貨日期',groups:'環片配置',sets:'組數',ring:'環片名稱／規格',qty:'每組片數',addGroup:'新增配置',addRing:'新增環片',remove:'移除',inspection:'品檢',pending:'待品檢',passed:'合格',abnormal:'異常',note:'備註／異常說明',empty:'尚無紀錄',history:'文字紀錄',back:'返回案件',delete:'刪除',sending:'送鍍中',received:'已回貨待品檢',completed:'已完成',total:'合計',fixtures:'組治具',pieces:'片',previous:'前移',next:'後移',search:'搜尋案名',countPrefix:'第',countSuffix:'次送鍍',cancel:'取消',close:'關閉',processing:'處理中…',textSettings:'修改本區文字',open:'開啟電鍍管理',drag:'拖曳排序',deletePrompt:'確定刪除此筆送鍍紀錄？',deleteProjectPrompt:'確定刪除此案件及所有送鍍紀錄？',requiredName:'請填寫案名',duplicateName:'案名已存在',requiredVendor:'請填寫電鍍廠商',duplicateNumber:'送鍍次數重複，請修改',invalidReturn:'回貨日期不可早於寄出日期',requiredReturn:'請先填寫回貨日期',requiredNote:'請填寫異常說明',requiredRing:'請填寫環片名稱／規格'};
 function pt(key){return state.platingText?.[key]??platingWords[key]??key;}
 function pe(key){return esc(pt(key));}
 function platingModal(title,body,submit,handler){
@@ -30,6 +30,7 @@ function renderPlating(){
  const section=document.createElement('section');section.className='workspace plating-workspace';
  section.innerHTML='<div class="plating-head"><h2>'+pe('title')+'</h2><input id="plating-search" aria-label="'+pe('search')+'" placeholder="'+pe('search')+'">'+(platingEditAllowed()?'<button type="button" id="plating-new" class="primary small">＋ '+pe('newProject')+'</button>':'')+'</div><div class="plating-grid"></div>';
  $('main').append(section);
+ if(platingEditAllowed()){const b=document.createElement('button');b.type='button';b.className='small';b.textContent=pt('exportAllPhotos');b.onclick=()=>exportPlatingPhotos(platingProjects(),b);section.querySelector('.plating-head').append(b);}
  function draw(query=''){
  const grid=section.querySelector('.plating-grid');grid.innerHTML='';
  for(const p of platingProjects().filter(p=>p.name.toLowerCase().includes(query.toLowerCase()))){
@@ -62,6 +63,7 @@ function openPlating(id){
  const p=platingFind(id);if(!p)return;
  const can=platingEditAllowed(),logs=(state.logs||[]).filter(l=>l.project==='plating:'+id);
  platingModal(esc(p.name),'<div class="plating-actions">'+(can?'<button type="button" id="plating-rename">'+pe('edit')+'</button><button type="button" class="primary" id="shipment-new">＋ '+pe('newShipment')+'</button>':'')+'</div><div class="plating-shipments">'+(p.shipments.map(s=>'<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><strong>'+esc(platingCount(s))+'</strong><span>'+esc(platingDate(s.sent))+'</span><span>'+pe(platingStatus(s))+'</span></button>').join('')||'<p>'+pe('empty')+'</p>')+'</div><details class="plating-history"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>'<div>'+esc(receiptTime(l.time))+'｜'+esc(l.actor||'未記錄人員')+'｜'+esc(l.action)+'｜'+esc(l.detail)+'</div>').join('')+'</details>','',null);
+ attachPlatingPhotoOverview(p);
  $('#plating-rename')?.addEventListener('click',()=>editPlatingProject(id));$('#shipment-new')?.addEventListener('click',()=>editPlatingShipment(id));
  document.querySelectorAll('[data-shipment]').forEach(b=>b.onclick=()=>editPlatingShipment(id,b.dataset.shipment));
 }
@@ -111,38 +113,80 @@ const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
 };
 
 function platingPhotoUrl(p,s){return '/api/plating-photos?project='+encodeURIComponent(p.id)+'&shipment='+encodeURIComponent(s.id);}
+async function listPlatingPhotos(p,s,forExport=false){
+ const items=[];let cursor='';const seen=new Set();
+ do{const r=await apiFetch(platingPhotoUrl(p,s)+(forExport?'&export=1':'')+(cursor?'&cursor='+encodeURIComponent(cursor):'')),d=await r.json();if(!r.ok)throw Error(d.error||'照片讀取失敗');items.push(...(d.items||[]));cursor=d.truncated?d.cursor:'';if(d.truncated&&(!cursor||seen.has(cursor)))throw Error('照片清單未完整讀取，請重試');seen.add(cursor);}while(cursor);
+ return items.sort((a,b)=>new Date(a.created)-new Date(b.created));
+}
+function platingPhotoKind(item){return item.kind==='area'?'area':'dispatch';}
+function platingPhotoLabel(s,item){return platingCount(s)+pt(platingPhotoKind(item))+'｜'+(item.actor||pt('photoUnknownActor'))+'｜'+receiptTime(item.created);}
+async function platingPhotoOperation(status,action){
+ if(imageUploading||cloudBusy||failedCandidate)return;
+ const dialog=$('#modal'),controls=[...dialog.querySelectorAll('input,select,button')].map(el=>[el,el.disabled]);controls.forEach(([el])=>el.disabled=true);
+ const cancel=e=>e.preventDefault();dialog.addEventListener('cancel',cancel);imageUploading=true;status.textContent='';
+ try{await action();}catch(e){status.textContent=e.message||'照片操作失敗';}
+ finally{imageUploading=false;dialog.removeEventListener('cancel',cancel);controls.forEach(([el,disabled])=>el.disabled=disabled);}
+}
 function attachPlatingPhotos(p,s,saved){
+ if(!platingEditAllowed())return;
  const panel=document.createElement('section');panel.className='plating-photo-panel';
  if(!saved){panel.innerHTML='<p class="muted">'+pe('photoSavedFirst')+'</p>';$('#plating-fields').after(panel);return;}
- const can=platingEditAllowed(),url=platingPhotoUrl(p,s);
- panel.innerHTML='<h3>'+pe('photos')+'</h3>'+(can?'<div class="receipt-upload-row"><label class="field">'+pe('photoChoose')+'<input type="file" multiple accept="image/jpeg,image/png,image/webp" data-photo-files></label><button type="button" data-photo-upload>'+pe('photoUpload')+'</button></div><small>'+pe('photoCompress')+'</small>':'')+'<p data-photo-status role="status"></p><details class="receipt-files-fold"><summary>'+pe('photos')+' <span data-photo-count></span></summary><div data-photo-list></div></details>';
- $('#plating-fields').after(panel);
- const list=panel.querySelector('[data-photo-list]'),status=panel.querySelector('[data-photo-status]');
- async function load(){
-  list.textContent=pt('photoLoading');
-  try{const r=await apiFetch(url),d=await r.json();if(!r.ok)throw Error(d.error||'照片讀取失敗');
-   const items=(d.items||[]).sort((a,b)=>new Date(a.created)-new Date(b.created));panel.querySelector('[data-photo-count]').textContent='（'+items.length+'）';
-   list.innerHTML=items.map((item,i)=>'<div class="receipt-file-row"><a target="_blank" rel="noopener" href="'+esc(url+'&id='+encodeURIComponent(item.id))+'">'+pe('photoLabel')+' '+String(i+1).padStart(2,'0')+'｜'+esc(receiptTime(item.created))+'</a>'+(can?'<button type="button" class="small danger-button" data-photo-delete="'+esc(item.id)+'">'+pe('delete')+'</button>':'')+'</div>').join('')||pe('photoEmpty');
-   list.querySelectorAll('[data-photo-delete]').forEach(b=>b.onclick=async()=>{
-    if(!await confirmAction(pt('photoDelete')))return;
-    await operate(async()=>{const r=await apiFetch(url+'&id='+encodeURIComponent(b.dataset.photoDelete),{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'刪除失敗');addAudit('刪除出貨單照片',platingCount(s)+' · '+b.dataset.photoDelete,pt('title')+' > '+p.name,'plating:'+p.id);await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但文字紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');});
-   });
-  }catch(e){list.textContent=e.message;}
- }
- async function operate(action){
-  if(imageUploading||cloudBusy||failedCandidate)return;
-  const controls=[...$('#dialog-form').querySelectorAll('input,select,button')].map(el=>[el,el.disabled]);controls.forEach(([el])=>el.disabled=true);
-  const dialog=$('#modal'),cancel=e=>e.preventDefault();dialog.addEventListener('cancel',cancel);imageUploading=true;status.textContent='';
-  try{await action();}catch(e){status.textContent=e.message||'照片操作失敗';}
-  finally{imageUploading=false;dialog.removeEventListener('cancel',cancel);controls.forEach(([el,disabled])=>el.disabled=disabled);await load();}
- }
- panel.querySelector('[data-photo-upload]')?.addEventListener('click',async()=>{
-  const input=panel.querySelector('[data-photo-files]'),files=[...input.files];if(!files.length){status.textContent=pt('photoSelect');return;}
-  await operate(async()=>{
+ panel.innerHTML=['dispatch','area'].map(kind=>'<div class="receipt-upload-row"><label class="field">'+pe(kind)+'<input type="file" multiple accept="image/jpeg,image/png,image/webp" data-photo-files="'+kind+'"></label><button type="button" data-photo-upload="'+kind+'">'+pe(kind==='area'?'uploadArea':'uploadDispatch')+'</button></div>').join('')+'<small>'+pe('photoCompress')+'</small><p data-photo-status role="status"></p>';
+ $('#plating-fields').after(panel);const status=panel.querySelector('[data-photo-status]');
+ panel.querySelectorAll('[data-photo-upload]').forEach(button=>button.onclick=async()=>{
+  const kind=button.dataset.photoUpload,input=panel.querySelector('[data-photo-files="'+kind+'"]'),files=[...input.files];if(!files.length){status.textContent=pt('photoSelect');return;}
+  await platingPhotoOperation(status,async()=>{
    let count=0,failure='';
-   for(const file of files){try{status.textContent=pt('photoUploading')+' '+(count+1)+' / '+files.length;const result=await uploadImage(file,url,2);addAudit('上傳出貨單照片',platingCount(s)+' · '+file.name+' · '+receiptTime(result.created),pt('title')+' > '+p.name,'plating:'+p.id);count++;}catch(e){failure=e.message;break;}}
+   for(const file of files){try{status.textContent=pt('photoUploading')+' '+(count+1)+' / '+files.length;const result=await uploadImage(file,platingPhotoUrl(p,s)+'&kind='+kind,2);addAudit('上傳'+pt(kind),platingCount(s)+' · '+file.name+' · '+receiptTime(result.created),pt('title')+' > '+p.name,'plating:'+p.id);count++;}catch(e){failure=e.message;break;}}
    if(count){await saveCloud(state);if(failedCandidate)throw Error('已上傳 '+count+' 張，但文字紀錄未儲存，請處理上方提示');}
    input.value='';status.textContent=failure?'已上傳 '+count+' / '+files.length+' 張；'+failure+'。未成功的照片請重新選取。':pt('photoDone')+'（'+count+'）';
   });
- });load();
+ });
+}
+function attachPlatingPhotoOverview(p){
+ const panel=document.createElement('section');panel.className='plating-photo-panel';
+ panel.innerHTML=(platingEditAllowed()?'<button type="button" class="small" data-project-photo-export>'+pe('exportProjectPhotos')+'</button>':'')+'<details class="receipt-files-fold"><summary>'+pe('photoOverview')+' <span data-photo-count></span></summary><div data-photo-list></div></details><p data-photo-status role="status"></p>';
+ $('.plating-history').before(panel);
+ const fold=panel.querySelector('details'),list=panel.querySelector('[data-photo-list]'),status=panel.querySelector('[data-photo-status]');let loaded=false,loading=false;
+ async function load(){
+  if(loading)return;loading=true;list.textContent=pt('photoLoading');
+  try{
+   const rows=[];for(const s of [...p.shipments].sort((a,b)=>a.number-b.number))for(const item of await listPlatingPhotos(p,s))rows.push({s,item});
+   list.replaceChildren();panel.querySelector('[data-photo-count]').textContent='（'+rows.length+'）';
+   for(const {s,item}of rows){
+    const row=document.createElement('div');row.className='receipt-file-row';const link=document.createElement('a');link.textContent=platingPhotoLabel(s,item);link.href=platingPhotoUrl(p,s)+'&id='+encodeURIComponent(item.id);link.target='_blank';link.rel='noopener';row.append(link);
+    if(platingEditAllowed()){const b=document.createElement('button');b.type='button';b.className='small danger-button';b.textContent=pt('delete');b.onclick=async()=>{if(!await confirmAction(pt('photoDelete')))return;await platingPhotoOperation(status,async()=>{const r=await apiFetch(link.getAttribute('href'),{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'照片刪除失敗');addAudit('刪除'+pt(platingPhotoKind(item)),platingPhotoLabel(s,item),pt('title')+' > '+p.name,'plating:'+p.id);await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');});await load();};row.append(b);}list.append(row);
+   }if(!rows.length)list.textContent=pt('photoEmpty');loaded=true;
+  }catch(e){list.textContent=e.message;const retry=document.createElement('button');retry.type='button';retry.textContent=pt('photoRetry');retry.onclick=load;list.append(retry);}
+  finally{loading=false;}
+ }
+ fold.ontoggle=()=>{if(fold.open&&!loaded)load();};
+ panel.querySelector('[data-project-photo-export]')?.addEventListener('click',e=>exportPlatingPhotos([p],e.currentTarget,status));
+}
+function platingCsv(rows){return new TextEncoder().encode('\ufeff'+rows.map(row=>row.map(value=>{const v=String(value??'');return csvCell(/^[\s]*[=+@-]/.test(v)?"'"+v:v);}).join(',')).join('\r\n'));}
+function platingRecordEntries(projects,logs){
+ const records=[['案名','送鍍次數','電鍍廠商','寄出日期','回貨日期','狀態','品檢','配置','組數','環片名稱／規格','每組片數','環片總片數','本次治具總組數','本次環片總片數','備註／異常說明']];
+ for(const p of projects){if(!p.shipments.length)records.push([p.name]);for(const s of p.shipments){const t=platingTotals(s.groups);s.groups.forEach((g,i)=>g.rings.forEach(r=>records.push([p.name,s.number,s.vendor,platingDate(s.sent),s.returned?platingDate(s.returned):'',pt(platingStatus(s)),pt(s.inspection),i+1,g.sets,r.name,r.qty,g.sets*r.qty,t.sets,t.pieces,s.note])));}}
+ const ids=new Set(projects.map(p=>'plating:'+p.id)),history=[['時間','人員','操作','位置','內容']];for(const l of logs.filter(l=>ids.has(l.project)))history.push([receiptTime(l.time),l.actor||pt('photoUnknownActor'),l.action,l.location||'',l.detail]);
+ return [{name:'送鍍紀錄.csv',data:platingCsv(records)},{name:'操作紀錄.csv',data:platingCsv(history)}];
+}
+let platingPhotoExportBusy=false;
+async function exportPlatingPhotos(projects,button,status){
+ if(!platingEditAllowed()||platingPhotoExportBusy)return;
+ const targets=JSON.parse(JSON.stringify(projects)),logs=JSON.parse(JSON.stringify(state.logs||[]));platingPhotoExportBusy=true;const label=button?.textContent;if(button)button.disabled=true;
+ const show=text=>{if(status)status.textContent=text;else toast(text);};
+ try{
+  show(pt('exportWorking'));const entries=platingRecordEntries(targets,logs),manifest=[['案名','送鍍次數','照片類別','人員','上傳時間','原始檔名','檔案位置']];
+  for(const [pi,p]of targets.entries())for(const s of p.shipments){const items=await listPlatingPhotos(p,s,true);
+   for(const [i,item]of items.entries()){
+    const r=await apiFetch(platingPhotoUrl(p,s)+'&id='+encodeURIComponent(item.id));if(!r.ok)throw Error('照片下載失敗：'+p.name+' '+platingCount(s));
+    const type=r.headers.get('content-type')||'',ext=type.includes('png')?'png':type.includes('webp')?'webp':'jpg';
+    const path=String(pi+1).padStart(3,'0')+'_'+safeFileName(p.name)+'/'+safeFileName(platingCount(s))+'/'+safeFileName(pt(platingPhotoKind(item)))+'_'+String(i+1).padStart(3,'0')+'_'+photoStamp(item.created)+'.'+ext;
+    entries.push({name:path,data:new Uint8Array(await r.arrayBuffer()),date:item.created});manifest.push([p.name,s.number,pt(platingPhotoKind(item)),item.actor||pt('photoUnknownActor'),receiptTime(item.created),item.name||'',path]);
+   }
+  }
+  if(!targets.length)throw Error(pt('empty'));
+  entries.push({name:'照片清單.csv',data:platingCsv(manifest)});
+  downloadBlob(makeZip(entries),safeFileName(targets.length===1?targets[0].name:pt('title'))+'_紀錄與圖片_'+new Date().toISOString().slice(0,10)+'.zip');show(pt('exportDone'));
+ }catch(e){show(e.message||'照片匯出失敗');}finally{platingPhotoExportBusy=false;if(button){button.disabled=false;button.textContent=label;}}
 }
