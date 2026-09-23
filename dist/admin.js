@@ -5,8 +5,9 @@ function draftConfig(){return JSON.parse(JSON.stringify(state.contentDraft||stat
 function saveConfig(c){state.contentDraft=c;persist();renderAdmin();}
 function button(label,id){return '<button type="button" id="'+id+'">'+label+'</button>';}
 const adminTextFields=[
+ ['websiteSettingsTitle','網站設定分類','網站設定',60],['backupTitle','資料備份分類','資料備份',60],['sortButton','調整排序按鈕','調整排序',40],['finishSortButton','完成排序按鈕','完成排序',40],
  ['exportEveryPhotoButton','全部照片匯出按鈕','匯出全部照片 ZIP',60],
- ['title','後台主標題','管理後台',60],['entryButton','前台進入後台按鈕','管理後台',40],['subtitle','後台標題下方說明','各區塊都可展開或收合，需要時再打開。',120],
+ ['title','後台主標題','管理後台',60],['entryButton','前台進入後台按鈕','管理後台',40],['subtitle','後台標題下方說明','選擇上方分類，管理各區內容。',120],
  ['logoButton','LOGO 按鈕','上傳／更換 LOGO',40],['websiteTextButton','共用文字按鈕','修改網站共用文字',40],['adminTextButton','後台文字按鈕','修改後台文字',40],['exportAllButton','完整匯出按鈕','匯出全部資料',40],['importButton','匯入按鈕','匯入舊資料',40],
  ['warehouseTitle','庫房管理區標題','庫房管理',60],['warehouseDescription','庫房管理區說明','專案、零件、BOM 與收領料沿用原本的一頁式操作。',120],['openWarehouseButton','返回庫房按鈕','開啟庫房管理',40],['exportWarehouseButton','庫房匯出按鈕','匯出庫房資料',40],
  ['customFieldsTitle','自訂欄位區標題','自訂欄位',60],['customFieldsDescription','自訂欄位區說明','新增的欄位可填在專案或零件上；刪除欄位不會清除已填的資料。',140],['pagesTitle','頁面區標題','頁面與區塊',60],
