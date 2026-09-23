@@ -14,8 +14,9 @@ export function validatePlating(projects=[]){
    check(object(s)&&text(s.id)&&!shipmentIds.has(s.id),'送鍍編號重複');shipmentIds.add(s.id);
    check(int(s.number,1)&&s.number<=9999&&!numbers.has(s.number),'送鍍次數重複或不正確');numbers.add(s.number);
    check(text(s.vendor)&&date(s.sent)&&typeof s.returned==='string'&&(!s.returned||(date(s.returned)&&s.returned>=s.sent)),'電鍍廠商或日期不正確');
-   check(['pending','passed','abnormal'].includes(s.inspection)&& (s.returned||s.inspection==='pending'),'請先登記回貨日期再品檢');
-   check(typeof s.note==='string'&&s.note.length<=1000&&(s.inspection!=='abnormal'||s.note.trim()),'請填寫異常說明');
+   check(['pending','passed','abnormal'].includes(s.inspection),'請先登記回貨日期再品檢');
+   check(typeof s.note==='string'&&s.note.length<=1000,'請填寫異常說明');
+   check(s.welderId===undefined||typeof s.welderId==='string','焊接人員編號不正確');check(s.welderName===undefined||(typeof s.welderName==='string'&&s.welderName.length<=80),'焊接人員名稱不正確');
    check(Array.isArray(s.groups)&&s.groups.length>=1&&s.groups.length<=100,'電鍍配置數量不正確');let total=0,sets=0;
    for(const g of s.groups){
     check(object(g)&&int(g.sets,1)&&g.sets<=1000000&&Array.isArray(g.rings)&&g.rings.length>=1&&g.rings.length<=100,'電鍍組數或環片格式不正確');sets+=g.sets;
@@ -215,6 +216,7 @@ export async function images(request,env){
  const url=new URL(request.url),logo=url.pathname==='/api/logo',plating=url.pathname==='/api/plating-photos',shipmentId=url.searchParams.get('shipment'),projectId=url.searchParams.get('project');
  try{
   const employee=await employeeFor(request,env);if(!employee)return json({error:'此帳號尚未由主管啟用'},403);
+  if(url.searchParams.get('export')==='1'&&employee.role!=='supervisor')return json({error:'只有主管可以匯出'},403);
   const root='images/'+await scopeKey(STORAGE_OWNER)+'/',prefix=root+(plating?'plating/':'receipts/')+encodeURIComponent(projectId||'')+'/'+(plating?encodeURIComponent(shipmentId||'')+'/':'');
   if(!logo){
    const row=await companyRow(env);
@@ -228,7 +230,7 @@ export async function images(request,env){
   if(request.method==='GET'){
    if(logo&&url.searchParams.get('meta')==='1'){const file=await env.UPLOADS.head(key);return json({exists:!!file,created:file?.uploaded??null});}
    if(!logo&&!id){
-    if(plating&&url.searchParams.get('export')==='1'&&!['warehouse','supervisor'].includes(employee.role))return json({error:'只有倉管與主管可以匯出照片'},403);
+    if(url.searchParams.get('export')==='1'&&employee.role!=='supervisor')return json({error:'只有倉管與主管可以匯出照片'},403);
     const result=await env.UPLOADS.list({prefix,limit:1000,cursor:url.searchParams.get('cursor')||undefined,include:['customMetadata']});
     return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',actor:o.customMetadata?.actor||'',kind:o.customMetadata?.kind||'dispatch',created:o.uploaded})),truncated:result.truncated,cursor:result.truncated?result.cursor:undefined});
    }
@@ -266,4 +268,12 @@ export async function images(request,env){
   return json({id:newId,created:new Date().toISOString()});
  }catch(e){console.error('image operation failed',e.message);return json({error:'圖片操作未完成，請重試'},500);}
 }
-export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export async function accessApi(request,env){
+ if(request.method!=='GET')return json({error:'不支援的操作'},405);
+ if(!hasCredentials(request))return json({error:'請先登入'},401);
+ try{const employee=await employeeFor(request,env);if(!employee)return json({error:'帳號未啟用'},403);
+ if(new URL(request.url).pathname==='/api/export-access')return employee.role==='supervisor'?json({allowed:true}):json({error:'只有主管可以匯出'},403);
+ const result=await env.DB.prepare('SELECT id,name FROM employees ORDER BY name,id').all();return json({items:result.results||[]});
+ }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
+}
+export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
