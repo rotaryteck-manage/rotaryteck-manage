@@ -20,9 +20,39 @@ function platingShipmentDraft(p,source,copy=false){
  return s;
 }
 function platingFind(id){return platingProjects().find(p=>p.id===id);}
+function platingChanges(before,after){
+ const changes=[],show=(value)=>String(value??'').trim()||'未填';
+ for(const [key,label]of [['number','送鍍次數'],['vendor','廠商'],['sent','寄出日期'],['returned','回貨日期'],['inspection','品檢'],['note','備註']]){
+  if(before[key]===after[key])continue;
+  const format=value=>key==='inspection'?pt(value):['sent','returned'].includes(key)?value?platingDate(value):'未填':show(value);
+  changes.push(label+'：'+format(before[key])+' → '+format(after[key]));
+ }
+ const describe=g=>g.rings.map(r=>r.name+' '+r.qty+'片').join('、')+' × '+g.sets+'組';
+ for(let i=0;i<Math.max(before.groups.length,after.groups.length);i++){
+  const a=before.groups[i],b=after.groups[i],prefix='配置 '+(i+1)+' ';
+  if(!a){changes.push('新增'+prefix+'：'+describe(b));continue;}
+  if(!b){changes.push('移除'+prefix+'：'+describe(a));continue;}
+  if(a.sets!==b.sets)changes.push(prefix+'組數：'+a.sets+' → '+b.sets);
+  for(let j=0;j<Math.max(a.rings.length,b.rings.length);j++){
+   const x=a.rings[j],y=b.rings[j];
+   if(!x){changes.push(prefix+'新增環片：'+y.name+' '+y.qty+'片／組');continue;}
+   if(!y){changes.push(prefix+'移除環片：'+x.name+' '+x.qty+'片／組');continue;}
+   if(x.name!==y.name)changes.push(prefix+'環片：'+x.name+' → '+y.name);
+   if(x.qty!==y.qty)changes.push(prefix+y.name+' 每組片數：'+x.qty+' → '+y.qty);
+  }
+ }return changes;
+}
+function concisePlatingLog(l){
+ const action=l.action||'',detail=String(l.detail||'');
+ if(l.platingChanges)return [action==='修改送鍍紀錄'?'':action,detail].filter(Boolean).join('｜');
+ if(action==='調整電鍍案件順序')return '調整順序';
+ if(action==='新增電鍍案件')return '新增案件';
+ if(action==='修改送鍍紀錄'||action==='新增送鍍紀錄')return action+'｜'+detail.split(' · ')[0];
+ return [action,detail].filter(Boolean).join('｜');
+}
 async function platingCommit(action,p,detail){
  if(!platingEditAllowed()||cloudBusy||failedCandidate)throw Error('目前無法儲存，請確認權限與連線狀態。');
- addAudit(action,detail,pt('title')+' > '+p.name,'plating:'+p.id);
+ addAudit(action,detail,pt('title')+' > '+p.name,'plating:'+p.id);state.logs[0].platingChanges=true;
  await saveCloud(state);if(failedCandidate)throw Error('資料尚未儲存，請關閉視窗並處理上方提示。');
  if(location.hash==='#admin')renderAdmin();else render();
 }
@@ -50,19 +80,20 @@ async function movePlating(id,target){
  if(!platingEditAllowed()||cloudBusy||failedCandidate||id===target)return;
  const list=platingProjects(),from=list.findIndex(p=>p.id===id),to=list.findIndex(p=>p.id===target);if(from<0||to<0)return;
  const p=list.splice(from,1)[0];list.splice(to,0,p);
- try{await platingCommit('調整電鍍案件順序',p,p.name);}catch(e){toast(e.message);}
+ try{await platingCommit('調整順序',p,'第 '+(from+1)+' 位 → 第 '+(to+1)+' 位');}catch(e){toast(e.message);}
 }
 function editPlatingProject(id){
  if(!platingEditAllowed())return;const existing=platingFind(id);
  platingModal(pe(existing?'edit':'newProject'),field(pe('name'),'name',existing?.name||'','required maxlength="100"'),pe('save'),async fd=>{
  const name=String(fd.get('name')).trim();if(!name)throw Error(pt('requiredName'));if(platingProjects().some(p=>p.id!==id&&p.name.toLowerCase()===name.toLowerCase()))throw Error(pt('duplicateName'));
- const p=existing||{id:crypto.randomUUID(),shipments:[]};p.name=name;if(!existing){state.platingProjects??=[];state.platingProjects.push(p);}await platingCommit(existing?'修改電鍍案件':'新增電鍍案件',p,name);openPlating(p.id);
+ if(existing?.name===name){openPlating(id);return;}
+ const oldName=existing?.name;const p=existing||{id:crypto.randomUUID(),shipments:[]};p.name=name;if(!existing){state.platingProjects??=[];state.platingProjects.push(p);}await platingCommit(existing?'修改案名':'新增案件',p,existing?oldName+' → '+name:'');openPlating(p.id);
  });
 }
 function openPlating(id){
  const p=platingFind(id);if(!p)return;
  const can=platingEditAllowed(),logs=(state.logs||[]).filter(l=>l.project==='plating:'+id);
- platingModal(esc(p.name),'<div class="plating-actions">'+(can?'<button type="button" id="plating-rename">'+pe('edit')+'</button><button type="button" class="primary" id="shipment-new">＋ '+pe('newShipment')+'</button>':'')+'</div><div class="plating-shipments">'+(p.shipments.map(s=>'<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><strong>'+esc(platingCount(s))+'</strong><span>'+esc(platingDate(s.sent))+'</span><span>'+pe(platingStatus(s))+'</span></button>').join('')||'<p>'+pe('empty')+'</p>')+'</div><details class="plating-history"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>'<div>'+esc(receiptTime(l.time))+'｜'+esc(l.actor||'未記錄人員')+'｜'+esc(l.action)+'｜'+esc(l.detail)+'</div>').join('')+'</details>','',null);
+ platingModal(esc(p.name),'<div class="plating-actions">'+(can?'<button type="button" id="plating-rename">'+pe('edit')+'</button><button type="button" class="primary" id="shipment-new">＋ '+pe('newShipment')+'</button>':'')+'</div><div class="plating-shipments">'+(p.shipments.map(s=>'<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><strong>'+esc(platingCount(s))+'</strong><span>'+esc(platingDate(s.sent))+'</span><span>'+pe(platingStatus(s))+'</span></button>').join('')||'<p>'+pe('empty')+'</p>')+'</div><details class="plating-history"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>'<div>'+esc(receiptTime(l.time))+'｜'+esc(l.actor||'未記錄人員')+'｜'+esc(concisePlatingLog(l))+'</div>').join('')+'</details>','',null);
  attachPlatingPhotoOverview(p);
  $('#plating-rename')?.addEventListener('click',()=>editPlatingProject(id));$('#shipment-new')?.addEventListener('click',()=>editPlatingShipment(id));
  document.querySelectorAll('[data-shipment]').forEach(b=>b.onclick=()=>editPlatingShipment(id,b.dataset.shipment));
@@ -77,8 +108,10 @@ function editPlatingShipment(projectId,shipmentId,copy=false){
  if(groups.length>100||groups.some(g=>g.rings.length>100)||!Number.isSafeInteger(platingTotals(groups).pieces))throw Error('配置或數量超過上限');
  if(!next.vendor)throw Error(pt('requiredVendor'));if(p.shipments.some(x=>x.id!==next.id&&x.number===next.number))throw Error(pt('duplicateNumber'));
  if(next.returned&&next.returned<next.sent)throw Error(pt('invalidReturn'));if(!next.returned&&next.inspection!=='pending')throw Error(pt('requiredReturn'));if(next.inspection==='abnormal'&&!next.note)throw Error(pt('requiredNote'));
+ const changes=existing?platingChanges(source,next):[];
+ if(existing&&!changes.length){openPlating(projectId);return;}
  if(existing)p.shipments[p.shipments.findIndex(x=>x.id===s.id)]=next;else p.shipments.push(next);
- const totals=platingTotals(groups);await platingCommit(existing?'修改送鍍紀錄':'新增送鍍紀錄',p,platingCount(next)+' · '+next.vendor+' · 寄 '+platingDate(next.sent)+(next.returned?'／回 '+platingDate(next.returned):'')+' · '+groups.map(g=>g.rings.map(r=>r.name+' '+r.qty+'片').join('、')+' × '+g.sets+'組').join('；')+' · '+pt(platingStatus(next))+(next.note?' · '+next.note:''));openPlating(projectId);
+ await platingCommit(existing?'修改送鍍紀錄':'新增送鍍紀錄',p,platingCount(next)+(changes.length?'｜'+changes.join('；'):''));openPlating(projectId);
  });
  $('#plating-back').onclick=()=>openPlating(projectId);
  function readGroups(){return [...document.querySelectorAll('.plating-group')].map(g=>({sets:integer(g.querySelector('[data-sets]').value,1,1000000),rings:[...g.querySelectorAll('.plating-ring')].map(r=>{const name=r.querySelector('[data-ring-name]').value.trim();if(!name)throw Error(pt('requiredRing'));return {name,qty:integer(r.querySelector('[data-ring-qty]').value,1,1000000)};})}));}
