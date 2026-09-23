@@ -26,6 +26,7 @@ export function validatePlating(projects=[]){
 export function validate(s){
  check(object(s)&&Array.isArray(s.projects),'專案資料格式不正確');
  validatePlating(s.platingProjects);
+ if(s.platingVendors!==undefined)check(Array.isArray(s.platingVendors)&&s.platingVendors.length<=200&&s.platingVendors.every(v=>typeof v==='string'&&v.trim()===v&&v.length>0&&v.length<=100)&&new Set(s.platingVendors.map(v=>v.toLowerCase())).size===s.platingVendors.length,'電鍍廠商選項不正確');
  if(s.platingText!==undefined){check(object(s.platingText),'電鍍文字設定不正確');for(const v of Object.values(s.platingText))check(typeof v==='string'&&v.trim()&&v.length<=100,'電鍍文字設定不正確');}
  const cases=s.cases??[];check(Array.isArray(cases)&&cases.length<=1000,'案件資料格式不正確');const caseIds=new Set();
  for(const c of cases){check(object(c)&&typeof c.id==='string'&&!caseIds.has(c.id),'案件編號重複');caseIds.add(c.id);check(typeof c.name==='string'&&c.name.trim()&&c.name.length<=100,'案件名稱不正確');check(typeof c.vendor==='string'&&c.vendor.length<=100,'案件廠商不正確');check(['尚未開始','執行中','進行中','結案'].includes(c.status),'案件狀態不正確');check(c.batch===undefined||(Number.isSafeInteger(c.batch)&&c.batch>0),'製作批次不正確');check(c.quantity===undefined||(Number.isSafeInteger(c.quantity)&&c.quantity>0),'製作套數不正確');for(const d of [c.acceptedDate,c.closedDate])check(typeof d==='string'&&(!d||/^\d{4}-\d{2}-\d{2}$/.test(d)),'案件日期不正確');}
