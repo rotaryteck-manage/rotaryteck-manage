@@ -49,7 +49,27 @@ function newProject(){let count=1;const manualRow=n=>`<div class="manual-line">$
 function scopeDialog(){modal('個人試用版',`<p>庫房位置自行輸入，零件可用 Excel 匯入或手動新增，並可在表格修改或刪除；刪除可復原。</p><p>需求是每套數量。總需求量＝需求 × 套數。收料可超過總需求作為備料，領料扣除專案庫存。</p><div class="notice">資料保存在私人雲端，使用同一帳號可跨電腦載入。請定期從管理後台匯出備份。舊版多籃庫存已合併顯示為專案庫存，原始資料仍保留。</div>`,null);}
 
 function deleteProjectDialog(){captureDraft();const p=project();if(!p)return;modal('刪除專案',`<p>確認刪除「<strong>${esc(p.name)}</strong>」（${esc(projectDate(p))}）？</p><p>此專案有 ${p.parts.length} 項零件、現有庫存 ${totalStock(p)} 件。刪除後將從清單移除，仍可從「已刪除專案」復原，包含零件、庫存與位置。</p>`,'確認刪除',()=>{const index=state.projects.indexOf(p);if(index<0)error('找不到這個專案。');state.deletedProjects??=[];state.deletedProjects.unshift({project:p,index,deletedAt:new Date().toISOString(),draft:drafts[p.id]||null});state.projects.splice(index,1);delete drafts[p.id];selectedId='';log(p,'刪除庫房管理紀錄','移至已刪除專案，可復原');done('專案已刪除，可從「已刪除專案」復原');});}
-function deletedProjectsDialog(){captureDraft();modal('已刪除專案',`<p>復原會還原專案的零件、庫存及庫房位置。永久刪除後無法復原。</p>${(state.deletedProjects||[]).map((x,n)=>`<div class="deleted-project-row"><div><strong>${esc(x.project.name)}</strong><small>${esc(projectDate(x.project))} · ${x.project.parts.length} 項零件 · 庫存 ${totalStock(x.project)} 件</small></div><span><button type="button" class="small" data-restore-project="${n}">復原專案</button> <button type="button" class="small danger-button" data-purge-project="${n}">永久刪除</button></span></div>`).join('')||'<p>目前沒有已刪除專案。</p>'}`,null);document.querySelectorAll('[data-restore-project]').forEach(el=>el.onclick=()=>{const index=Number(el.dataset.restoreProject),entry=state.deletedProjects[index];if(!entry)return;if(state.projects.some(p=>p.id===entry.project.id)){$('#form-error').textContent='目前已有相同資料，無法復原。';return;}state.deletedProjects.splice(index,1);state.projects.splice(Math.min(entry.index,state.projects.length),0,entry.project);if(entry.draft)drafts[entry.project.id]=entry.draft;selectedId=entry.project.id;query='';log(entry.project,'復原專案','還原零件、庫存與位置');done('專案已復原');});document.querySelectorAll('[data-purge-project]').forEach(el=>el.onclick=async()=>{const index=Number(el.dataset.purgeProject),entry=state.deletedProjects[index];if(!entry||!confirm('確定永久刪除「'+entry.project.name+'」？零件、庫存、位置與收據圖片都會刪除，且無法復原。'))return;el.disabled=true;try{const response=await apiFetch('/api/receipts?project='+encodeURIComponent(entry.project.id),{method:'DELETE'}),data=await response.json();if(!response.ok)error(data.error||'收據圖片刪除失敗');addAudit('永久刪除庫房管理紀錄',entry.project.name,'庫房管理 > 已刪除專案',entry.project.id);state.deletedProjects.splice(index,1);persist();deletedProjectsDialog();toast('專案已永久刪除');}catch(err){el.disabled=false;$('#form-error').textContent=err.message||'永久刪除未完成。';}});}
+function deletedProjectsDialog(){captureDraft();modal('已刪除專案',`<p>復原會還原專案的零件、庫存及庫房位置。永久刪除後無法復原。</p>${(state.deletedProjects||[]).map((x,n)=>`<div class="deleted-project-row"><div><strong>${esc(x.project.name)}</strong><small>${esc(projectDate(x.project))} · ${x.project.parts.length} 項零件 · 庫存 ${totalStock(x.project)} 件</small></div><span><button type="button" class="small" data-restore-project="${n}">復原專案</button> <button type="button" class="small danger-button" data-purge-project="${n}">永久刪除</button></span></div>`).join('')||'<p>目前沒有已刪除專案。</p>'}`,null);document.querySelectorAll('[data-restore-project]').forEach(el=>el.onclick=()=>{const index=Number(el.dataset.restoreProject),entry=state.deletedProjects[index];if(!entry)return;if(state.projects.some(p=>p.id===entry.project.id)){$('#form-error').textContent='目前已有相同資料，無法復原。';return;}state.deletedProjects.splice(index,1);state.projects.splice(Math.min(entry.index,state.projects.length),0,entry.project);if(entry.draft)drafts[entry.project.id]=entry.draft;selectedId=entry.project.id;query='';log(entry.project,'復原專案','還原零件、庫存與位置');done('專案已復原');});document.querySelectorAll('[data-purge-project]').forEach(el=>el.onclick=()=>{const entry=state.deletedProjects[Number(el.dataset.purgeProject)];if(entry)confirmPurgeProject(entry.project.id);});}
+function confirmPurgeProject(id){
+ const entry=(state.deletedProjects||[]).find(x=>x.project.id===id);if(!entry)return;
+ modal('永久刪除專案',`<p>確定永久刪除「<strong>${esc(entry.project.name)}</strong>」？</p><p>零件、庫存、位置與收據圖片都會刪除，且無法復原。</p>`,'確認永久刪除',async()=>{
+  const button=$('#submit-modal'),box=$('#form-error');if(button.disabled)return;
+  if(!cloudReady||cloudBusy||failedCandidate)error('雲端尚未完成儲存，請先關閉視窗查看上方儲存狀態。');
+  button.disabled=true;button.textContent='正在刪除…';
+  try{
+   const response=await apiFetch('/api/receipts?project='+encodeURIComponent(id),{method:'DELETE',signal:AbortSignal.timeout(20000)}),data=await response.json();
+   if(!response.ok)throw Error(data.error||'收據圖片刪除失敗');
+   const index=state.deletedProjects.findIndex(x=>x.project.id===id);
+   if(index<0)throw Error('專案清單已變更，請重新開啟清單。');
+   addAudit('永久刪除庫房管理紀錄',entry.project.name,'庫房管理 > 已刪除專案',id);
+   state.deletedProjects.splice(index,1);
+   await saveCloud(state);
+   if(failedCandidate)throw Error('照片已刪除，但專案清單未儲存成功。請關閉視窗，依上方提示處理儲存狀態。');
+   deletedProjectsDialog();toast('專案已永久刪除');
+  }catch(err){box.textContent=err.name==='TimeoutError'?'連線逾時，請重新整理資料確認結果後再試。':(err.message||'永久刪除未完成。');button.disabled=false;button.textContent='確認永久刪除';}
+ });
+}
+
 
 const siteTextFields=[
  ['casesTitle','區塊標題','案件管理',60,true,'cases'],

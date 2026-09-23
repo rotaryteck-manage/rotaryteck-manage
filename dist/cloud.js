@@ -8,12 +8,22 @@ render=function(){oldRender();const demo=$('.demo');if(demo)demo.innerHTML='<spa
 async function saveCloud(candidate){
  if(!cloudReady||cloudBusy||failedCandidate)throw Error('雲端尚未就緒，請先處理儲存狀態。');
  cloudBusy=true;cloudBar();const snapshot=JSON.parse(JSON.stringify(candidate));
- try{const response=await apiFetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:snapshot,revision})});const data=await response.json();if(!response.ok)throw Error(data.error||'儲存失敗');revision=data.revision;confirmed=snapshot;cloudBusy=false;cloudBar();oldToast(queuedToast||'已儲存到雲端');queuedToast='';}
+ try{const response=await apiFetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:snapshot,revision}),signal:AbortSignal.timeout(20000)});const data=await response.json();if(!response.ok)throw Error(data.error||'儲存失敗');revision=data.revision;confirmed=snapshot;cloudBusy=false;cloudBar();oldToast(queuedToast||'已儲存到雲端');queuedToast='';}
  catch(err){cloudBusy=false;failedCandidate=snapshot;state=JSON.parse(JSON.stringify(confirmed));render();cloudBar();oldToast(err.message);}
 }
 persist=function(){saveCloud(state).catch(e=>oldToast(e.message));};
 saveEditState=function(candidate){if(!cloudReady||cloudBusy||failedCandidate)error('請先等候雲端儲存完成。');state=candidate;persist();};
-for(const event of ['click','submit','input','change'])document.addEventListener(event,e=>{if(!cloudReady&&e.target.closest('a'))return;if((!cloudReady||cloudBusy||failedCandidate)&&!e.target.closest('#cloud-status,.login-page')){e.preventDefault();e.stopImmediatePropagation();}},true);
+for(const event of ['click','submit','input','change'])document.addEventListener(event,e=>{
+ if(e.target.closest('#close-modal,#cancel-modal'))return;
+ if(!cloudReady&&e.target.closest('a'))return;
+ if((!cloudReady||cloudBusy||failedCandidate)&&!e.target.closest('#cloud-status,.login-page')){
+  e.preventDefault();e.stopImmediatePropagation();
+  if(event==='click'||event==='submit'){
+   const message=failedCandidate?'上次儲存未成功，請關閉視窗，依頁面上方提示處理。':cloudBusy?'正在儲存到雲端，請稍候再操作。':'雲端尚未連線，請稍後或重新整理頁面。';
+   const box=$('#modal[open] #form-error');if(box)box.textContent=message;else oldToast(message);
+  }
+ }
+},true);
 window.addEventListener('beforeunload',e=>{if(cloudBusy||failedCandidate){e.preventDefault();e.returnValue='';}});
 async function startCloud(){try{const r=await apiFetch('/api/state');const data=await r.json();if(!r.ok)throw Error(data.error||'載入失敗');state=data.state||{projects:[],deletedProjects:[],logs:[]};revision=data.revision;currentUser=data.currentUser||currentUser;confirmed=JSON.parse(JSON.stringify(state));cloudReady=true;migrateSimpleInventory();render();routeAdmin();}catch(e){$('#app').innerHTML='<main><h1>暫時無法連接雲端庫房</h1><p>'+esc(e.message)+'</p><p>請確認主管已在管理後台啟用你的員工帳號。</p><button class="primary" id="retry-login">重新登入</button></main>';$('#cloud-status')?.remove();$('#retry-login').onclick=logout;}}
 document.addEventListener('DOMContentLoaded',async()=>{if(await ensureAuth())startCloud();});
