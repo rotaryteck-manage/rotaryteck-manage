@@ -2,8 +2,31 @@ const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x);
 function check(ok,message){if(!ok)throw new Error(message);}
 function int(x,min=0){return Number.isSafeInteger(x)&&x>=min;}
+export function validatePlating(projects=[]){
+ check(Array.isArray(projects)&&projects.length<=1000,'電鍍案件格式不正確');const ids=new Set();
+ const text=(x,max=100)=>typeof x==='string'&&x.trim().length>0&&x.length<=max;
+ const date=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x))&&new Date(x).toISOString().slice(0,10)===x;
+ for(const p of projects){
+  check(object(p)&&text(p.id)&&!ids.has(p.id)&&text(p.name),'電鍍案件名稱或編號不正確');ids.add(p.id);
+  check(Array.isArray(p.shipments)&&p.shipments.length<=1000,'送鍍紀錄格式不正確');const shipmentIds=new Set(),numbers=new Set();
+  for(const s of p.shipments){
+   check(object(s)&&text(s.id)&&!shipmentIds.has(s.id),'送鍍編號重複');shipmentIds.add(s.id);
+   check(int(s.number,1)&&s.number<=9999&&!numbers.has(s.number),'送鍍次數重複或不正確');numbers.add(s.number);
+   check(text(s.vendor)&&date(s.sent)&&typeof s.returned==='string'&&(!s.returned||(date(s.returned)&&s.returned>=s.sent)),'電鍍廠商或日期不正確');
+   check(['pending','passed','abnormal'].includes(s.inspection)&& (s.returned||s.inspection==='pending'),'請先登記回貨日期再品檢');
+   check(typeof s.note==='string'&&s.note.length<=1000&&(s.inspection!=='abnormal'||s.note.trim()),'請填寫異常說明');
+   check(Array.isArray(s.groups)&&s.groups.length>=1&&s.groups.length<=100,'電鍍配置數量不正確');let total=0,sets=0;
+   for(const g of s.groups){
+    check(object(g)&&int(g.sets,1)&&g.sets<=1000000&&Array.isArray(g.rings)&&g.rings.length>=1&&g.rings.length<=100,'電鍍組數或環片格式不正確');sets+=g.sets;
+    for(const r of g.rings){check(object(r)&&text(r.name)&&int(r.qty,1)&&r.qty<=1000000,'環片名稱或數量不正確');total+=r.qty*g.sets;}
+   }check(int(total,1)&&int(sets,1),'電鍍數量超過安全範圍');
+  }
+ }return projects;
+}
 export function validate(s){
  check(object(s)&&Array.isArray(s.projects),'專案資料格式不正確');
+ validatePlating(s.platingProjects);
+ if(s.platingText!==undefined){check(object(s.platingText),'電鍍文字設定不正確');for(const v of Object.values(s.platingText))check(typeof v==='string'&&v.trim()&&v.length<=100,'電鍍文字設定不正確');}
  const cases=s.cases??[];check(Array.isArray(cases)&&cases.length<=1000,'案件資料格式不正確');const caseIds=new Set();
  for(const c of cases){check(object(c)&&typeof c.id==='string'&&!caseIds.has(c.id),'案件編號重複');caseIds.add(c.id);check(typeof c.name==='string'&&c.name.trim()&&c.name.length<=100,'案件名稱不正確');check(typeof c.vendor==='string'&&c.vendor.length<=100,'案件廠商不正確');check(['尚未開始','執行中','進行中','結案'].includes(c.status),'案件狀態不正確');check(c.batch===undefined||(Number.isSafeInteger(c.batch)&&c.batch>0),'製作批次不正確');check(c.quantity===undefined||(Number.isSafeInteger(c.quantity)&&c.quantity>0),'製作套數不正確');for(const d of [c.acceptedDate,c.closedDate])check(typeof d==='string'&&(!d||/^\d{4}-\d{2}-\d{2}$/.test(d)),'案件日期不正確');}
  const logs=s.logs??[];check(Array.isArray(logs)&&logs.length<=20000,'資訊庫紀錄格式不正確');for(const l of logs)check(object(l)&&typeof l.time==='string'&&typeof l.action==='string'&&typeof l.detail==='string'&&(!l.location||typeof l.location==='string'),'資訊庫紀錄格式不正確');
@@ -61,9 +84,10 @@ async function companyRow(env){
  return row||null;
 }
 function logsOnlyAppend(before,after){const a=before.logs||[],b=after.logs||[];return b.length>=a.length&&JSON.stringify(b.slice(b.length-a.length))===JSON.stringify(a);}
-function warehouseChangeAllowed(before,after){
+export function warehouseChangeAllowed(before,after){
  if(!logsOnlyAppend(before,after))return false;
  const a=structuredClone(before),b=structuredClone(after);a.logs=[];b.logs=[];
+ delete a.platingProjects;delete b.platingProjects;
  if(a.projects.length!==b.projects.length)return false;
  for(const next of b.projects){
  const prev=a.projects.find(p=>p.id===next.id);if(!prev||prev.parts.length!==next.parts.length)return false;
@@ -87,7 +111,7 @@ export async function api(request,env){
   if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'格式不正確'},415);
   const raw=await request.text();if(new TextEncoder().encode(raw).length>1500000)return json({error:'資料超過 1.5 MB，請先匯出備份並聯絡管理者'},413);
   const input=JSON.parse(raw);validate(input.state);check(int(input.revision),'版本不正確');
-  const current=await companyRow(env);if(employee.role==='warehouse'&&(!current||!warehouseChangeAllowed(JSON.parse(current.body),input.state)))return json({error:'庫房管理僅能收料、領料及上傳照片'},403);
+  const current=await companyRow(env);if(employee.role==='warehouse'&&(!current||!warehouseChangeAllowed(JSON.parse(current.body),input.state)))return json({error:'庫房管理僅能收料、領料、管理照片與電鍍紀錄'},403);
   const body=JSON.stringify(input.state),time=new Date().toISOString();let result;
   if(input.revision===0)result=await env.DB.prepare('INSERT OR IGNORE INTO company_state (company_id,body,revision,updated_at) VALUES (?,?,1,?)').bind(COMPANY_ID,body,time).run();
   else result=await env.DB.prepare('UPDATE company_state SET body=?,revision=revision+1,updated_at=? WHERE company_id=? AND revision=?').bind(body,time,COMPANY_ID,input.revision).run();
