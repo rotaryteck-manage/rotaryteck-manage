@@ -17,12 +17,12 @@ function renderWire(){
  const panel=document.createElement('section');panel.className='workspace wire-workspace';panel.innerHTML='<div class="wire-head"><h2>'+we('title')+'</h2>'+wireActions()+'</div><div class="plating-grid" id="wire-grid"></div>';$('main').append(panel);
  function draw(q=''){
  const grid=$('#wire-grid'),visible=wireTypes().filter(t=>t.name.toLowerCase().includes(q.toLowerCase()));
- grid.innerHTML=visible.map(t=>'<div class="plating-tile" data-wire-tile="'+esc(t.id)+'"><button type="button" class="plating-open" data-wire-open="'+esc(t.id)+'">'+esc(t.name)+we('suffix')+'</button>'+(canDo('wire.edit')?'<div class="plating-order">'+[['up','↑'],['down','↓'],['previous','←'],['next','→']].map(([key,symbol])=>'<button type="button" class="small" data-wire-move="'+esc(t.id)+'" data-direction="'+key+'" aria-label="'+we(key)+'" title="'+we(key)+'">'+symbol+'</button>').join('')+'<span class="plating-grip" draggable="true" title="'+we('drag')+'" aria-label="'+we('drag')+'">⠿</span></div>':'')+'</div>').join('')||'<p>'+we('empty')+'</p>';
+ grid.innerHTML=visible.map(t=>'<div class="plating-tile" data-wire-tile="'+esc(t.id)+'"><button type="button" class="plating-open" data-wire-open="'+esc(t.id)+'">'+esc(t.name)+we('suffix')+'</button>'+'</div>').join('')||'<p>'+we('empty')+'</p>';
  const ids=visible.map(t=>t.id),step=direction=>({up:-wireGridColumns(grid),down:wireGridColumns(grid),previous:-1,next:1})[direction];
  grid.updateWireControls=()=>grid.querySelectorAll('[data-wire-move]').forEach(b=>{const to=ids.indexOf(b.dataset.wireMove)+step(b.dataset.direction);b.disabled=to<0||to>=ids.length;});grid.updateWireControls();
  grid.querySelectorAll('[data-wire-open]').forEach(b=>b.onclick=()=>openWire(b.dataset.wireOpen));
  grid.querySelectorAll('[data-wire-move]').forEach(b=>b.onclick=()=>{const target=ids[ids.indexOf(b.dataset.wireMove)+step(b.dataset.direction)];return moveWireTile(b.dataset.wireMove,target,ids,false,q);});
- if(canDo('wire.edit'))grid.querySelectorAll('[data-wire-tile]').forEach(tile=>{const grip=tile.querySelector('.plating-grip');grip.ondragstart=e=>{e.dataTransfer.setData('text/plain',tile.dataset.wireTile);e.dataTransfer.effectAllowed='move';};tile.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';};tile.ondrop=e=>{e.preventDefault();return moveWireTile(e.dataTransfer.getData('text/plain'),tile.dataset.wireTile,ids,true,q);};});
+
  }
  $('#wire-search').oninput=e=>draw(e.target.value);$('#wire-new')?.addEventListener('click',()=>editWireType());$('#wire-ledger').onclick=()=>openWireLedger();$('#wire-export')?.addEventListener('click',()=>exportWire());draw();
 }

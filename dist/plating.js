@@ -94,14 +94,11 @@ function renderPlating(){
  const grid=section.querySelector('.plating-grid');grid.innerHTML='';const visible=platingProjects().filter(p=>p.name.toLowerCase().includes(query.toLowerCase()));
  for(const p of visible){
  const index=platingProjects().indexOf(p),tile=document.createElement('div');tile.className='plating-tile';tile.dataset.id=p.id;
- tile.innerHTML='<button type="button" class="plating-open">'+esc(p.name)+esc(pt('tileSuffix')==='（電鍍紀錄）'?'_電鍍紀錄':pt('tileSuffix'))+'</button>'+(platingEditAllowed()?'<div class="plating-order">'+[['up','↑'],['down','↓'],['previous','←'],['next','→']].map(([key,symbol])=>'<button type="button" class="small" data-move="'+key+'" aria-label="'+pe(key)+'">'+symbol+'</button>').join('')+'<span class="plating-grip" draggable="true" title="'+pe('drag')+'">⠿</span></div>':'');
+ tile.innerHTML='<button type="button" class="plating-open">'+esc(p.name)+esc(pt('tileSuffix')==='（電鍍紀錄）'?'_電鍍紀錄':pt('tileSuffix'))+'</button>';
  tile.querySelector('.plating-open').onclick=()=>openPlating(p.id);
  const step=key=>({up:-wireGridColumns(grid),down:wireGridColumns(grid),previous:-1,next:1})[key];
  tile.querySelectorAll('[data-move]').forEach(b=>{b.onclick=async()=>{const target=visible[visible.indexOf(p)+step(b.dataset.move)];if(!target||cloudBusy||failedCandidate)return;const list=state.platingProjects,from=list.findIndex(x=>x.id===p.id),to=list.findIndex(x=>x.id===target.id);[list[from],list[to]]=[list[to],list[from]];try{await platingCommit('調整順序',p,'第 '+(from+1)+' 位 → 第 '+(to+1)+' 位');const input=$('#plating-search');if(input){input.value=query;input.dispatchEvent(new Event('input'));}}catch(e){toast(e.message);}};});
- if(platingEditAllowed()){
- tile.querySelector('.plating-grip').ondragstart=e=>{e.dataTransfer.setData('text/plain',p.id);e.dataTransfer.effectAllowed='move';};
- tile.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect='move';};tile.ondrop=e=>{e.preventDefault();movePlating(e.dataTransfer.getData('text/plain'),p.id);};
- }grid.append(tile);
+ grid.append(tile);
  }grid.updatePlatingControls=()=>grid.querySelectorAll('[data-move]').forEach(b=>{const at=visible.findIndex(p=>p.id===b.closest('.plating-tile').dataset.id),delta={up:-wireGridColumns(grid),down:wireGridColumns(grid),previous:-1,next:1}[b.dataset.move];b.disabled=at+delta<0||at+delta>=visible.length;});grid.updatePlatingControls();if(!grid.children.length)grid.textContent=pt('empty');
  }
  section.querySelector('#plating-search').oninput=e=>draw(e.target.value);section.querySelector('#plating-new')?.addEventListener('click',()=>editPlatingProject());draw();
