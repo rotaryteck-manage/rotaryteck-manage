@@ -42,7 +42,7 @@ export function wireChangeAllowed(before,after,e){
    else{const a={...prev},b={...x};delete a.photos;delete b.photos;delete a.status;delete b.status;
     if(!wireEqual(a,b)&&!permitted(e,'wire.edit'))return false;
     if(prev.wireId!==x.wireId)return false;
-    if(prev.status!==x.status&&!['warehouse','supervisor'].includes(e.role))return false;
+    if(prev.status!==x.status&&!['warehouse','supervisor'].includes(e.role)&&!(x.status==='low'&&permitted(e,'wire.view')&&permitted(e,'wire.cut')))return false;
     if(!wireEqual(x.photos.slice(0,prev.photos.length),prev.photos)||x.photos.length<prev.photos.length)return false;
     if(x.photos.length>prev.photos.length&&!permitted(e,'wire.photos'))return false;
    }
