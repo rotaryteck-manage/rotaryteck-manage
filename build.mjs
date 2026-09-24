@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 const codec=fs.readFileSync('worker/state-codec.mjs','utf8').replace(/^export /gm,'');
 fs.writeFileSync('dist/state-codec.js',codec);
-const names=['index.html','app.js','style.css','xlsx.full.min.js','favicon.svg','auth.js','cloud.js','admin.js','admin.css','uploads.js','cases.js','audit.js','roles.js','navigation.js','plating.js','state-codec.js','admin-layout.js','plating-ledger.js','wire.js','permissions.js','wire.css'];
+const names=['index.html','app.js','style.css','xlsx.full.min.js','favicon.svg','auth.js','cloud.js','admin.js','admin.css','uploads.js','cases.js','audit.js','roles.js','navigation.js','plating.js','state-codec.js','admin-layout.js','plating-ledger.js','wire.js','permissions.js','wire.css','sorting.js'];
 const types={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml'};
 const assets=Object.fromEntries(names.map(n=>['/'+n,{body:fs.readFileSync('dist/'+n,'utf8'),type:types[n.split('.').pop()]}]));
 fs.mkdirSync('dist/server',{recursive:true});
