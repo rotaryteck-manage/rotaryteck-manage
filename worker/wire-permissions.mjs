@@ -28,8 +28,8 @@ export function validateWire(s){
  wireAssert(new Set(types.map(x=>x.name?.toLowerCase())).size===types.length,'線材名稱重複');
  for(const t of types)wireAssert(text(t.name),'請填寫線材名稱');
  for(const r of reels){wireAssert(types.some(t=>t.id===r.wireId)&&text(r.number)&&text(r.color)&&['enough','low'].includes(r.status),'線捆資料不正確');wireAssert(reels.filter(x=>x.wireId===r.wireId&&x.number===r.number).length===1,'線捆編號重複');wireAssert(Array.isArray(r.photos)&&new Set(r.photos.map(x=>x.id)).size===r.photos.length,'線材照片格式不正確');for(const p of r.photos)wireAssert(/^[a-f0-9-]{36}$/.test(p.id)&&text(p.actor)&&text(p.actorId)&&text(p.created)&&text(p.name,200),'照片資料不完整');}
- wireAssert(new Set(cuts.map(c=>c.photoId)).size===cuts.length,'不同裁線紀錄需要各自的照片');
- for(const c of cuts){const r=reels.find(x=>x.id===c.reelId);wireAssert(r&&r.photos.some(p=>p.id===c.photoId),'每筆裁線紀錄都必須有照片');wireAssert(text(c.actor)&&text(c.actorId)&&!Number.isNaN(Date.parse(c.time)),'裁線人員或時間不正確');wireAssert(Number.isFinite(c.length)&&c.length>0&&c.length<=1000000&&Number.isSafeInteger(c.quantity)&&c.quantity>0&&c.quantity<=1000000,'裁線長度與條數必須大於零');}
+ wireAssert(new Set(cuts.filter(c=>c.photoId).map(c=>c.photoId)).size===cuts.filter(c=>c.photoId).length,'不同裁線紀錄需要各自的照片');
+ for(const c of cuts){const r=reels.find(x=>x.id===c.reelId);wireAssert(r&&(c.photoId===undefined||c.photoId===''||typeof c.photoId==='string'&&r.photos.some(p=>p.id===c.photoId)),'裁線紀錄的線捆或照片不正確');wireAssert(text(c.actor)&&text(c.actorId)&&!Number.isNaN(Date.parse(c.time)),'裁線人員或時間不正確');wireAssert(Number.isFinite(c.length)&&c.length>0&&c.length<=1000000&&Number.isSafeInteger(c.quantity)&&c.quantity>0&&c.quantity<=1000000,'裁線長度與條數必須大於零');}
  if(s.wireText!==undefined)wireAssert(s.wireText&&typeof s.wireText==='object'&&Object.values(s.wireText).every(x=>text(x,100)),'線材文字設定不正確');
 }
 function wireEqual(a,b){return JSON.stringify(a)===JSON.stringify(b);}
@@ -50,7 +50,7 @@ export function wireChangeAllowed(before,after,e){
   if(!wireEqual(old.filter(x=>list.some(n=>n.id===x.id)).map(x=>x.id),list.filter(x=>old.some(n=>n.id===x.id)).map(x=>x.id))&&!permitted(e,'wire.edit'))return false;
  }
  for(const c of bc)if(!ac.some(x=>x.id===c.id))return false;
- for(const c of ac){const prev=bc.find(x=>x.id===c.id);if(!prev){if(!permitted(e,'wire.cut')||c.actorId!==String(e.id)||c.actor!==e.name)return false;const r=ar.find(r=>r.id===c.reelId),photo=r?.photos.find(p=>p.id===c.photoId);if(!photo||photo.actorId!==String(e.id)||photo.created!==c.time||br.some(r=>r.photos.some(p=>p.id===c.photoId)))return false;}
+ for(const c of ac){const prev=bc.find(x=>x.id===c.id);if(!prev){if(!permitted(e,'wire.cut')||c.actorId!==String(e.id)||c.actor!==e.name)return false;const r=ar.find(r=>r.id===c.reelId),photo=r?.photos.find(p=>p.id===c.photoId);if(c.photoId&&(!photo||photo.actorId!==String(e.id)||photo.created!==c.time||br.some(r=>r.photos.some(p=>p.id===c.photoId))))return false;}
  else if(!wireEqual(prev,c)){if(e.role!=='supervisor'&&(!permitted(e,'wire.editOwn')||prev.actorId!==String(e.id)))return false;const a={...prev},b={...c};for(const k of ['length','quantity','photoId','updatedAt','updatedBy']){delete a[k];delete b[k];}if(!wireEqual(a,b)||c.updatedBy!==e.name||Number.isNaN(Date.parse(c.updatedAt)))return false;if(c.photoId!==prev.photoId&&br.some(r=>r.photos.some(p=>p.id===c.photoId)))return false;}
  }return true;
 }
