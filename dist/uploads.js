@@ -1,6 +1,6 @@
 'use strict';
 let imageUploading=false;
-function showLogo(){const brand=$('.brand');if(!brand||brand.querySelector('.site-logo'))return;const img=document.createElement('img');img.className='site-logo';img.alt='網站 LOGO';img.hidden=true;img.onload=()=>{img.hidden=false;brand.querySelector('.mark')?.remove();};img.src='/api/logo?t='+Date.now();brand.prepend(img);}
+function showLogo(){const brand=$('.brand');if(!brand||brand.querySelector('.site-logo'))return;const img=document.createElement('img');img.className='site-logo';img.alt='網站 LOGO';img.hidden=true;img.onload=()=>{img.hidden=false;brand.querySelector('.mark')?.remove();};img.dataset.photoSrc='/api/logo';img.dataset.photoThumb='1';brand.prepend(img);}
 function canvasBlob(canvas,type,quality){return new Promise(resolve=>canvas.toBlob(resolve,type,quality));}
 async function compressReceiptImage(file,maxBytes=2*1024*1024){
  if(!file)throw Error('請先選擇圖片');
@@ -17,7 +17,7 @@ async function compressReceiptImage(file,maxBytes=2*1024*1024){
  image.close?.();if(!blob||blob.size>maxBytes)throw Error('圖片壓縮後仍超過 2 MB，請先裁切後再上傳');
  const name=file.name.replace(/\.[^.]+$/, '')+'.jpg';return new File([blob],name,{type:'image/jpeg',lastModified:file.lastModified});
 }
-async function uploadImage(file,url,limit){if(!file)throw Error('請先選擇圖片');if((url.startsWith('/api/receipts')||url.startsWith('/api/plating-photos')||url.startsWith('/api/wire-photos')))file=await compressReceiptImage(file);if(file.size>limit*1024*1024)throw Error('圖片限 '+limit+' MB');if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('請選擇 JPG、PNG 或 WebP 圖片');const r=await apiFetch(url,{method:'POST',headers:{'Content-Type':file.type,'X-File-Name':encodeURIComponent(file.name)},body:file});const d=await r.json();if(!r.ok)throw Error(d.error||'上傳失敗');return{...d,uploadedName:file.name,uploadedSize:file.size};}
+async function uploadImage(file,url,limit){if(!file)throw Error('請先選擇圖片');if((url.startsWith('/api/receipts')||url.startsWith('/api/plating-photos')||url.startsWith('/api/wire-photos')))file=await compressReceiptImage(file);if(file.size>limit*1024*1024)throw Error('圖片限 '+limit+' MB');if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('請選擇 JPG、PNG 或 WebP 圖片');const thumbnail=await makePhotoThumbnail(file);const body=new FormData();body.append('photo',file);body.append('thumbnail',thumbnail,'thumbnail.jpg');const r=await apiFetch(url,{method:'POST',headers:{'X-File-Name':encodeURIComponent(file.name)},body});const d=await r.json();if(!r.ok)throw Error(d.error||'上傳失敗');if(url.startsWith('/api/logo'))clearPhotoCache();return{...d,uploadedName:file.name,uploadedSize:file.size};}
 const crcTable=(()=>{const table=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;table[n]=c>>>0;}return table;})();
 function crc32(bytes){let crc=0xffffffff;for(const byte of bytes)crc=crcTable[(crc^byte)&255]^(crc>>>8);return(crc^0xffffffff)>>>0;}
 function zipDate(value){const d=new Date(value||Date.now()),year=Math.max(1980,d.getFullYear());return{time:(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1),date:((year-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate()};}

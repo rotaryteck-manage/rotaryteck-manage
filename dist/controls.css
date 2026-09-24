@@ -1,0 +1,10 @@
+/* All text action controls share the same type, height and box sizing. */
+button:not(.plating-open):not(.wire-thumb):not(#close-modal),a.admin-back-button,a.admin-back-link,.header a[href^="#"],.receipt-file-row a{
+ box-sizing:border-box;font-family:inherit;font-size:14px;line-height:20px;min-height:42px;padding:10px 16px;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;text-decoration:none;
+}
+a.admin-back-button,a.admin-back-link,.header a[href^="#"]{border:1px solid #cad8c9;border-radius:7px;background:#fff;color:#29513b}
+.wire-tools,.plating-actions,.admin-actions,.form-actions{align-items:center;gap:8px}
+/* Equal widths within each action group; the longest label determines the width. */
+[data-equal-controls] > button:not(.wire-thumb):not(.plating-open):not(#close-modal),[data-equal-controls] > a.admin-back-button,[data-equal-controls] > a.admin-back-link{width:var(--action-width);flex-shrink:0}
+.wire-table td:last-child button+button{margin-left:6px}
+@media(max-width:600px){button:not(.plating-open):not(.wire-thumb):not(#close-modal),a.admin-back-button,a.admin-back-link{font-size:13px;padding:8px 10px;min-height:40px}[data-equal-controls]{flex-wrap:wrap}}
