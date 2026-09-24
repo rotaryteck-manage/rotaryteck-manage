@@ -9,7 +9,7 @@ function platingModal(title,body,submit,handler){
 }
 
 function platingEditAllowed(){return canDo('plating.manage');}
-function platingProjects(){return state.platingProjects||[];}
+function platingProjects(){return (state.platingProjects||[]).filter(p=>!p.archived);}
 function platingStatus(s){return s.returned?'completed':'sending';}
 function platingTotals(groups){return groups.reduce((t,g)=>({sets:t.sets+g.sets,pieces:t.pieces+g.sets*g.rings.reduce((n,r)=>n+r.qty,0)}),{sets:0,pieces:0});}
 function platingCount(s){return pt('countPrefix')+' '+s.number+' '+pt('countSuffix');}
@@ -105,14 +105,14 @@ function renderPlating(){
 }
 async function movePlating(id,target){
  if(!platingEditAllowed()||cloudBusy||failedCandidate||id===target)return;
- const list=platingProjects(),from=list.findIndex(p=>p.id===id),to=list.findIndex(p=>p.id===target);if(from<0||to<0)return;
+ const list=state.platingProjects||[],from=list.findIndex(p=>p.id===id),to=list.findIndex(p=>p.id===target);if(from<0||to<0)return;
  const p=list.splice(from,1)[0];list.splice(to,0,p);
  try{await platingCommit('調整順序',p,'第 '+(from+1)+' 位 → 第 '+(to+1)+' 位');}catch(e){toast(e.message);}
 }
 function editPlatingProject(id){
  if(!platingEditAllowed())return;const existing=platingFind(id);
  platingModal(pe(existing?'edit':'newProject'),field(pe('name'),'name',existing?.name||'','required maxlength="100"'),pe('save'),async fd=>{
- const name=String(fd.get('name')).trim();if(!name)throw Error(pt('requiredName'));if(platingProjects().some(p=>p.id!==id&&p.name.toLowerCase()===name.toLowerCase()))throw Error(pt('duplicateName'));
+ const name=String(fd.get('name')).trim();if(!name)throw Error(pt('requiredName'));if((state.platingProjects||[]).some(p=>p.id!==id&&p.name.toLowerCase()===name.toLowerCase()))throw Error(pt('duplicateName'));
  if(existing?.name===name){openPlating(id);return;}
  const oldName=existing?.name;const p=existing||{id:crypto.randomUUID(),shipments:[]};p.name=name;if(!existing){state.platingProjects??=[];state.platingProjects.push(p);}await platingCommit(existing?'修改案名':'新增案件',p,existing?oldName+' → '+name:'');openPlating(p.id);
  });
@@ -161,7 +161,7 @@ const renderBeforePlating=render;render=function(){renderBeforePlating();if(acti
 async function deletePlatingProject(id){
  if(currentUser.role!=='supervisor'||cloudBusy||failedCandidate)return;
  const p=platingFind(id);if(!p||!await confirmAction(pt('deleteProjectPrompt')+' '+p.name))return;
- try{state.platingProjects=platingProjects().filter(x=>x.id!==id);await platingCommit('刪除電鍍案件',p,p.name);renderAdmin();}catch(e){toast(e.message);}
+ try{p.archived=true;await platingCommit('刪除電鍍案件',p,p.name);renderAdmin();}catch(e){toast(e.message);}
 }
 const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
  renderAdminBeforePlating();if(currentUser.role!=='supervisor')return;

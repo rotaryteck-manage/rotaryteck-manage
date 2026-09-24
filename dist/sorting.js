@@ -2,11 +2,11 @@
 function managementOrderDialog(kind){
  const options={cases:{key:'cases',title:siteText('casesTitle'),can:canDo('cases.manage'),label:c=>c.name+' · '+caseBatchLabel(c)},plating:{key:'platingProjects',title:pt('title'),can:canDo('plating.manage'),label:p=>p.name},wire:{key:'wireTypes',title:wt('title'),can:canDo('wire.edit'),label:t=>t.name+wt('suffix')}};
  const option=options[kind];if(!option?.can||cloudBusy||failedCandidate)return;
- const items=(state[option.key]||[]).map(item=>({id:item.id,label:option.label(item)}));
+ const items=(state[option.key]||[]).filter(item=>!item.archived).map(item=>({id:item.id,label:option.label(item)}));
  numberedOrderDialog(option.title+' · 調整排序',items,async ids=>{
   const next=structuredClone(state),map=new Map((next[option.key]||[]).map(item=>[item.id,item]));
-  if(map.size!==ids.length||ids.some(id=>!map.has(id)))throw Error('清單已變更，請重新開啟排序');
-  next[option.key]=ids.map(id=>map.get(id));state=next;
+  if([...map.values()].filter(item=>!item.archived).length!==ids.length||ids.some(id=>!map.has(id)))throw Error('清單已變更，請重新開啟排序');
+  next[option.key]=[...ids.map(id=>map.get(id)),...[...map.values()].filter(item=>item.archived)];state=next;
   ids.forEach((id,index)=>{const from=items.findIndex(item=>item.id===id);if(from!==index)addAudit('調整順序',option.label(map.get(id))+'：第 '+(from+1)+' 位 → 第 '+(index+1)+' 位',option.title,kind==='wire'?'wire:'+id:kind==='plating'?'plating:'+id:'');});
   await saveCloud(state);if(failedCandidate)throw Error('排序尚未儲存，請處理上方提示');
   if(location.hash==='#admin')renderAdmin();else render();
