@@ -3,3 +3,5 @@
 .numbered-order-row{display:flex;align-items:center;gap:14px;padding:10px;border-bottom:1px solid #d4dfce}.numbered-order-row:nth-child(even){background:#f2f6ee}.numbered-order-row input{width:80px;flex:none}#employee-sort{margin-left:8px}
 
 .permission-tabs{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.permission-tile{border:1px solid #cedbc8;border-radius:6px;overflow:hidden;min-width:150px}.permission-tile>button{width:100%;border:0;border-radius:0;padding:16px}.permission-order{background:#f2f6ee;padding:4px;display:flex;justify-content:flex-end;gap:4px}.permission-order[hidden]{display:none}
+
+#wire-reel-batch{display:grid;gap:10px;margin:12px 0;max-height:48vh;overflow:auto;padding:2px}.wire-reel-batch-row{display:grid;grid-template-columns:85px minmax(0,1fr);align-items:center;gap:12px;font-size:14px}.wire-reel-batch-row input{width:100%;min-width:0}
