@@ -238,7 +238,7 @@ export async function images(request,env){
     const result=await env.UPLOADS.list({prefix,limit:1000,cursor:url.searchParams.get('cursor')||undefined,include:['customMetadata']});
     return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',actor:o.customMetadata?.actor||'',kind:o.customMetadata?.kind||'dispatch',created:o.uploaded})),truncated:result.truncated,cursor:result.truncated?result.cursor:undefined});
    }
-   const file=await env.UPLOADS.get(key);if(!file)return json({error:'找不到圖片'},404);
+   const file=(url.searchParams.get('thumb')==='1'?await env.UPLOADS.get('thumbnails/'+key):null)||await env.UPLOADS.get(key);if(!file)return json({error:'找不到圖片'},404);
    return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
   }
   if(request.method==='DELETE'&&!logo){
@@ -246,10 +246,10 @@ export async function images(request,env){
    if(id){
     if(!permitted(employee,(plating?'plating':'warehouse')+'.photos'))return json({error:'沒有照片管理權限'},403);
     const file=await env.UPLOADS.head(key);if(!file)return json({error:'找不到圖片'},404);
-    await env.UPLOADS.delete(key);return json({deleted:true});
+    await env.UPLOADS.delete(key);await env.UPLOADS.delete('thumbnails/'+key);return json({deleted:true});
    }
    if(employee.role!=='supervisor')return json({error:'只有主管可以永久刪除全部照片'},403);
-   let cursor;do{const result=await env.UPLOADS.list({prefix,limit:1000,cursor});if(result.objects.length)await env.UPLOADS.delete(result.objects.map(o=>o.key));cursor=result.truncated?result.cursor:undefined;}while(cursor);
+   let cursor;do{const result=await env.UPLOADS.list({prefix,limit:1000,cursor});if(result.objects.length)await env.UPLOADS.delete(result.objects.flatMap(o=>[o.key,'thumbnails/'+o.key]));cursor=result.truncated?result.cursor:undefined;}while(cursor);
    return json({deleted:true});
   }
   if(request.method!=='POST')return json({error:'不支援的操作'},405);
@@ -259,18 +259,16 @@ export async function images(request,env){
   const kind=url.searchParams.get('kind')||'dispatch';
   if(plating&&!['dispatch','area'].includes(kind))return json({error:'照片類別不正確'},400);
   const limit=2*1024*1024;
-  const reader=request.body?.getReader();if(!reader)return json({error:'請選擇圖片'},400);
-  const chunks=[];let size=0;
-  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();return json({error:logo?'LOGO 限 2 MB':'收據圖片壓縮後仍須小於 2 MB'},413);}chunks.push(value);}
-  const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
+  const {bytes,thumbnail}=await readPhotoUpload(request);
   const hex=Array.from(bytes.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join('');
   const type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;
   if(!type)return json({error:'請上傳 PNG、JPG 或 WebP 圖片'},415);
   let name='圖片';try{name=decodeURIComponent(request.headers.get('x-file-name')||'圖片').slice(0,200);}catch{}
   const newId=crypto.randomUUID();
   await env.UPLOADS.put(logo?key:prefix+newId,bytes,{httpMetadata:{contentType:type},customMetadata:{name,actor:employee.name||employee.email||'使用者',...(plating?{kind}: {})}});
+  const imageKey=logo?key:prefix+newId;if(thumbnail)await env.UPLOADS.put('thumbnails/'+imageKey,thumbnail,{httpMetadata:{contentType:'image/jpeg'}});else if(logo)await env.UPLOADS.delete('thumbnails/'+imageKey);
   return json({id:newId,created:new Date().toISOString()});
- }catch(e){console.error('image operation failed',e.message);return json({error:'圖片操作未完成，請重試'},500);}
+ }catch(e){console.error('image operation failed',e.message);return json({error:e.status===413?e.message:'圖片操作未完成，請重試'},e.status||500);}
 }
 export async function accessApi(request,env){
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
@@ -319,20 +317,34 @@ export async function wireImages(request,env){
  const id=url.searchParams.get('id');
  if(request.method==='GET'){
   if(!id)return json({items:reel.photos});if(!reel.photos.some(p=>p.id===id))return json({error:'找不到照片'},404);
-  const file=await env.UPLOADS.get(await wirePhotoKey(id));if(!file)return json({error:'找不到照片'},404);
+  const key=await wirePhotoKey(id);const file=(url.searchParams.get('thumb')==='1'?await env.UPLOADS.get('thumbnails/'+key):null)||await env.UPLOADS.get(key);if(!file)return json({error:'找不到照片'},404);
   return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
  }
  if(request.method!=='POST')return json({error:'歷史照片保留，不提供刪除'},405);
  if(request.headers.get('origin')!==url.origin||!permitted(employee,'wire.photos'))return json({error:'沒有上傳權限'},403);
- const reader=request.body?.getReader();check(reader,'請上傳照片');const chunks=[];let size=0;
- while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>2*1024*1024){await reader.cancel();return json({error:'照片必須壓縮至 2 MB 以內'},413);}chunks.push(value);}
- const bytes=new Uint8Array(size);let at=0;for(const x of chunks){bytes.set(x,at);at+=x.length;}
+ const {bytes,thumbnail}=await readPhotoUpload(request);
  const hex=Array.from(bytes.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join(''),type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;check(type,'請上傳 JPG、PNG 或 WebP 圖片');
  const photo={id:crypto.randomUUID(),actor:employee.name,actorId:String(employee.id),created:new Date().toISOString(),name:decodeURIComponent(request.headers.get('x-file-name')||'照片').slice(0,200)||'照片'};
  await env.DB.prepare('INSERT INTO wire_pending_uploads(id,created_at) VALUES (?,?)').bind(photo.id,photo.created).run();
  await env.UPLOADS.put(await wirePhotoKey(photo.id),bytes,{httpMetadata:{contentType:type},customMetadata:{...photo,reelId:reel.id}});
+ if(thumbnail)await env.UPLOADS.put('thumbnails/'+await wirePhotoKey(photo.id),thumbnail,{httpMetadata:{contentType:'image/jpeg'}});
  // Only abandoned staged uploads expire. Committed photos leave this queue in the same transaction as their record.
- try{const stale=await env.DB.prepare('SELECT id FROM wire_pending_uploads WHERE created_at<? LIMIT 20').bind(new Date(Date.now()-48*60*60*1000).toISOString()).all();for(const item of stale.results){await env.UPLOADS.delete(await wirePhotoKey(item.id));await env.DB.prepare('DELETE FROM wire_pending_uploads WHERE id=?').bind(item.id).run();}}catch(err){console.error('pending photo cleanup deferred',err.message);}
+ try{const stale=await env.DB.prepare('SELECT id FROM wire_pending_uploads WHERE created_at<? LIMIT 20').bind(new Date(Date.now()-48*60*60*1000).toISOString()).all();for(const item of stale.results){await env.UPLOADS.delete(await wirePhotoKey(item.id));await env.UPLOADS.delete('thumbnails/'+await wirePhotoKey(item.id));await env.DB.prepare('DELETE FROM wire_pending_uploads WHERE id=?').bind(item.id).run();}}catch(err){console.error('pending photo cleanup deferred',err.message);}
  return json(photo,201);
  }catch(e){return json({error:e.message||'照片上傳失敗'},400);}
+}
+
+// Both parts are bounded before multipart parsing; legacy clients may still send a raw image.
+async function readPhotoUpload(request){
+ const reader=request.body?.getReader();if(!reader)throw Error('請選擇圖片');
+ const chunks=[];let size=0;const multipart=(request.headers.get('content-type')||'').startsWith('multipart/form-data');
+ const limit=2*1024*1024+(multipart?110*1024:0);
+ while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});}chunks.push(value);}
+ const data=new Uint8Array(size);let at=0;for(const c of chunks){data.set(c,at);at+=c.length;}
+ if(!multipart)return {bytes:data,thumbnail:null};
+ const form=await new Response(data,{headers:{'Content-Type':request.headers.get('content-type')}}).formData();
+ const photo=form.get('photo'),thumb=form.get('thumbnail');
+ if(!photo||typeof photo.arrayBuffer!=='function'||photo.size>2*1024*1024)throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});
+ let thumbnail=null;if(thumb){if(typeof thumb.arrayBuffer!=='function'||thumb.size>96*1024)throw Error('縮圖過大');thumbnail=new Uint8Array(await thumb.arrayBuffer());if(thumbnail[0]!==255||thumbnail[1]!==216||thumbnail[2]!==255)throw Error('縮圖格式不正確');}
+ return {bytes:new Uint8Array(await photo.arrayBuffer()),thumbnail};
 }
