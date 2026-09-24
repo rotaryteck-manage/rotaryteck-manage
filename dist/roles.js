@@ -1,14 +1,13 @@
 'use strict';
 const roleNames={viewer:'一般員工',warehouse:'庫房管理',supervisor:'主管'};
-const roleDescriptions={viewer:'可查看資料，新增裁線紀錄與照片，修改自己的裁線紀錄',warehouse:'可收料、領料、管理照片與電鍍紀錄',supervisor:'全區開放，可管理員工、案件、庫房、資訊庫與網站設定'};
+const roleDescriptions={viewer:'依權限設定中的勾選項目開放功能',warehouse:'依權限設定開放功能，另可調整補貨狀態',supervisor:'依權限設定開放操作，另保留管理後台、匯出與補貨狀態權限'};
 let employeesCache=[];
 function applyRoleUI(){
  const role=currentUser.role,label=currentUser.roleLabel||roleNames[role]||'未授權',header=$('.header-actions');
  if(header&&!$('#current-role')){const badge=document.createElement('span');badge.id='current-role';badge.className='role-badge role-'+role;badge.textContent=(currentUser.name||'使用者')+' · '+label;header.prepend(badge);}
  if(header&&!$('#account-actions')){const wrap=document.createElement('span');wrap.id='account-actions';wrap.innerHTML='<button type="button" class="small" id="change-password">修改密碼</button> <button type="button" class="small" id="logout">登出</button>';header.append(wrap);$('#change-password').onclick=passwordDialog;$('#logout').onclick=logout;}
- if(role==='supervisor')return;
  const remove=selectors=>document.querySelectorAll(selectors).forEach(el=>el.remove());
- remove('#edit-site,#content-admin,.audit-fold,#export-cases,#export-warehouse');
+ if(role!=='supervisor')remove('#edit-site,#content-admin,.audit-fold,#export-cases,#export-warehouse');
  if(!canDo('cases.manage'))remove('#new-case,[data-case-status],[data-case-edit],[data-case-up],[data-case-down]');
  if(!canDo('warehouse.manage')){
  remove('#new-project,#deleted-projects,[data-project-up],[data-project-down],.project-order-controls,#rename-project,#delete-project,#import-bom,#add-part,#restore-part,[data-remove],#save-custom');
@@ -17,7 +16,7 @@ function applyRoleUI(){
  }
  if(!canDo('warehouse.stock')&&!canDo('warehouse.manage')){document.querySelectorAll('#receipt-form input,#receipt-form select').forEach(el=>{if(el.type!=='hidden')el.disabled=true;});remove('#receipt-form button[type="submit"]');}
  if(!canDo('warehouse.photos'))remove('#upload-receipts,#receipt-files');
- remove('#export-project-photos,#export-all-photos-main');
+ if(role!=='supervisor')remove('#export-project-photos,#export-all-photos-main');
 }
 async function loadEmployees(){
  const box=$('#employee-list');if(!box)return;
