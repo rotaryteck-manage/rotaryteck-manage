@@ -1,5 +1,5 @@
 // Shared storage codec; the build also produces a browser copy.
-export const recordCollections=['projects','cases','platingProjects','deletedProjects'];
+export const recordCollections=['projects','cases','platingProjects','deletedProjects','wireTypes','wireReels','wireCuts'];
 export function recordKey(kind,id){return JSON.stringify([kind,id]);}
 export function normalizeLogIds(s){const seen=new Set();for(const l of s.logs||[]){if(typeof l.id!=='string'||!l.id||seen.has(l.id))l.id=crypto.randomUUID();seen.add(l.id);}return s;}
 export function stableJSON(value){if(Array.isArray(value))return '['+value.map(stableJSON).join(',')+']';if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stableJSON(value[k])).join(',')+'}';return JSON.stringify(value);}
@@ -9,7 +9,7 @@ export function splitState(s){
   if(recordCollections.includes(name)){
    if(!Array.isArray(value))throw Error('案件清單格式不正確');const ids=[];
    for(const item of value){const id=name==='deletedProjects'?item.project?.id:item.id;if(typeof id!=='string'||!id||ids.includes(id))throw Error('案件編號缺少或重複');ids.push(id);out[recordKey(name,id)]=item;}
-   out[recordKey('order',name)]=ids;
+   out[recordKey('order',name)]=name==='wireCuts'?[]:ids;
   }else if(name==='logs'){
    const ids=new Set();for(const entry of [...value].reverse()){if(typeof entry.id!=='string'||!entry.id||ids.has(entry.id))throw Error('操作紀錄編號缺少或重複');ids.add(entry.id);out[recordKey('log',entry.id)]=entry;}
   }else out[recordKey('root',name)]=value;
@@ -25,7 +25,7 @@ export function joinRecords(records){
   else if(recordCollections.includes(kind)){collections[kind]??=new Map();collections[kind].set(id,value);}
   else throw Error('資料類型不正確');
  }
- for(const name of recordCollections){const entries=collections[name]||new Map(),order=orders[name];if(order===undefined){if(entries.size)throw Error('缺少案件排序');continue;}if(!Array.isArray(order)||order.length!==entries.size||new Set(order).size!==order.length||order.some(id=>!entries.has(id)))throw Error('案件排序與資料不一致');out[name]=order.map(id=>entries.get(id));}
+ for(const name of recordCollections){const entries=collections[name]||new Map(),order=orders[name];if(name==='wireCuts'&&order!==undefined){if(!Array.isArray(order))throw Error('裁線清單格式不正確');out[name]=[...entries.values()].sort((a,b)=>b.time.localeCompare(a.time)||b.id.localeCompare(a.id));continue;}if(order===undefined){if(entries.size)throw Error('缺少案件排序');continue;}if(!Array.isArray(order)||order.length!==entries.size||new Set(order).size!==order.length||order.some(id=>!entries.has(id)))throw Error('案件排序與資料不一致');out[name]=order.map(id=>entries.get(id));}
  out.logs=logs.reverse();out.projects??=[];return out;
 }
 export function diffRecords(before,after,versions={}){
