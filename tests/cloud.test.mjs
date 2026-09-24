@@ -20,11 +20,11 @@ test('shared state, three roles, conflicts and server-side permission enforcemen
  assert.equal((await api(req('GET',null,'worker'),env)).status,403);
  let add=await employeesApi(req('POST',{name:'庫房員工',email:'worker@example.com',role:'warehouse',status:'active'},'owner','https://example.test','/api/employees'),env);assert.equal(add.status,201);
  data=await (await api(req('GET',null,'worker','https://example.test','/api/state'),env)).json();assert.equal(data.currentUser.role,'warehouse');assert.equal(data.state.projects[0].name,'測試');
- const stock=state();stock.projects[0].inventory.part=12;stock.projects[0].parts[0].received=1000002;stock.projects[0].materialLogs=[{time:new Date().toISOString(),actor:'庫房員工',received:[{name:'零件',qty:1}],issued:[]}];stock.logs.unshift({time:new Date().toISOString(),action:'收料',detail:'1',location:'庫房'});assert.equal((await patch(env,stock,'worker')).status,200);
+ const stock=state();stock.projects[0].inventory.part=12;stock.projects[0].parts[0].received=1000002;stock.projects[0].materialLogs=[{time:new Date().toISOString(),actor:'庫房員工',received:[{name:'零件',qty:1}],issued:[]}];stock.logs.unshift({time:new Date().toISOString(),actor:'庫房員工',action:'收料',detail:'1',location:'庫房'});assert.equal((await patch(env,stock,'worker')).status,200);
  const manufactured=structuredClone(stock);manufactured.projects[0].inventory.part=999999;assert.equal((await patch(env,manufactured,'worker')).status,403);
  const forbidden=structuredClone(stock);forbidden.projects[0].name='偷改名稱';assert.equal((await patch(env,forbidden,'worker')).status,403);
  assert.equal((await employeesApi(req('POST',{name:'一般員工',email:'viewer@example.com',role:'viewer',status:'active'},'owner','https://example.test','/api/employees'),env)).status,201);
- assert.equal((await api(req('PUT',{revision:2,state:stock},'viewer','https://example.test','/api/state'),env)).status,403);
+ assert.equal((await api(req('PUT',{revision:2,state:stock},'viewer','https://example.test','/api/state'),env)).status,409);
  const invalid=structuredClone(stock);invalid.projects[0].inventory.part=-1;assert.equal((await patch(env,invalid)).status,400);
 });
 test('configuration rejects executable links and keeps custom data',()=>{const s=state();s.contentDraft={fields:[],pages:[{id:'page',title:'說明',blocks:[{type:'button',action:'link',target:'javascript:alert(1)'}]}]};assert.throws(()=>validate(s));s.contentDraft.pages[0].blocks[0].target='https://example.com';s.projects[0].custom={note:'保留'};assert.equal(validate(s).projects[0].custom.note,'保留');});
