@@ -279,7 +279,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function stateChangeAllowed(before,after,e){
  if(!wireChangeAllowed(before,after,e))return false;
@@ -355,4 +355,37 @@ export async function loginLogo(request,env){
  const file=await env.UPLOADS?.get('thumbnails/'+key)||await env.UPLOADS?.get(key);
  if(!file)return new Response(null,{status:404});
  return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff'}});
+}
+
+// Hourly recycle-bin retention. DB tombstones and photo cleanup jobs commit atomically.
+export async function cleanupDeleted(env,now=Date.now()){
+ await ensureRecordStorage(env);
+ await env.DB.prepare('CREATE TABLE IF NOT EXISTS retention_photo_jobs (job TEXT PRIMARY KEY NOT NULL)').run();
+ for(let attempt=0;attempt<4;attempt++){
+  const current=await readRecordStorage(env),next=structuredClone(current.state),jobs=[];
+  const root='images/'+await scopeKey(STORAGE_OWNER)+'/';
+  const expired=(x)=>{if(!x.purgeAfter||!Number.isFinite(Date.parse(x.purgeAfter))){x.purgeAfter=new Date(now+7*86400000).toISOString();return false;}return Date.parse(x.purgeAfter)<=now;};
+  const removedWire=new Set();
+  next.wireTypes=(next.wireTypes||[]).filter(x=>{if(!x.archived||!expired(x))return true;removedWire.add(x.id);return false;});
+  const removedReels=new Set();
+  next.wireReels=(next.wireReels||[]).filter(x=>{if(!removedWire.has(x.wireId))return true;removedReels.add(x.id);for(const photo of x.photos||[])jobs.push({key:'wire-photos/'+photo.id});return false;});
+  next.wireCuts=(next.wireCuts||[]).filter(x=>!removedReels.has(x.reelId));
+  next.platingProjects=(next.platingProjects||[]).filter(x=>{if(!x.archived||!expired(x))return true;jobs.push({prefix:root+'plating/'+encodeURIComponent(x.id)+'/'});return false;});
+  next.deletedProjects=(next.deletedProjects||[]).filter(x=>{if(!expired(x))return true;jobs.push({prefix:root+'receipts/'+encodeURIComponent(x.project.id)+'/'});return false;});
+  // Do not introduce absent collections into old installations.
+  for(const name of ['wireTypes','wireReels','wireCuts','platingProjects','deletedProjects'])if(!(name in current.state))delete next[name];
+  const before=splitState(current.state),after=splitState(next),writes=[];
+  for(const key of new Set([...Object.keys(before),...Object.keys(after)]))if(stableJSON(before[key])!==stableJSON(after[key]))writes.push({key,body:key in after?JSON.stringify(after[key]):null,revision:(current.versions[key]||0)+1});
+  if(!writes.length)break;
+  const id=crypto.randomUUID();
+  try{await env.DB.batch([
+   env.DB.prepare('INSERT INTO state_commits(request_id,signature,revision,result,created_at) VALUES (?,?,CASE WHEN (SELECT revision FROM state_storage_meta WHERE singleton=1)=? THEN ? ELSE NULL END,?,?)').bind(id,'retention',current.revision,current.revision+1,'{}',new Date(now).toISOString()),
+   ...recordChunks(writes).map(chunk=>env.DB.prepare(`INSERT INTO state_records(record_key,body,revision) SELECT json_extract(value,'$.key'),json_extract(value,'$.body'),json_extract(value,'$.revision') FROM json_each(?) WHERE 1 ON CONFLICT(record_key) DO UPDATE SET body=excluded.body,revision=excluded.revision`).bind(JSON.stringify(chunk))),
+   ...recordChunks(jobs.map(job=>JSON.stringify(job))).map(chunk=>env.DB.prepare('INSERT OR IGNORE INTO retention_photo_jobs(job) SELECT value FROM json_each(?)').bind(JSON.stringify(chunk))),
+   env.DB.prepare('UPDATE state_storage_meta SET revision=? WHERE singleton=1').bind(current.revision+1)
+  ]);break;}catch(e){const latest=await env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1').first();if(latest.revision===current.revision||attempt===3)throw e;}
+ }
+ if(!env.UPLOADS)return;
+ const pending=await env.DB.prepare('SELECT job FROM retention_photo_jobs LIMIT 100').all();
+ for(const row of pending.results){const job=JSON.parse(row.job);if(job.key)await env.UPLOADS.delete([job.key,'thumbnails/'+job.key]);else{let cursor;do{const result=await env.UPLOADS.list({prefix:job.prefix,limit:500,cursor});if(result.objects.length)await env.UPLOADS.delete(result.objects.flatMap(o=>[o.key,'thumbnails/'+o.key]));cursor=result.truncated?result.cursor:undefined;}while(cursor);}await env.DB.prepare('DELETE FROM retention_photo_jobs WHERE job=?').bind(row.job).run();}
 }
