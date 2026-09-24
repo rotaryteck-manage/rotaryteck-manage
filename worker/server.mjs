@@ -279,7 +279,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function stateChangeAllowed(before,after,e){
  if(!wireChangeAllowed(before,after,e))return false;
@@ -347,4 +347,12 @@ async function readPhotoUpload(request){
  if(!photo||typeof photo.arrayBuffer!=='function'||photo.size>2*1024*1024)throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});
  let thumbnail=null;if(thumb){if(typeof thumb.arrayBuffer!=='function'||thumb.size>96*1024)throw Error('縮圖過大');thumbnail=new Uint8Array(await thumb.arrayBuffer());if(thumbnail[0]!==255||thumbnail[1]!==216||thumbnail[2]!==255)throw Error('縮圖格式不正確');}
  return {bytes:new Uint8Array(await photo.arrayBuffer()),thumbnail};
+}
+
+export async function loginLogo(request,env){
+ if(request.method!=='GET')return json({error:'不支援的操作'},405);
+ const key='images/'+await scopeKey(STORAGE_OWNER)+'/logo';
+ const file=await env.UPLOADS?.get('thumbnails/'+key)||await env.UPLOADS?.get(key);
+ if(!file)return new Response(null,{status:404});
+ return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff'}});
 }
