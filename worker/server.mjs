@@ -281,7 +281,17 @@ export async function accessApi(request,env){
 }
 export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
+export function singleLogRemovalAllowed(before,after,e){
+ if(!['warehouse','supervisor'].includes(e.role))return false;
+ const old=before.logs||[],next=after.logs||[];
+ if(old.length!==next.length+1)return false;
+ const ids=new Set(next.map(x=>x.id));
+ if(stableJSON(old.filter(x=>ids.has(x.id)))!==stableJSON(next))return false;
+ const a={...before},b={...after};delete a.logs;delete b.logs;
+ return stableJSON(a)===stableJSON(b);
+}
 export function stateChangeAllowed(before,after,e){
+ if(singleLogRemovalAllowed(before,after,e))return true;
  if(!wireChangeAllowed(before,after,e))return false;
  const supervisor=e.role==='supervisor';
  const added=(after.logs||[]).filter(l=>!(before.logs||[]).some(x=>x.id===l.id));if(!supervisor&&added.some(l=>l.actor!==e.name))return false;
