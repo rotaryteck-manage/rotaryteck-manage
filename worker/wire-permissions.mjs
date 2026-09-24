@@ -4,7 +4,10 @@ export const capabilityNames={
  'plating.view':'電鍍：查看','plating.manage':'電鍍：新增、修改、刪除送鍍紀錄','plating.photos':'電鍍：上傳、刪除照片',
  'wire.view':'線材：查看','wire.create':'線材：新增線材與線捆','wire.edit':'線材：修改線材與線捆','wire.delete':'線材：刪除空白線材與線捆','wire.cut':'線材：新增裁線紀錄','wire.editOwn':'線材：修改自己的裁線紀錄','wire.photos':'線材：上傳照片'
 };
+export const builtinViewer=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos'];
+export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:[...builtinViewer,'warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete']},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
 export async function ensurePermissions(env){await env.DB.batch([
+ env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_order (profile_id TEXT PRIMARY KEY,position INTEGER NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS wire_pending_uploads (id TEXT PRIMARY KEY,created_at TEXT NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_profiles (id TEXT PRIMARY KEY,name TEXT NOT NULL,permissions TEXT NOT NULL)'),
  env.DB.prepare("CREATE TABLE IF NOT EXISTS app_employee_settings (employee_id INTEGER PRIMARY KEY,profile_id TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0)")
@@ -12,11 +15,11 @@ export async function ensurePermissions(env){await env.DB.batch([
 export async function employeePermissions(env,e){
  await ensurePermissions(env);const setting=await env.DB.prepare('SELECT profile_id FROM app_employee_settings WHERE employee_id=?').bind(e.id).first();
  const profile=setting?.profile_id?await env.DB.prepare('SELECT * FROM app_permission_profiles WHERE id=?').bind(setting.profile_id).first():null;
- const viewer=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos'];
- e.profileId=e.role==='viewer'?(setting?.profile_id||''):'';e.roleLabel=e.role==='supervisor'?'主管':e.role==='warehouse'?'庫房管理':profile?.name||'一般員工';
- e.permissions=e.role==='supervisor'?Object.keys(capabilityNames):e.role==='warehouse'?[...viewer,'warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete']:e.profileId?(profile?JSON.parse(profile.permissions):[]):viewer;return e;
+ const built=await env.DB.prepare('SELECT * FROM app_permission_profiles WHERE id=?').bind(e.role).first(),fallback=builtinProfiles.find(p=>p.id===e.role)||builtinProfiles[2];
+ e.profileId=e.role==='viewer'?(setting?.profile_id||''):'';const selected=e.profileId?profile:built;
+ e.roleLabel=selected?.name||fallback.name;e.permissions=selected?JSON.parse(selected.permissions):e.profileId?[]:fallback.permissions;return e;
 }
-export function permitted(e,key){return e.role==='supervisor'||e.permissions?.includes(key);}
+export function permitted(e,key){return Array.isArray(e.permissions)?e.permissions.includes(key):e.role==='supervisor';}
 function wireAssert(ok,message){if(!ok)throw Error(message);}
 export function validateWire(s){
  const types=s.wireTypes||[],reels=s.wireReels||[],cuts=s.wireCuts||[];
@@ -51,8 +54,8 @@ export function wireChangeAllowed(before,after,e){
  else if(!wireEqual(prev,c)){if(e.role!=='supervisor'&&(!permitted(e,'wire.editOwn')||prev.actorId!==String(e.id)))return false;const a={...prev},b={...c};for(const k of ['length','quantity','photoId','updatedAt','updatedBy']){delete a[k];delete b[k];}if(!wireEqual(a,b)||c.updatedBy!==e.name||Number.isNaN(Date.parse(c.updatedAt)))return false;if(c.photoId!==prev.photoId&&br.some(r=>r.photos.some(p=>p.id===c.photoId)))return false;}
  }return true;
 }
-export function visibleState(s,e){if(e.role==='supervisor'||e.role==='warehouse'||!e.profileId)return s;const out=structuredClone(s);for(const [key,collections]of [['cases',['cases']],['warehouse',['projects','deletedProjects']],['plating',['platingProjects']],['wire',['wireTypes','wireReels','wireCuts']]])if(!permitted(e,key+'.view'))for(const c of collections)out[c]=[];
- out.logs=(out.logs||[]).filter(l=>{if(l.project?.startsWith('wire:'))return permitted(e,'wire.view');if(l.project?.startsWith('plating:'))return permitted(e,'plating.view');return false;});return out;}
+export function visibleState(s,e){if(e.role==='supervisor')return s;const out=structuredClone(s);for(const [key,collections]of [['cases',['cases']],['warehouse',['projects','deletedProjects']],['plating',['platingProjects']],['wire',['wireTypes','wireReels','wireCuts']]])if(!permitted(e,key+'.view'))for(const c of collections)out[c]=[];
+ if(e.role!=='supervisor')out.logs=(out.logs||[]).filter(l=>{if(l.project?.startsWith('wire:'))return permitted(e,'wire.view');if(l.project?.startsWith('plating:'))return permitted(e,'plating.view');return false;});return out;}
 export async function wirePhotoKey(id){return 'wire-photos/'+id;}
 export async function verifyWirePhotos(env,before,after,e){
  for(const reel of after.wireReels||[]){const prev=(before.wireReels||[]).find(r=>r.id===reel.id);for(const photo of reel.photos){if(prev?.photos.some(p=>p.id===photo.id))continue;const file=await env.UPLOADS?.head(await wirePhotoKey(photo.id)),m=file?.customMetadata;wireAssert(m&&Date.now()-Date.parse(m.created)<24*60*60*1000&&m.reelId===reel.id&&m.actorId===String(e.id)&&m.actor===photo.actor&&m.created===photo.created&&m.actorId===photo.actorId&&m.name===photo.name,'照片尚未上傳完成或不屬於此線捆，請重新上傳');}}
