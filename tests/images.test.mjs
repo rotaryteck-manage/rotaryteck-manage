@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
-import {images} from '../worker/server.mjs';
+import {images,loginLogo} from '../worker/server.mjs';
 globalThis.fetch=async(input,init={})=>{const auth=new Headers(init.headers).get('authorization')||'';const id=auth.slice(7);return id?Response.json({id,email:id+'@example.com',user_metadata:{name:id}}):Response.json({}, {status:401});};
 function database(){const {db,DB}=sqliteDatabase();const now=new Date().toISOString();db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('owner','owner@example.com','主管','supervisor','active',now,now);db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('viewer','viewer@example.com','一般','viewer','active',now,now);db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('warehouse','warehouse@example.com','庫房','warehouse','active',now,now);db.prepare("INSERT INTO company_state (company_id,body,revision,updated_at) VALUES (?,?,?,?)").run('warehouse-main',JSON.stringify({projects:[],deletedProjects:[{project:{id:'A'}}],platingProjects:[{id:'P',shipments:[{id:'S1'},{id:'S2'}]},{id:'Q',shipments:[{id:'S1'}]}]}),1,now);return DB;}
 test('private images, role enforcement, project ownership and persistent receipts',async()=>{const objects=new Map(),env={SUPABASE_URL:'https://test.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable',SUPABASE_SECRET_KEY:'secret',DB:database(),UPLOADS:{async put(key,body,meta){objects.set(key,{body,...meta,key,uploaded:new Date()});},async get(key){return objects.get(key);},async head(key){return objects.get(key);},async list({prefix}){return {objects:[...objects.values()].filter(x=>x.key.startsWith(prefix)),truncated:false};},async delete(keys){for(const key of Array.isArray(keys)?keys:[keys])objects.delete(key);}}};
@@ -62,4 +62,12 @@ test('thumbnail multipart uploads preserve originals, private access, lists and 
  }
  assert.equal(objects.size,2);
  await images(req('/api/logo','POST',original),env);assert.equal(objects.size,1);assert.deepEqual(new Uint8Array(await(await images(req('/api/logo?thumb=1'),env)).arrayBuffer()),original);
+});
+
+
+test('login exposes only the company logo and rejects writes',async()=>{
+ const keys=[],env={UPLOADS:{async get(key){keys.push(key);return key.startsWith('thumbnails/')?{body:new Uint8Array([255,216,255]),httpMetadata:{contentType:'image/jpeg'}}:null;}}};
+ const response=await loginLogo(new Request('https://test.local/api/login-logo?id=private-photo'),env);
+ assert.equal(response.status,200);assert.equal(response.headers.get('Content-Type'),'image/jpeg');assert.ok(keys.every(k=>k.startsWith('thumbnails/images/')&&k.endsWith('/logo')));
+ assert.equal((await loginLogo(new Request('https://test.local/api/login-logo',{method:'POST'}),env)).status,405);
 });
