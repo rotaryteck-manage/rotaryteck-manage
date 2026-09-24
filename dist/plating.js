@@ -8,7 +8,7 @@ function platingModal(title,body,submit,handler){
  const cancel=$('#cancel-modal'),close=$('#close-modal');if(cancel)cancel.textContent=pt(submit?'cancel':'close');if(close)close.setAttribute('aria-label',pt('close'));
 }
 
-function platingEditAllowed(){return ['supervisor','warehouse'].includes(currentUser.role);}
+function platingEditAllowed(){return canDo('plating.manage');}
 function platingProjects(){return state.platingProjects||[];}
 function platingStatus(s){return s.returned?'completed':'sending';}
 function platingTotals(groups){return groups.reduce((t,g)=>({sets:t.sets+g.sets,pieces:t.pieces+g.sets*g.rings.reduce((n,r)=>n+r.qty,0)}),{sets:0,pieces:0});}
@@ -192,7 +192,7 @@ async function platingPhotoOperation(status,action){
  finally{imageUploading=false;dialog.removeEventListener('cancel',cancel);controls.forEach(([el,disabled])=>el.disabled=disabled);}
 }
 function attachPlatingPhotos(p,s,saved){
- if(!platingEditAllowed())return;
+ if(!canDo('plating.photos'))return;
  const panel=document.createElement('section');panel.className='plating-photo-panel';
  if(!saved){panel.innerHTML='<p class="muted">'+pe('photoSavedFirst')+'</p>';$('#plating-fields').after(panel);return;}
  panel.innerHTML=['dispatch','area'].map(kind=>'<div class="receipt-upload-row"><label class="field">'+pe(kind)+'<input type="file" multiple accept="image/jpeg,image/png,image/webp" data-photo-files="'+kind+'"></label><button type="button" data-photo-upload="'+kind+'">'+pe(kind==='area'?'uploadArea':'uploadDispatch')+'</button></div>').join('')+'<small>'+pe('photoCompress')+'</small><p data-photo-status role="status"></p>';
@@ -219,7 +219,7 @@ function attachPlatingPhotoOverview(p){
    list.replaceChildren();panel.querySelector('[data-photo-count]').textContent='（'+rows.length+'）';
    for(const {s,item}of rows){
     const row=document.createElement('div');row.className='receipt-file-row';const link=document.createElement('a');link.textContent=platingPhotoLabel(s,item);link.href=platingPhotoUrl(p,s)+'&id='+encodeURIComponent(item.id);link.target='_blank';link.rel='noopener';row.append(link);
-    if(canExportPhotos()){const b=document.createElement('button');b.type='button';b.className='small danger-button';b.textContent=pt('delete');b.onclick=async()=>{if(!await confirmAction(pt('photoDelete')))return;await platingPhotoOperation(status,async()=>{const r=await apiFetch(link.getAttribute('href'),{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'照片刪除失敗');addAudit('刪除'+pt(platingPhotoKind(item)),platingPhotoLabel(s,item),pt('title')+' > '+p.name,'plating:'+p.id);await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');});await load();};row.append(b);}list.append(row);
+    if(canDo('plating.photos')){const b=document.createElement('button');b.type='button';b.className='small danger-button';b.textContent=pt('delete');b.onclick=async()=>{if(!await confirmAction(pt('photoDelete')))return;await platingPhotoOperation(status,async()=>{const r=await apiFetch(link.getAttribute('href'),{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'照片刪除失敗');addAudit('刪除'+pt(platingPhotoKind(item)),platingPhotoLabel(s,item),pt('title')+' > '+p.name,'plating:'+p.id);await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');});await load();};row.append(b);}list.append(row);
    }if(!rows.length)list.textContent=pt('photoEmpty');loaded=true;
   }catch(e){list.textContent=e.message;const retry=document.createElement('button');retry.type='button';retry.textContent=pt('photoRetry');retry.onclick=load;list.append(retry);}
   finally{loading=false;}

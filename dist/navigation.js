@@ -1,13 +1,13 @@
 'use strict';
 function managementPages(){
- const pages=[{id:'cases',title:siteText('casesTitle')},{id:'warehouse',title:siteText('heading')},{id:'plating',title:typeof pt==='function'?pt('title'):'電鍍管理'}];
+ const pages=[{id:'cases',title:siteText('casesTitle')},{id:'warehouse',title:siteText('heading')},{id:'plating',title:typeof pt==='function'?pt('title'):'電鍍管理'},{id:'wire',title:typeof wt==='function'?wt('title'):'線材管理'}];
  for(const page of config().pages||[])pages.push({id:'page/'+page.id,title:page.title,page});
  if(currentUser.role==='supervisor')pages.push({id:'audit',title:siteText('auditTitle')});
  return pages;
 }
 function activeManagementPage(){
  let hash;try{hash=decodeURIComponent(location.hash.slice(1));}catch{hash='';}
- return managementPages().find(page=>page.id===hash)||managementPages()[0];
+ return managementPages().find(page=>page.id===hash)||managementPages()[0]||{id:'none',title:'無可查看的管理區'};
 }
 function navigateManagement(id){
  captureDraft();
