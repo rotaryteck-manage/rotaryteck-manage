@@ -47,3 +47,19 @@ test('private images, role enforcement, project ownership and persistent receipt
  assert.equal((await (await images(req(photoUrl),env)).json()).items.length,0);
  assert.equal((await images(req('/api/receipts?project=missing','POST',png),env)).status,404);
 });
+
+test('thumbnail multipart uploads preserve originals, private access, lists and cleanup',async()=>{
+ const objects=new Map(),env={SUPABASE_URL:'https://test.supabase.co',SUPABASE_PUBLISHABLE_KEY:'key',SUPABASE_SECRET_KEY:'secret',DB:database(),UPLOADS:{async put(key,body,meta){objects.set(key,{body,...meta,key,uploaded:new Date()});},async get(k){return objects.get(k)},async head(k){return objects.get(k)},async list({prefix}){return {objects:[...objects.values()].filter(x=>x.key.startsWith(prefix)),truncated:false}},async delete(keys){for(const k of Array.isArray(keys)?keys:[keys])objects.delete(k)}}};
+ const original=new Uint8Array([137,80,78,71,13,10,26,10,0]),thumb=new Uint8Array([255,216,255,0]);
+ const req=(path,method='GET',body,user='owner')=>new Request('https://test.local'+path,{method,headers:{Origin:'https://test.local',...(user?{Authorization:'Bearer '+user}:{})},body});
+ for(const path of ['/api/logo','/api/receipts?project=A','/api/plating-photos?project=P&shipment=S1']){
+ const form=new FormData();form.append('photo',new Blob([original],{type:'image/png'}),'original.png');form.append('thumbnail',new Blob([thumb],{type:'image/jpeg'}),'thumbnail.jpg');
+ const response=await images(req(path,'POST',form),env);assert.equal(response.status,200);const {id}=await response.json();const url=path==='/api/logo'?path:path+'&id='+id;const small=url+(url.includes('?')?'&':'?')+'thumb=1';
+ assert.deepEqual(new Uint8Array(await(await images(req(url),env)).arrayBuffer()),original);
+ const preview=await images(req(small),env);assert.equal(preview.headers.get('Cache-Control'),'private, no-store');assert.deepEqual(new Uint8Array(await preview.arrayBuffer()),thumb);
+ assert.equal((await images(req(small,'GET',undefined,''),env)).status,401);
+ if(path!=='/api/logo'){const list=await(await images(req(path),env)).json();assert.equal(list.items.length,1);await images(req(url,'DELETE'),env);assert.equal((await images(req(small),env)).status,404);}
+ }
+ assert.equal(objects.size,2);
+ await images(req('/api/logo','POST',original),env);assert.equal(objects.size,1);assert.deepEqual(new Uint8Array(await(await images(req('/api/logo?thumb=1'),env)).arrayBuffer()),original);
+});
