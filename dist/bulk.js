@@ -1,3 +1,4 @@
+function retentionLabel(x){return x.purgeAfter?'到期：'+new Date(x.purgeAfter).toLocaleString('zh-TW'):'待啟用 7 天保留期';}
 'use strict';
 const bulkDefinitions={
  cases:{title:'案件管理',key:'cases',section:'#admin-cases',label:x=>x.name+' · '+caseBatchLabel(x)},
@@ -7,7 +8,7 @@ const bulkDefinitions={
  fields:{title:'自訂欄位',draft:'fields',section:'[data-section-key="fields"]',label:x=>x.label},
  pages:{title:'頁面與區塊',draft:'pages',section:'[data-section-key="pages"]',label:x=>x.title}
 };
-function bulkItems(kind,deleted=false){const d=bulkDefinitions[kind];return (d.draft?draftConfig()[d.draft]:state[d.key]||[]).filter(x=>!!x.archived===deleted).map(x=>({id:x.id,label:d.label(x)}));}
+function bulkItems(kind,deleted=false){const d=bulkDefinitions[kind];return (d.draft?draftConfig()[d.draft]:state[d.key]||[]).filter(x=>!!x.archived===deleted).map(x=>({id:x.id,label:d.label(x)+(deleted?' · '+retentionLabel(x):'')}));}
 function selectionDialog(title,items,action,onApply,note=''){
  if(currentUser.role!=='supervisor'||cloudBusy||failedCandidate)return;
  modal(title,'<p>'+esc(note)+'</p><div class="bulk-toolbar"><label><input type="checkbox" id="bulk-all">全選</label><span id="bulk-count">已選 0 筆</span></div><div class="bulk-list">'+items.map(item=>'<label class="bulk-choice"><input type="checkbox" name="bulkId" value="'+esc(String(item.id))+'" '+(item.reason?'disabled':'')+'><span>'+esc(item.label)+(item.reason?'<small>（'+esc(item.reason)+'）</small>':'')+'</span></label>').join('')+(!items.length?'<p>尚無可操作項目</p>':'' )+'</div>',action,async fd=>{const ids=fd.getAll('bulkId'),selected=items.filter(x=>ids.includes(String(x.id))&&!x.reason);if(!selected.length)throw Error('請先勾選項目');if(!await confirmAction('確定'+action+' '+selected.length+' 筆？\n'+selected.map(x=>x.label).join('\n')))return;await onApply(selected);$('#modal').close();renderAdmin();toast('已完成'+action+' '+selected.length+' 筆');});
@@ -16,12 +17,12 @@ function selectionDialog(title,items,action,onApply,note=''){
 async function applyBulkState(kind,items,restore=false){
  if(currentUser.role!=='supervisor'||cloudBusy||failedCandidate)throw Error('目前無法儲存，請先處理上方提示');const d=bulkDefinitions[kind],ids=new Set(items.map(x=>x.id)),next=structuredClone(state);
  if(d.draft){const draft=draftConfig();draft[d.draft]=draft[d.draft].filter(x=>!ids.has(x.id));next.contentDraft=draft;}
- else if(d.archive){for(const item of next[d.key]||[])if(ids.has(item.id)){if(restore)delete item.archived;else item.archived=true;}}
- else if(kind==='warehouse'){next.deletedProjects??=[];next.projects.forEach((p,index)=>{if(ids.has(p.id))next.deletedProjects.unshift({project:p,index,deletedAt:new Date().toISOString(),draft:drafts[p.id]||null});});next.projects=next.projects.filter(p=>!ids.has(p.id));}
+ else if(d.archive){for(const item of next[d.key]||[])if(ids.has(item.id)){if(restore){delete item.archived;delete item.deletedAt;delete item.purgeAfter;}else{item.archived=true;item.deletedAt=new Date().toISOString();item.purgeAfter=new Date(Date.now()+7*86400000).toISOString();}}}
+ else if(kind==='warehouse'){next.deletedProjects??=[];next.projects.forEach((p,index)=>{if(ids.has(p.id))next.deletedProjects.unshift({project:p,index,deletedAt:new Date().toISOString(),purgeAfter:new Date(Date.now()+7*86400000).toISOString(),draft:drafts[p.id]||null});});next.projects=next.projects.filter(p=>!ids.has(p.id));}
  else next[d.key]=(next[d.key]||[]).filter(x=>!ids.has(x.id));
  state=next;for(const item of items)addAudit(restore?'還原':'刪除',item.label,'管理後台 > '+d.title,kind==='wire'?'wire:'+item.id:kind==='plating'?'plating:'+item.id:'');await saveCloud(state);if(failedCandidate)throw Error('尚未儲存成功，請處理上方提示');if(kind==='warehouse')for(const id of ids){delete drafts[id];if(selectedId===id)selectedId='';}
 }
-function openBulk(kind,onlyId,restore=false){const d=bulkDefinitions[kind];const items=bulkItems(kind,restore).filter(x=>!onlyId||x.id===onlyId);selectionDialog(d.title+' · '+(restore?'已刪除清單':onlyId?'刪除':'批量刪除'),items,restore?'還原':'刪除',selected=>applyBulkState(kind,selected,restore),restore?'勾選要還原的項目。':d.archive||kind==='warehouse'?'刪除後可從已刪除清單還原，照片與紀錄會保留。':d.draft?'從草稿移除；發布網站設定後才套用到前台。':'刪除後無法復原，請確認勾選項目。');}
+function openBulk(kind,onlyId,restore=false){const d=bulkDefinitions[kind];const items=bulkItems(kind,restore).filter(x=>!onlyId||x.id===onlyId);selectionDialog(d.title+' · '+(restore?'已刪除清單':onlyId?'刪除':'批量刪除'),items,restore?'還原':'刪除',selected=>applyBulkState(kind,selected,restore),restore?'勾選要還原的項目。刪除後保留 7 天，到期由伺服器每小時清理，永久刪除資料與所屬照片。':d.archive||kind==='warehouse'?'刪除後保留 7 天，可從已刪除清單還原；到期永久刪除資料與所屬照片。':d.draft?'從草稿移除；發布網站設定後才套用到前台。':'刪除後無法復原，請確認勾選項目。');}
 function installBulkControls(){
  if(currentUser.role!=='supervisor')return;
  for(const [kind,d]of Object.entries(bulkDefinitions)){const section=document.querySelector(d.section);if(!section||section.querySelector('[data-bulk-kind]'))continue;const bar=document.createElement('div');bar.className='admin-actions';const button=document.createElement('button');button.type='button';button.dataset.bulkKind=kind;button.textContent='批量刪除';button.onclick=()=>openBulk(kind);bar.append(button);

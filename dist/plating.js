@@ -161,7 +161,7 @@ const renderBeforePlating=render;render=function(){renderBeforePlating();if(acti
 async function deletePlatingProject(id){
  if(currentUser.role!=='supervisor'||cloudBusy||failedCandidate)return;
  const p=platingFind(id);if(!p||!await confirmAction(pt('deleteProjectPrompt')+' '+p.name))return;
- try{p.archived=true;await platingCommit('刪除電鍍案件',p,p.name);renderAdmin();}catch(e){toast(e.message);}
+ try{p.archived=true;p.deletedAt=new Date().toISOString();p.purgeAfter=new Date(Date.now()+7*86400000).toISOString();await platingCommit('刪除電鍍案件',p,p.name);renderAdmin();}catch(e){toast(e.message);}
 }
 const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
  renderAdminBeforePlating();if(currentUser.role!=='supervisor')return;
