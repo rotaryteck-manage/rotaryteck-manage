@@ -25,7 +25,7 @@ function renderWire(){
  grid.querySelectorAll('[data-wire-move]').forEach(b=>b.onclick=()=>{const target=ids[ids.indexOf(b.dataset.wireMove)+step(b.dataset.direction)];return moveWireTile(b.dataset.wireMove,target,ids,false,q);});
 
  }
- $('#wire-batch-cut')?.addEventListener('click',openWireBatchCut);$('#wire-restock').onclick=openWireRestock;$('#wire-search').oninput=e=>draw(e.target.value);$('#wire-new')?.addEventListener('click',()=>editWireType());$('#wire-ledger').onclick=()=>openWireLedger();$('#wire-export')?.addEventListener('click',()=>exportWire());draw();
+ $('#wire-batch-cut')?.addEventListener('click',openWireBatchCut);$('#wire-restock').onclick=()=>openWireRestock(false);$('#wire-search').oninput=e=>draw(e.target.value);$('#wire-new')?.addEventListener('click',()=>editWireType());$('#wire-ledger').onclick=()=>openWireLedger();$('#wire-export')?.addEventListener('click',()=>exportWire());draw();
 }
 function wireGridColumns(grid){const columns=getComputedStyle(grid).gridTemplateColumns.trim();const repeat=columns.match(/^repeat\((\d+),/);if(repeat)return Number(repeat[1]);if(columns&&columns!=='none')return columns.split(/\s+/).length;return window.innerWidth<=350?1:window.innerWidth<=650?2:window.innerWidth<=1000?3:4;}
 window.addEventListener('resize',()=>$('#wire-grid')?.updateWireControls?.());

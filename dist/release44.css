@@ -19,3 +19,19 @@ body .management-nav button.selected,body .admin-tabs button.selected,body #ledg
 body .login-page{background:var(--ui-background,#f4f6f3)}body #cloud-status,body .role-badge,body .plating-group,body #plating-fields>.form-grid,body #warehouse-dialog .receipt-controls{background:var(--ui-rowAlt,#f3f7ef);color:var(--ui-text,#234336);border-color:var(--ui-border,#cad8c9)}body .role-badge.role-supervisor{background:var(--ui-primary,#244f3c);color:var(--ui-primaryText,#fff)}body #plating-total{background:var(--ui-tableHead,#e7eedf);color:var(--ui-text,#234336)}body .ledger-status.sending{color:var(--ui-info,#1769aa)}body .ledger-status.completed{color:var(--ui-success,#237642)}
 [data-equal-controls]>button:not(.project-row):not(.wire-thumb):not(.plating-open):not(#close-modal):not(.mini-action):not(.text-log-delete),[data-equal-controls]>a.admin-back-button,[data-equal-controls]>a.admin-back-link{min-height:var(--action-height,42px)}
 #app .wire-head44 .wire-tools button:not(.project-row):not(.wire-thumb){min-height:max(36px,var(--action-height,36px))!important}.compact-admin44 .admin-row button:not(.project-name-link){min-height:max(34px,var(--action-height,34px))!important}
+
+/* v45: compact case cards and continuous, theme-aware warehouse rows. */
+body .case-card{padding:8px 9px;gap:6px}
+body .case-card-main{grid-template-columns:minmax(0,1fr) auto auto;gap:7px}
+body .case-card-main>button{width:auto!important;min-width:0!important;min-height:32px!important;height:auto!important;padding:3px 7px!important;font-size:12px!important}
+body .case-card-meta{grid-template-columns:minmax(0,1fr) auto;font-size:12px;gap:7px;color:var(--ui-muted,#687762)}
+body .case-card-meta>span:last-child:nth-child(3){grid-column:1/-1;text-align:right}
+body .case-card-main strong,body .case-vendor{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body .case-lane-waiting>header{border-top:3px solid var(--ui-warning,#a85a08)!important}
+body .case-lane-running>header{border-top:3px solid var(--ui-info,#1769aa)!important}
+body .case-lane-closed>header{border-top:3px solid var(--ui-success,#237642)!important}
+body .case-lane>.compact-pager{margin:0;padding:10px 6px;border-top:1px solid var(--ui-border,#cad8c9);background:var(--ui-rowAlt,#f3f7ef)}
+body #warehouse-dialog .editable-bom tbody tr:nth-child(odd)>td{background:var(--ui-surface,#fff)}
+body #warehouse-dialog .editable-bom tbody tr:nth-child(even)>td{background:var(--ui-rowAlt,#f3f7ef)}
+body #warehouse-dialog .editable-bom thead th{background:var(--ui-tableHead,#e7eedf)!important}
+body #warehouse-dialog .receipt-controls{background:var(--ui-rowAlt,#f3f7ef);border-color:var(--ui-border,#cad8c9);border-top-width:2px}
