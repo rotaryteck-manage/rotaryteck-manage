@@ -35,3 +35,6 @@ body #warehouse-dialog .editable-bom tbody tr:nth-child(odd)>td{background:var(-
 body #warehouse-dialog .editable-bom tbody tr:nth-child(even)>td{background:var(--ui-rowAlt,#f3f7ef)}
 body #warehouse-dialog .editable-bom thead th{background:var(--ui-tableHead,#e7eedf)!important}
 body #warehouse-dialog .receipt-controls{background:var(--ui-rowAlt,#f3f7ef);border-color:var(--ui-border,#cad8c9);border-top-width:2px}
+
+/* v47 toolbar consistency, including conditional undo. */
+body .production-toolbar>button,body .warehouse-list-tools>button{font-size:14px!important;line-height:1.5!important;padding:8px 12px!important;min-height:42px!important;min-width:128px;align-self:stretch;height:auto!important}
