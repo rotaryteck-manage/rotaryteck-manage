@@ -9,8 +9,9 @@ function applyRoleUI(){
  const remove=selectors=>document.querySelectorAll(selectors).forEach(el=>el.remove());
  if(role!=='supervisor')remove('#edit-site,#content-admin,.audit-fold,#export-cases,#export-warehouse');
  if(!canDo('cases.manage'))remove('#new-case,[data-case-status],[data-case-edit],[data-case-up],[data-case-down]');
+ if(!canDeleteProjectUI('warehouse'))remove('#delete-project');
  if(!canDo('warehouse.manage')){
- remove('#new-project,#deleted-projects,[data-project-up],[data-project-down],.project-order-controls,#rename-project,#delete-project,#import-bom,#add-part,#restore-part,[data-remove],#save-custom');
+ remove('#new-project,#deleted-projects,[data-project-up],[data-project-down],.project-order-controls,#rename-project,#import-bom,#add-part,#restore-part,[data-remove],#save-custom');
  document.querySelectorAll('.name-input,.spec-input,.demand-input,.sets-input,.location-input input,.location-input select,#receipt-form input[name="basketCount"],#receipt-form .admin-card input').forEach(el=>el.readOnly=true);
  document.querySelectorAll('.location-input select,#receipt-form .admin-card select').forEach(el=>el.disabled=true);
  }

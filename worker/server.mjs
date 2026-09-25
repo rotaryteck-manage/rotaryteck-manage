@@ -1,5 +1,5 @@
 import {validateWorkflowState,workflowChangeAllowed} from './workflows.mjs';
-import {builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
+import {canDeleteProject,projectDeletionAllowed,builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
 import {recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x);
@@ -292,12 +292,16 @@ export function singleLogRemovalAllowed(before,after,e){
  return stableJSON(a)===stableJSON(b);
 }
 export function stateChangeAllowed(before,after,e){
+ if(!projectDeletionAllowed(before,after,e))return false;
  if(singleLogRemovalAllowed(before,after,e))return true;
  if(!wireChangeAllowed(before,after,e)||!workflowChangeAllowed(before,after,e))return false;
  const supervisor=e.role==='supervisor';
  const added=(after.logs||[]).filter(l=>!(before.logs||[]).some(x=>x.id===l.id));if(!supervisor&&added.some(l=>l.actor!==e.name))return false;
  if(!supervisor&&!logsOnlyAppend(before,after))return false;
  const a=structuredClone(before),b=structuredClone(after);
+ if(canDeleteProject(e,'plating'))for(const old of a.platingProjects||[]){const n=(b.platingProjects||[]).find(x=>x.id===old.id);if(n&&!old.archived&&n.archived)for(const k of ['archived','deletedAt','purgeAfter'])old[k]=n[k];}
+ if(canDeleteProject(e,'cases'))a.cases=(a.cases||[]).filter(x=>(b.cases||[]).some(n=>n.id===x.id));
+ if(canDeleteProject(e,'warehouse')){const removed=(a.projects||[]).filter(x=>!(b.projects||[]).some(n=>n.id===x.id));a.projects=(a.projects||[]).filter(x=>!removed.includes(x));b.deletedProjects=(b.deletedProjects||[]).filter(entry=>!removed.some(x=>stableJSON(x)===stableJSON(entry.project)));a.deletedProjects??=[];}
  for(const key of ['logs','wireTypes','wireReels','wireCuts']){delete a[key];delete b[key];}
  if(permitted(e,'cases.manage')){delete a.cases;delete b.cases;}
  if(permitted(e,'plating.manage')){delete a.platingProjects;delete b.platingProjects;}

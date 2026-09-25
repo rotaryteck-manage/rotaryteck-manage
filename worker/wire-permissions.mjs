@@ -1,12 +1,13 @@
 import {restockChangeAllowed} from './workflows.mjs';
 export const capabilityNames={
- 'cases.view':'案件：查看','cases.manage':'案件：新增、修改、刪除、排序',
- 'warehouse.view':'庫房：查看','warehouse.stock':'庫房：收料、領料','warehouse.manage':'庫房：建立、修改、刪除專案與零件','warehouse.photos':'庫房：上傳、刪除照片',
+ 'cases.deleteProject':'案件：刪除專案（限主管）','warehouse.deleteProject':'庫房：刪除專案（限主管）','plating.deleteProject':'電鍍：刪除專案（限倉管、主管）','wire.deleteProject':'線材：刪除專案（限倉管、主管）',
+ 'cases.view':'案件：查看','cases.manage':'案件：新增、修改、排序',
+ 'warehouse.view':'庫房：查看','warehouse.stock':'庫房：收料、領料','warehouse.manage':'庫房：建立、修改專案與管理零件','warehouse.photos':'庫房：上傳、刪除照片',
  'plating.view':'電鍍：查看','plating.manage':'電鍍：新增、修改、刪除送鍍紀錄','plating.photos':'電鍍：上傳、刪除照片',
  'wire.view':'線材：查看','wire.create':'線材：新增線材與線捆','wire.edit':'線材：修改線材與線捆','wire.delete':'線材：刪除空白線材與線捆','wire.cut':'線材：新增裁線紀錄','wire.editOwn':'線材：修改自己的裁線紀錄','wire.photos':'線材：上傳照片'
 };
 export const builtinViewer=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos'];
-export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:[...builtinViewer,'warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete']},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
+export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:[...builtinViewer,'wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete']},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
 export async function ensurePermissions(env){await env.DB.batch([
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_order (profile_id TEXT PRIMARY KEY,position INTEGER NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS wire_pending_uploads (id TEXT PRIMARY KEY,created_at TEXT NOT NULL)'),
@@ -39,7 +40,7 @@ export function wireChangeAllowed(before,after,e){
  for(const [old,list]of [[bt,at],[br,ar]]){
   for(const x of old)if(!list.some(n=>n.id===x.id)&&(!permitted(e,'wire.delete')||(old===br&&(x.photos.length||bc.some(c=>c.reelId===x.id)))||(old===bt&&br.some(r=>r.wireId===x.id))))return false;
   for(const x of list){const prev=old.find(n=>n.id===x.id);if(!prev){if(!permitted(e,'wire.create')||(old===br&&(x.status!=='enough'||x.photos.length||x.restock||x.restockHistory)))return false;continue;}
-   if(old===bt){if(!wireEqual(prev,x)&&!permitted(e,'wire.edit'))return false;}
+   if(old===bt){const a={...prev},b={...x};if(!prev.archived&&x.archived&&canDeleteProject(e,'wire'))for(const k of ['archived','deletedAt','purgeAfter']){delete a[k];delete b[k];}if(!wireEqual(a,b)&&!permitted(e,'wire.edit'))return false;}
    else{const a={...prev},b={...x};delete a.photos;delete b.photos;delete a.status;delete b.status;delete a.restock;delete b.restock;delete a.restockHistory;delete b.restockHistory;if(!restockChangeAllowed(prev,x,e))return false;
     if(!wireEqual(a,b)&&!permitted(e,'wire.edit'))return false;
     if(prev.wireId!==x.wireId)return false;
@@ -60,4 +61,11 @@ export function visibleState(s,e){if(e.role==='supervisor')return s;const out=st
 export async function wirePhotoKey(id){return 'wire-photos/'+id;}
 export async function verifyWirePhotos(env,before,after,e){
  for(const reel of after.wireReels||[]){const prev=(before.wireReels||[]).find(r=>r.id===reel.id);for(const photo of reel.photos){if(prev?.photos.some(p=>p.id===photo.id))continue;const file=await env.UPLOADS?.head(await wirePhotoKey(photo.id)),m=file?.customMetadata;wireAssert(m&&Date.now()-Date.parse(m.created)<24*60*60*1000&&m.reelId===reel.id&&m.actorId===String(e.id)&&m.actor===photo.actor&&m.created===photo.created&&m.actorId===photo.actorId&&m.name===photo.name,'照片尚未上傳完成或不屬於此線捆，請重新上傳');}}
+}
+
+export function canDeleteProject(e,kind){return (['wire','plating'].includes(kind)?['warehouse','supervisor'].includes(e.role):e.role==='supervisor')&&permitted(e,kind+'.deleteProject');}
+export function projectDeletionAllowed(before,after,e){
+ for(const [kind,key] of [['cases','cases'],['warehouse','projects'],['plating','platingProjects'],['wire','wireTypes']]){
+  for(const old of before[key]||[]){const n=(after[key]||[]).find(x=>x.id===old.id);if((!n||(!old.archived&&n.archived))&&!canDeleteProject(e,kind))return false;}
+ }return true;
 }

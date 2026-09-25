@@ -121,6 +121,7 @@ function openPlating(id){
  const p=platingFind(id);if(!p)return;
  const can=platingEditAllowed(),logs=(state.logs||[]).filter(l=>l.project==='plating:'+id);
  platingModal(esc(p.name),'<div class="plating-actions">'+(can?'<button type="button" id="plating-rename">'+pe('edit')+'</button><button type="button" class="primary" id="shipment-new">＋ '+pe('newShipment')+'</button>':'')+'</div><div class="plating-shipments">'+(p.shipments.map(s=>'<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><strong>'+esc(platingCount(s))+'</strong><span>'+esc(platingDate(s.sent))+'</span><span>'+pe(platingStatus(s))+'</span></button>').join('')||'<p>'+pe('empty')+'</p>')+'</div><details class="plating-history"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>textLogLine(l,receiptTime(l.time)+'｜'+(l.actor||'未記錄人員')+'｜'+concisePlatingLog(l))).join('')+'</details>','',null);
+ projectMore51('plating',id,$('#modal .plating-actions'));
  attachPlatingPhotoOverview(p);
  $('#plating-rename')?.addEventListener('click',()=>editPlatingProject(id));$('#shipment-new')?.addEventListener('click',()=>editPlatingShipment(id));
  document.querySelectorAll('[data-shipment]').forEach(b=>b.onclick=()=>editPlatingShipment(id,b.dataset.shipment));
@@ -158,11 +159,7 @@ function editPlatingShipment(projectId,shipmentId,copy=false){
  $('#shipment-delete')?.addEventListener('click',async()=>{if(!await confirmAction(pt('deletePrompt')))return;try{p.shipments=p.shipments.filter(x=>x.id!==s.id);await platingCommit('刪除送鍍紀錄',p,platingCount(s));openPlating(projectId);}catch(e){$('#form-error').textContent=e.message;}});
 }
 const renderBeforePlating=render;render=function(){renderBeforePlating();if(activeManagementPage().id==='plating')renderPlating();};
-async function deletePlatingProject(id){
- if(currentUser.role!=='supervisor'||cloudBusy||failedCandidate)return;
- const p=platingFind(id);if(!p||!await confirmAction(pt('deleteProjectPrompt')+' '+p.name))return;
- try{p.archived=true;p.deletedAt=new Date().toISOString();p.purgeAfter=new Date(Date.now()+7*86400000).toISOString();await platingCommit('刪除電鍍案件',p,p.name);renderAdmin();}catch(e){toast(e.message);}
-}
+async function deletePlatingProject(id){return archiveProject51('plating',id);}
 const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
  renderAdminBeforePlating();if(currentUser.role!=='supervisor')return;
  const card=document.createElement('details');card.className='admin-card';card.innerHTML='<summary><h2>'+pe('title')+'</h2></summary><div class="admin-card-body"><div class="plating-actions"><button type="button" id="plating-text">'+pe('textSettings')+'</button><button type="button" id="admin-plating-new">＋ '+pe('newProject')+'</button><a class="admin-back-button" href="#plating">'+pe('open')+'</a></div>'+platingProjects().map((p,i)=>'<div class="admin-row"><strong>'+esc(p.name)+'</strong><button type="button" data-plating-admin-open="'+esc(p.id)+'">'+pe('edit')+'</button><button type="button" data-plating-admin-move="'+esc(p.id)+'" data-delta="-1" '+(i===0?'disabled':'')+'>'+pe('previous')+'</button><button type="button" data-plating-admin-move="'+esc(p.id)+'" data-delta="1" '+(i===platingProjects().length-1?'disabled':'')+'>'+pe('next')+'</button><button type="button" class="danger-button" data-plating-admin-delete="'+esc(p.id)+'">'+pe('delete')+'</button></div>').join('')+'</div>';$('main').append(card);
