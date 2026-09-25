@@ -1,3 +1,4 @@
+import {validateWorkflowState,workflowChangeAllowed} from './workflows.mjs';
 import {builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
 import {recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
@@ -28,7 +29,7 @@ export function validatePlating(projects=[]){
 }
 export function validate(s){
  check(object(s)&&Array.isArray(s.projects),'專案資料格式不正確');
- validatePlating(s.platingProjects);validateWire(s);
+ validatePlating(s.platingProjects);validateWire(s);validateWorkflowState(s);
  if(s.platingVendors!==undefined)check(Array.isArray(s.platingVendors)&&s.platingVendors.length<=200&&s.platingVendors.every(v=>typeof v==='string'&&v.trim()===v&&v.length>0&&v.length<=100)&&new Set(s.platingVendors.map(v=>v.toLowerCase())).size===s.platingVendors.length,'電鍍廠商選項不正確');
  if(s.platingText!==undefined){check(object(s.platingText),'電鍍文字設定不正確');for(const v of Object.values(s.platingText))check(typeof v==='string'&&v.trim()&&v.length<=100,'電鍍文字設定不正確');}
  const cases=s.cases??[];check(Array.isArray(cases)&&cases.length<=1000,'案件資料格式不正確');const caseIds=new Set();
@@ -95,11 +96,11 @@ export function warehouseChangeAllowed(before,after){
  if(a.projects.length!==b.projects.length)return false;
  for(const next of b.projects){
  const prev=a.projects.find(p=>p.id===next.id);if(!prev||prev.parts.length!==next.parts.length)return false;
-  const oldMaterial=prev.materialLogs||[],newMaterial=next.materialLogs||[];if(newMaterial.length<oldMaterial.length||JSON.stringify(newMaterial.slice(newMaterial.length-oldMaterial.length))!==JSON.stringify(oldMaterial))return false;if(prev.materialLogs===undefined)delete next.materialLogs;else next.materialLogs=structuredClone(prev.materialLogs);
+  const oldMaterial=prev.materialLogs||[],newMaterial=next.materialLogs||[];if(newMaterial.length<oldMaterial.length||JSON.stringify(newMaterial.slice(newMaterial.length-oldMaterial.length))!==JSON.stringify(oldMaterial))return false;
   const active=new Set(prev.parts.map(i=>i.id));
   for(const key of new Set([...Object.keys(prev.inventory),...Object.keys(next.inventory)]))if(!active.has(key)&&next.inventory[key]!==prev.inventory[key])return false;
-  for(const part of next.parts){const old=prev.parts.find(i=>i.id===part.id);if(!old)return false;const received=part.received-old.received,oldStock=Number(prev.inventory[part.id]||0),newStock=Number(next.inventory[part.id]||0);if(!int(received)||newStock>oldStock+received)return false;part.received=old.received;}
-  next.inventory=structuredClone(prev.inventory);
+  for(const part of next.parts){const old=prev.parts.find(i=>i.id===part.id);if(!old)return false;const received=part.received-old.received,oldStock=Number(prev.inventory[part.id]||0),newStock=Number(next.inventory[part.id]||0);const correction=(next.materialLogs||[]).find(l=>!(prev.materialLogs||[]).some(x=>x.id===l.id)&&l.correction?.partId===part.id)?.correction;if(received<0){if(!correction||correction.delta!==received||!correction.reason?.trim()||newStock!==oldStock+received)return false;}else if(!int(received)||newStock>oldStock+received)return false;part.received=old.received;}
+  next.inventory=structuredClone(prev.inventory);if(prev.materialLogs===undefined)delete next.materialLogs;else next.materialLogs=structuredClone(prev.materialLogs);
  }
  return stableJSON(a)===stableJSON(b);
 }
@@ -158,7 +159,7 @@ export async function api(request,env){
    if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'格式不正確'},415);
   }
   await ensureRecordStorage(env);
-  if(request.method==='GET'){const data=await readRecordStorage(env);return json({state:visibleState(data.state,employee),versions:data.versions,revision:data.revision,storageVersion:2,currentUser:{id:employee.id,name:employee.name,email:employee.email,role:employee.role,roleLabel:employee.roleLabel,permissions:employee.permissions,profileId:employee.profileId}});}
+  if(request.method==='GET'){const data=await readRecordStorage(env);return json({serverTime:new Date().toISOString(),state:visibleState(data.state,employee),versions:data.versions,revision:data.revision,storageVersion:2,currentUser:{id:employee.id,name:employee.name,email:employee.email,role:employee.role,roleLabel:employee.roleLabel,permissions:employee.permissions,profileId:employee.profileId}});}
   const input=await boundedJSON(request,8*1024*1024);check(input.storageVersion===2&&typeof input.requestId==='string'&&/^[a-f0-9-]{36}$/.test(input.requestId),'請重新整理至新版網站');validateRecordChanges(input.changes);
   const signature=await scopeKey(employee.id+':'+stableJSON(input.changes));
   for(let attempt=0;attempt<4;attempt++){
@@ -279,7 +280,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
  if(!['warehouse','supervisor'].includes(e.role))return false;
@@ -292,7 +293,7 @@ export function singleLogRemovalAllowed(before,after,e){
 }
 export function stateChangeAllowed(before,after,e){
  if(singleLogRemovalAllowed(before,after,e))return true;
- if(!wireChangeAllowed(before,after,e))return false;
+ if(!wireChangeAllowed(before,after,e)||!workflowChangeAllowed(before,after,e))return false;
  const supervisor=e.role==='supervisor';
  const added=(after.logs||[]).filter(l=>!(before.logs||[]).some(x=>x.id===l.id));if(!supervisor&&added.some(l=>l.actor!==e.name))return false;
  if(!supervisor&&!logsOnlyAppend(before,after))return false;
@@ -398,4 +399,10 @@ export async function cleanupDeleted(env,now=Date.now()){
  if(!env.UPLOADS)return;
  const pending=await env.DB.prepare('SELECT job FROM retention_photo_jobs LIMIT 100').all();
  for(const row of pending.results){const job=JSON.parse(row.job);if(job.key)await env.UPLOADS.delete([job.key,'thumbnails/'+job.key]);else{let cursor;do{const result=await env.UPLOADS.list({prefix:job.prefix,limit:500,cursor});if(result.objects.length)await env.UPLOADS.delete(result.objects.flatMap(o=>[o.key,'thumbnails/'+o.key]));cursor=result.truncated?result.cursor:undefined;}while(cursor);}await env.DB.prepare('DELETE FROM retention_photo_jobs WHERE job=?').bind(row.job).run();}
+}
+
+export async function publicAppearance(request,env){
+ if(request.method!=='GET')return json({error:'不支援的操作'},405);
+ try{await ensureRecordStorage(env);const row=await env.DB.prepare('SELECT body FROM state_records WHERE record_key=?').bind(recordKey('root','appearance')).first(),a=row?.body?JSON.parse(row.body):{};
+ return json({colors:{global:a.colors?.global||{},login:a.colors?.login||{}},text:{login:a.text?.login||{}},logoWidth:a.logoWidth,logoHeight:a.logoHeight});}catch{return json({});}
 }

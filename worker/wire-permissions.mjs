@@ -1,3 +1,4 @@
+import {restockChangeAllowed} from './workflows.mjs';
 export const capabilityNames={
  'cases.view':'案件：查看','cases.manage':'案件：新增、修改、刪除、排序',
  'warehouse.view':'庫房：查看','warehouse.stock':'庫房：收料、領料','warehouse.manage':'庫房：建立、修改、刪除專案與零件','warehouse.photos':'庫房：上傳、刪除照片',
@@ -27,7 +28,7 @@ export function validateWire(s){
  for(const list of [types,reels,cuts])wireAssert(Array.isArray(list)&&list.length<=30000&&new Set(list.map(x=>x.id)).size===list.length&&list.every(x=>text(x.id)),'線材資料編號不正確');
  wireAssert(new Set(types.map(x=>x.name?.toLowerCase())).size===types.length,'線材名稱重複');
  for(const t of types)wireAssert(text(t.name),'請填寫線材名稱');
- for(const r of reels){wireAssert(types.some(t=>t.id===r.wireId)&&text(r.number)&&text(r.color)&&['enough','low'].includes(r.status),'線捆資料不正確');wireAssert(reels.filter(x=>x.wireId===r.wireId&&x.number===r.number).length===1,'線捆編號重複');wireAssert(Array.isArray(r.photos)&&new Set(r.photos.map(x=>x.id)).size===r.photos.length,'線材照片格式不正確');for(const p of r.photos)wireAssert(/^[a-f0-9-]{36}$/.test(p.id)&&text(p.actor)&&text(p.actorId)&&text(p.created)&&text(p.name,200),'照片資料不完整');}
+ for(const r of reels){wireAssert(types.some(t=>t.id===r.wireId)&&text(r.number)&&text(r.color)&&['enough','low','ordered'].includes(r.status),'線捆資料不正確');wireAssert(reels.filter(x=>x.wireId===r.wireId&&x.number===r.number).length===1,'線捆編號重複');wireAssert(Array.isArray(r.photos)&&new Set(r.photos.map(x=>x.id)).size===r.photos.length,'線材照片格式不正確');for(const p of r.photos)wireAssert(/^[a-f0-9-]{36}$/.test(p.id)&&text(p.actor)&&text(p.actorId)&&text(p.created)&&text(p.name,200),'照片資料不完整');}
  wireAssert(new Set(cuts.filter(c=>c.photoId).map(c=>c.photoId)).size===cuts.filter(c=>c.photoId).length,'不同裁線紀錄需要各自的照片');
  for(const c of cuts){const r=reels.find(x=>x.id===c.reelId);wireAssert(r&&(c.photoId===undefined||c.photoId===''||typeof c.photoId==='string'&&r.photos.some(p=>p.id===c.photoId)),'裁線紀錄的線捆或照片不正確');wireAssert(text(c.actor)&&text(c.actorId)&&!Number.isNaN(Date.parse(c.time)),'裁線人員或時間不正確');wireAssert(Number.isFinite(c.length)&&c.length>0&&c.length<=1000000&&Number.isSafeInteger(c.quantity)&&c.quantity>0&&c.quantity<=1000000,'裁線長度與條數必須大於零');}
  if(s.wireText!==undefined)wireAssert(s.wireText&&typeof s.wireText==='object'&&Object.values(s.wireText).every(x=>text(x,100)),'線材文字設定不正確');
@@ -37,9 +38,9 @@ export function wireChangeAllowed(before,after,e){
  const bt=before.wireTypes||[],at=after.wireTypes||[],br=before.wireReels||[],ar=after.wireReels||[],bc=before.wireCuts||[],ac=after.wireCuts||[];
  for(const [old,list]of [[bt,at],[br,ar]]){
   for(const x of old)if(!list.some(n=>n.id===x.id)&&(!permitted(e,'wire.delete')||(old===br&&(x.photos.length||bc.some(c=>c.reelId===x.id)))||(old===bt&&br.some(r=>r.wireId===x.id))))return false;
-  for(const x of list){const prev=old.find(n=>n.id===x.id);if(!prev){if(!permitted(e,'wire.create')||(old===br&&(x.status!=='enough'||x.photos.length)))return false;continue;}
+  for(const x of list){const prev=old.find(n=>n.id===x.id);if(!prev){if(!permitted(e,'wire.create')||(old===br&&(x.status!=='enough'||x.photos.length||x.restock||x.restockHistory)))return false;continue;}
    if(old===bt){if(!wireEqual(prev,x)&&!permitted(e,'wire.edit'))return false;}
-   else{const a={...prev},b={...x};delete a.photos;delete b.photos;delete a.status;delete b.status;
+   else{const a={...prev},b={...x};delete a.photos;delete b.photos;delete a.status;delete b.status;delete a.restock;delete b.restock;delete a.restockHistory;delete b.restockHistory;if(!restockChangeAllowed(prev,x,e))return false;
     if(!wireEqual(a,b)&&!permitted(e,'wire.edit'))return false;
     if(prev.wireId!==x.wireId)return false;
     if(prev.status!==x.status&&!['warehouse','supervisor'].includes(e.role)&&!(x.status==='low'&&permitted(e,'wire.view')&&permitted(e,'wire.cut')))return false;
