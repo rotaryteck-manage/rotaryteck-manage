@@ -10,7 +10,7 @@ function platingModal(title,body,submit,handler){
 
 function platingEditAllowed(){return canDo('plating.manage');}
 function platingProjects(){return (state.platingProjects||[]).filter(p=>!p.archived);}
-function platingStatus(s){return s.returned?'completed':'sending';}
+function platingStatus(s){return s.returned||s.status==='completed'?'completed':'sending';}
 function platingTotals(groups){return groups.reduce((t,g)=>({sets:t.sets+g.sets,pieces:t.pieces+g.sets*g.rings.reduce((n,r)=>n+r.qty,0)}),{sets:0,pieces:0});}
 function platingCount(s){return pt('countPrefix')+' '+s.number+' '+pt('countSuffix');}
 function platingDate(d){return d?d.replaceAll('-','/'):'—';}
@@ -44,7 +44,7 @@ function editPlatingVendor(index){
 }
 function platingShipmentDraft(p,source,copy=false){
  const s=JSON.parse(JSON.stringify(source||{vendor:'',groups:[{sets:1,rings:[{name:'',qty:1}]}],note:''}));
- if(!source||copy){s.id=crypto.randomUUID();s.number=Math.max(0,...p.shipments.map(x=>x.number))+1;s.sent=new Date().toLocaleDateString('sv-SE');s.returned='';s.inspection='pending';s.note='';s.welderId='';s.welderName='';}
+ if(!source||copy){s.id=crypto.randomUUID();s.number=Math.max(0,...p.shipments.map(x=>x.number))+1;s.sent=taipeiDate();s.returned='';s.inspection='pending';s.note='';s.welderId='';s.welderName='';delete s.status;delete s.photos;}
  if(!source||copy){const options=platingVendors();if(!options.includes(s.vendor))s.vendor=options[0]||'';}
  return s;
 }
@@ -130,12 +130,12 @@ function editPlatingShipment(projectId,shipmentId,copy=false){
  const s=platingShipmentDraft(p,source,copy);
  const existing=!!source&&!copy;
 
- platingModal(esc(p.name)+' · '+esc(platingCount(s)),'<button type="button" id="plating-back" class="small">← '+pe('back')+'</button><fieldset id="plating-fields" '+(!can?'disabled':'')+'><div class="form-grid">'+platingVendorControl(s.vendor,existing)+field(pe('number'),'number',s.number,'type="number" min="1" max="9999" required')+field(pe('sent'),'sent',s.sent,'type="date" required')+field(pe('returned'),'returned',s.returned,'type="date"')+'<label class="field">'+pe('status')+'<input id="shipment-status" readonly value="'+pe(platingStatus(s))+'"></label><label class="field">'+pe('welder')+'<select name="welder" id="shipment-welder"><option value="'+esc(s.welderId||'')+'">'+esc(s.welderName||pt('chooseWelder'))+'</option></select><small id="welder-message"></small></label></div><h3>'+pe('groups')+'</h3><div id="plating-groups"></div>'+(can?'<button type="button" id="group-add" class="small">＋ '+pe('addGroup')+'</button>':'')+'<p id="plating-total"></p></fieldset>'+(can&&existing?'<div class="plating-actions"><button type="button" id="shipment-copy">'+pe('copy')+'</button><button type="button" id="shipment-delete" class="danger-button">'+pe('delete')+'</button></div>':''),can?pe('save'):'',async fd=>{
+ platingModal(esc(p.name)+' · '+esc(platingCount(s)),(s.status==='completed'&&!s.returned?'<p class="wire-low-warning">此筆舊紀錄標記已完成，但尚未填寫完成回貨日，請補上日期。</p>':'')+'<button type="button" id="plating-back" class="small">← '+pe('back')+'</button><fieldset id="plating-fields" '+(!can?'disabled':'')+'><div class="form-grid">'+platingVendorControl(s.vendor,existing)+field(pe('number'),'number',s.number,'type="number" min="1" max="9999" required')+field(pe('sent'),'sent',s.sent,'type="date" required')+field(pe('returned'),'returned',s.returned,'type="date"')+'<label class="field">'+pe('status')+'<input id="shipment-status" readonly value="'+pe(platingStatus(s))+'"></label><label class="field">'+pe('welder')+'<select name="welder" id="shipment-welder"><option value="'+esc(s.welderId||'')+'">'+esc(s.welderName||pt('chooseWelder'))+'</option></select><small id="welder-message"></small></label></div><h3>'+pe('groups')+'</h3><div id="plating-groups"></div>'+(can?'<button type="button" id="group-add" class="small">＋ '+pe('addGroup')+'</button>':'')+'<p id="plating-total"></p></fieldset>'+(can&&existing?'<div class="plating-actions"><button type="button" id="shipment-delete" class="danger-button">'+pe('delete')+'</button></div>':''),can?pe('save'):'',async fd=>{
  const groups=readGroups();const next={...s,vendor:String(fd.get('vendor')).trim(),number:Number(fd.get('number')),sent:String(fd.get('sent')),returned:String(fd.get('returned')),welderId:String(fd.get('welder')??s.welderId??''),welderName:$('#shipment-welder').selectedOptions[0]?.dataset.name??s.welderName??'',groups};
  if(groups.length>100||groups.some(g=>g.rings.length>100)||!Number.isSafeInteger(platingTotals(groups).pieces))throw Error('配置或數量超過上限');
- if(!next.vendor)throw Error(pt('requiredVendor'));if(p.shipments.some(x=>x.id!==next.id&&x.number===next.number))throw Error(pt('duplicateNumber'));
+ if(!next.welderId.trim()||!next.welderName.trim()){$('#shipment-welder').setAttribute('aria-invalid','true');$('#welder-message').textContent='請先選擇焊接人員';$('#welder-message').classList.add('error');$('#shipment-welder').focus();throw Error('請先選擇焊接人員，才能儲存。');}if(!next.vendor)throw Error(pt('requiredVendor'));if(p.shipments.some(x=>x.id!==next.id&&x.number===next.number))throw Error(pt('duplicateNumber'));
  if(next.returned&&next.returned<next.sent)throw Error(pt('invalidReturn'));
- const changes=existing?platingChanges(source,next):[];
+ if(existing&&source.returned&&!next.returned&&!await confirmAction('清除完成回貨日後會改回送鍍中，確定嗎？'))return;if(next.returned)delete next.status;else if(source?.returned)delete next.status;const changes=existing?platingChanges(source,next):[];
  if(existing&&!changes.length){openPlating(projectId);return;}
  if(existing)p.shipments[p.shipments.findIndex(x=>x.id===s.id)]=next;else p.shipments.push(next);
  await platingCommit(existing?'修改送鍍紀錄':'新增送鍍紀錄',p,platingCount(next)+(changes.length?'｜'+changes.join('；'):''));openPlating(projectId);
