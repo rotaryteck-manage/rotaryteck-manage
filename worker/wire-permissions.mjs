@@ -26,7 +26,7 @@ export function validateWire(s){
  const types=s.wireTypes||[],reels=s.wireReels||[],cuts=s.wireCuts||[];
  const text=(v,max=100)=>typeof v==='string'&&v.trim()&&v.length<=max;
  for(const list of [types,reels,cuts])wireAssert(Array.isArray(list)&&list.length<=30000&&new Set(list.map(x=>x.id)).size===list.length&&list.every(x=>text(x.id)),'線材資料編號不正確');
- wireAssert(new Set(types.map(x=>x.name?.toLowerCase())).size===types.length,'線材名稱重複');
+ wireAssert(new Set(types.filter(x=>!x.archived).map(x=>x.name?.trim().toLowerCase())).size===types.filter(x=>!x.archived).length,'線材名稱重複');
  for(const t of types)wireAssert(text(t.name),'請填寫線材名稱');
  for(const r of reels){wireAssert(types.some(t=>t.id===r.wireId)&&text(r.number)&&text(r.color)&&['enough','low','ordered'].includes(r.status),'線捆資料不正確');wireAssert(reels.filter(x=>x.wireId===r.wireId&&x.number===r.number).length===1,'線捆編號重複');wireAssert(Array.isArray(r.photos)&&new Set(r.photos.map(x=>x.id)).size===r.photos.length,'線材照片格式不正確');for(const p of r.photos)wireAssert(/^[a-f0-9-]{36}$/.test(p.id)&&text(p.actor)&&text(p.actorId)&&text(p.created)&&text(p.name,200),'照片資料不完整');}
  wireAssert(new Set(cuts.filter(c=>c.photoId).map(c=>c.photoId)).size===cuts.filter(c=>c.photoId).length,'不同裁線紀錄需要各自的照片');

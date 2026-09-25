@@ -112,7 +112,7 @@ async function movePlating(id,target){
 function editPlatingProject(id){
  if(!platingEditAllowed())return;const existing=platingFind(id);
  platingModal(pe(existing?'edit':'newProject'),field(pe('name'),'name',existing?.name||'','required maxlength="100"'),pe('save'),async fd=>{
- const name=String(fd.get('name')).trim();if(!name)throw Error(pt('requiredName'));if((state.platingProjects||[]).some(p=>p.id!==id&&p.name.toLowerCase()===name.toLowerCase()))throw Error(pt('duplicateName'));
+ const name=String(fd.get('name')).trim();if(!name)throw Error(pt('requiredName'));if((state.platingProjects||[]).some(p=>!p.archived&&p.id!==id&&p.name.trim().toLowerCase()===name.toLowerCase()))throw Error(pt('duplicateName'));
  if(existing?.name===name){openPlating(id);return;}
  const oldName=existing?.name;const p=existing||{id:crypto.randomUUID(),shipments:[]};p.name=name;if(!existing){state.platingProjects??=[];state.platingProjects.push(p);}await platingCommit(existing?'修改案名':'新增案件',p,existing?oldName+' → '+name:'');openPlating(p.id);
  });

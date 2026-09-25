@@ -42,3 +42,5 @@ body .production-toolbar>button,body .warehouse-list-tools>button{font-size:14px
 /* v48: warehouse names follow the case-list heading typography. */
 body .compact-admin44 .admin-row>strong>.project-name-link{display:block;width:auto!important;min-width:0!important;max-width:100%;min-height:0!important;height:auto!important;padding:0!important;border:0!important;border-radius:0;background:transparent!important;box-shadow:none;text-align:left!important;font:inherit!important;color:inherit!important;line-height:inherit!important;text-decoration:none;overflow-wrap:anywhere}
 body .compact-admin44 .admin-row>strong>.project-name-link:hover{text-decoration:underline}
+
+.admin-item-picker49{display:grid;gap:8px}.admin-item-picker49 button{text-align:left;overflow-wrap:anywhere}
