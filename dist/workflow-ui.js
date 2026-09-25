@@ -12,6 +12,7 @@ openWireRestock=function(history=false){
  for(const r of wireReels().filter(r=>wireType(r.wireId))){if(history){for(const c of r.restockHistory||[])entries.push({r,c});if(r.restock&&!restockActive(r,Date.now()+serverClockOffset44))entries.push({r,c:r.restock});}else if(restockActive(r,Date.now()+serverClockOffset44))entries.push({r,c:r.restock||{}});}
  function cell(r,c,key){const v=c[key],action=key==='ordered'?'order':'receive';if(v)return '<span>'+esc(time44(v.time)+'｜'+v.actor)+'</span>'+(!history&&manager?'<button type="button" class="mini-action" data-restock="'+r.id+'" data-action="'+(key==='ordered'?'undoOrder':'undoReceive')+'" '+(key==='ordered'&&c.received?'disabled title="請先撤銷已入庫"':'')+'>撤銷</button>':'')+(key==='received'&&!history?'<small class="retention-hint">＊'+esc(time44(Date.parse(v.time)+7*86400000))+' 自動移至補貨歷史</small>':'');return !history&&manager?'<label><input type="checkbox" data-restock="'+r.id+'" data-action="'+action+'" '+(key==='ordered'&&c.received?'disabled':'')+'> '+(key==='ordered'?'已訂購':'已入庫')+'</label>':'—';}
  wireModal(history?'補貨歷史':wt('restockList'),'<div id="restock-view44" data-history="'+history+'"></div><div class="wire-tools"><button type="button" id="restock-toggle">'+(history?'返回補貨名單':'補貨歷史')+'</button>'+(currentUser.role==='supervisor'?'<button type="button" id="restock-export">匯出補貨歷史</button>':'')+'</div><div class="ledger-scroll"><table class="ledger-table restock-table"><thead><tr><th>線材／顏色</th><th>狀態</th><th>已訂購</th><th>已入庫</th>'+(history?'<th>操作歷史</th>':'')+'</tr></thead><tbody>'+entries.map(({r,c})=>'<tr><td>'+esc(wireType(r.wireId).name+'｜'+r.color)+'</td><td><span class="wire-status '+(history?'enough':r.status)+'">'+esc(history?(c.received?'已入庫':'已結束'):wt(r.status))+'</span></td><td>'+cell(r,c,'ordered')+'</td><td>'+cell(r,c,'received')+'</td>'+(history?'<td><details><summary>查看</summary>'+(c.events||[]).map(e=>'<p>'+esc(({low:'標記需補貨',order:'已訂購',receive:'已入庫',undoOrder:'撤銷訂購',undoReceive:'撤銷入庫'})[e.action]+'｜'+time44(e.time)+'｜'+e.actor)+'</p>').join('')+'</details></td>':'')+'</tr>').join('')+'</tbody></table></div>'+(!entries.length?'<p>目前沒有符合的紀錄</p>':''));
+ if(!history&&manager){const button=document.createElement('button');button.type='button';button.id='restock-bulk';button.textContent='批量操作';button.onclick=()=>openRestockBulk46();$('#restock-toggle').before(button);}
  $('#restock-toggle').onclick=()=>openWireRestock(!history);document.querySelectorAll('[data-restock]').forEach(b=>b.onclick=()=>{if(b.type==='checkbox')b.checked=false;restockAction(b.dataset.restock,b.dataset.action,()=>openWireRestock(history));});$('#restock-export')?.addEventListener('click',exportRestock44);
 };
 function restockExportRows(){return [['線材','顏色','補貨輪次','動作','時間','人員'],...wireReels().flatMap(r=>[...(r.restockHistory||[]),...(r.restock?[r.restock]:[])].flatMap(c=>(c.events||[]).map(e=>[wireType(r.wireId)?.name||'',r.color,c.id,({low:'需補貨',order:'已訂購',receive:'已入庫',undoOrder:'撤銷訂購',undoReceive:'撤銷入庫'})[e.action],time44(e.time),e.actor])))];}
@@ -67,3 +68,28 @@ const manualPart44=manualPart;manualPart=function(){manualPart44();const p=proje
 const editCase44=editCase;editCase=function(...args){editCase44(...args);const status=$('#modal [name=status]'),actual=$('#modal [name=actualClosedDate]');if(!status||!actual)return;const original=state.cases.find(c=>c.id===args[0]);function sync(){actual.closest('label').hidden=status.value!=='結案';if(status.value==='結案'&&original?.status!=='結案'&&!actual.value)actual.value=taipeiDate();}status.addEventListener('change',sync);sync();};
 
 setInterval(()=>{const marker=$('#restock-view44');if(marker&&marker.dataset.history==='false'&&$('#modal').open&&!document.querySelector('[data-confirmation]')){const visible=[...$('#modal').querySelectorAll('[data-action=undoReceive]')].map(b=>wireReel(b.dataset.restock));if(visible.some(r=>r&&!restockActive(r,Date.now()+serverClockOffset44)))openWireRestock();}},60000);
+
+// Batch replenishment uses the same per-reel transition validation and one save.
+function openRestockBulk46(action='order'){
+ if(!['warehouse','supervisor'].includes(currentUser.role))return;
+ const eligible=wireReels().filter(r=>wireType(r.wireId)&&(action==='order'?r.status==='low'&&!r.restock?.ordered&&!r.restock?.received:['low','ordered'].includes(r.status)&&!r.restock?.received));
+ wireModal('補貨批量操作','<div class="wire-tools"><button type="button" id="bulk-back46">返回補貨名單</button><label>操作 <select id="bulk-action46"><option value="order" '+(action==='order'?'selected':'')+'>已訂購</option><option value="receive" '+(action==='receive'?'selected':'')+'>已入庫</option></select></label></div><p>僅顯示可執行此操作的項目。</p><label><input type="checkbox" id="bulk-all46"> 全選</label><span id="bulk-count46">已選 0 筆</span><div class="ledger-scroll"><table class="ledger-table"><thead><tr><th>勾選</th><th>線材／顏色</th><th>狀態</th></tr></thead><tbody>'+eligible.map(r=>'<tr><td><input type="checkbox" class="bulk-reel46" value="'+esc(r.id)+'" aria-label="'+esc(wireType(r.wireId).name+'｜'+r.color)+'"></td><td>'+esc(wireType(r.wireId).name+'｜'+r.color)+'</td><td>'+esc(wt(r.status))+'</td></tr>').join('')+'</tbody></table></div>'+(!eligible.length?'<p>目前沒有可批量處理的項目。</p>':''),'save',async()=>{
+ const ids=[...document.querySelectorAll('.bulk-reel46:checked')].map(el=>el.value);
+ if(!ids.length)throw Error('請先勾選要處理的項目');
+ const label=action==='order'?'已訂購':'已入庫';
+ if(!await confirmAction('確定將 '+ids.length+' 筆登記為「'+label+'」？\n'+ids.map(id=>{const r=wireReel(id);return wireType(r.wireId).name+'｜'+r.color;}).join('\n')))return false;
+ if(cloudBusy||failedCandidate)throw Error(wt('saveFail'));
+ const next=structuredClone(state),time=actionTime44();
+ for(const id of ids){const index=next.wireReels.findIndex(r=>r.id===id);if(index<0)throw Error('資料已變更，請重新開啟名單');next.wireReels[index]=restockTransition(next.wireReels[index],action,currentUser,time,crypto.randomUUID());}
+ state=next;
+ for(const id of ids){const r=wireReel(id);addAudit('批量登記'+label,wireType(r.wireId).name+'｜'+r.color,wt('title')+' > '+wireType(r.wireId).name,'wire:'+r.wireId);}
+ await saveCloud(state);if(failedCandidate)throw Error(wt('saveFail'));
+ if(location.hash==='#admin')renderAdmin();else render();
+ setTimeout(()=>openWireRestock(false),0);
+ });
+ $('#bulk-back46').onclick=()=>openWireRestock(false);
+ $('#bulk-action46').onchange=e=>openRestockBulk46(e.target.value);
+ const checks=[...document.querySelectorAll('.bulk-reel46')],all=$('#bulk-all46');
+ const update=()=>{const count=checks.filter(c=>c.checked).length;$('#bulk-count46').textContent='已選 '+count+' 筆';all.checked=count>0&&count===checks.length;all.indeterminate=count>0&&count<checks.length;};
+ all.disabled=!checks.length;all.onchange=()=>{checks.forEach(c=>c.checked=all.checked);update();};checks.forEach(c=>c.onchange=update);
+}
