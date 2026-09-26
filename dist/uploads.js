@@ -89,11 +89,15 @@ function drawAppIcon53(bitmap,canvas,background,removeWhite){
 function appIconBlob53(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('手機圖示產生失敗')),'image/png'));}
 function mobileIconDialog53(){
  if(currentUser.role!=='supervisor')return;
- modal('手機主畫面圖示','<p>這裡只調整手機桌面圖示，網站與登入畫面的 LOGO 不會改變。</p><label class="field">手機圖示專用圖片（選填）<input type="file" id="mobile-icon-file" accept="image/png,image/jpeg,image/webp"></label><label class="field">背景顏色 <input id="mobile-icon-background" type="color" value="#f3e8dc"></label><label><input id="mobile-icon-remove-white" type="checkbox" checked> 移除圖片原有的白色背景</label><p class="muted">保留原比例並自動置中。若原圖片本身已變形，請選擇未變形的原始圖片。</p><canvas id="mobile-icon-preview" width="512" height="512" style="display:block;width:160px;height:160px;max-width:100%;border-radius:34px;margin:12px auto;border:1px solid #ddd" aria-label="手機圖示預覽"></canvas>','儲存手機圖示',async()=>{
+ modal('手機主畫面圖示','<p>這裡只調整手機桌面圖示，網站與登入畫面的 LOGO 不會改變。</p><label class="field">主畫面顯示名稱<input id="mobile-icon-name" type="text" value="擎正管理" maxlength="20" required></label><label class="field">手機圖示專用圖片（選填）<input type="file" id="mobile-icon-file" accept="image/png,image/jpeg,image/webp"></label><label class="field">背景顏色 <input id="mobile-icon-background" type="color" value="#f3e8dc"></label><label><input id="mobile-icon-remove-white" type="checkbox" checked> 移除圖片原有的白色背景</label><p class="muted">保留原比例並自動置中。若原圖片本身已變形，請選擇未變形的原始圖片。</p><canvas id="mobile-icon-preview" width="512" height="512" style="display:block;width:160px;height:160px;max-width:100%;border-radius:34px;margin:12px auto;border:1px solid #ddd" aria-label="手機圖示預覽"></canvas>','儲存手機圖示',async()=>{
   if(!source||!ready)throw Error('請等待手機圖示預覽完成');
+  const name=$('#mobile-icon-name').value.trim();if(!name||Array.from(name).length>20)throw Error('主畫面名稱請填寫 1 至 20 個字');
   const canvas=$('#mobile-icon-preview'),blob=await appIconBlob53(canvas);
   if(blob.size>2*1024*1024)throw Error('圖示超過 2 MB，請選擇較小的圖片');
-  const body=new FormData();body.append('photo',blob,'app-icon.png');
+  if(source.size>2*1024*1024)throw Error('圖示原圖超過 2 MB，請選擇較小的圖片');
+  const body=new FormData();body.append('photo',blob,'app-icon.png');body.append('source',source,'source-image');
+  body.append('homeName',name);body.append('background',$('#mobile-icon-background').value);
+  body.append('removeWhite',String($('#mobile-icon-remove-white').checked));
   const response=await apiFetch('/api/app-icon',{method:'POST',body});
   const result=await response.json();if(!response.ok)throw Error(result.error||'手機圖示儲存失敗');
   $('#modal').close();toast('手機圖示已更新。舊桌面圖示需移除後重新加入主畫面。');
@@ -112,7 +116,19 @@ function mobileIconDialog53(){
  };
  $('#mobile-icon-file').onchange=e=>{source=e.target.files[0]||null;draw();};
  $('#mobile-icon-background').oninput=$('#mobile-icon-remove-white').onchange=()=>{if(bitmap)try{drawAppIcon53(bitmap,$('#mobile-icon-preview'),$('#mobile-icon-background').value,$('#mobile-icon-remove-white').checked);ready=true;$('#form-error').textContent='';}catch(e){ready=false;$('#form-error').textContent=e.message;}};
- apiFetch('/api/logo').then(r=>{if(!r.ok)throw Error('尚未上傳公司 LOGO，請選擇手機圖示圖片');return r.blob();}).then(b=>{if(source)return;source=b;draw();}).catch(e=>{if(!source)$('#form-error').textContent=e.message;});
+ (async()=>{
+  try{
+   const response=await apiFetch('/api/app-icon-settings');if(!response.ok)throw Error('手機圖示設定讀取失敗');
+   const settings=await response.json();if(!$('#mobile-icon-preview'))return;
+   $('#mobile-icon-name').value=settings.homeName||'擎正管理';
+   $('#mobile-icon-background').value=settings.background||'#f3e8dc';
+   $('#mobile-icon-remove-white').checked=settings.removeWhite!==false;
+   let result=await apiFetch('/api/app-icon-source');
+   if(!result.ok)result=await apiFetch('/api/logo');
+   if(!result.ok)throw Error('尚未上傳公司 LOGO，請選擇手機圖示圖片');
+   const existing=await result.blob();if(source||!$('#mobile-icon-preview'))return;source=existing;draw();
+  }catch(e){const box=$('#form-error');if(box&&!source)box.textContent=e.message;}
+ })();
 }
 const logoDialogBeforeMobile53=logoDialog;
 logoDialog=function(){

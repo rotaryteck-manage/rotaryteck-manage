@@ -267,7 +267,7 @@ export async function images(request,env){
   let name='圖片';try{name=decodeURIComponent(request.headers.get('x-file-name')||'圖片').slice(0,200);}catch{}
   const newId=crypto.randomUUID();
   await env.UPLOADS.put(logo?key:prefix+newId,bytes,{httpMetadata:{contentType:type},customMetadata:{name,actor:employee.name||employee.email||'使用者',...(plating?{kind}: {})}});
-  if(logo){if(appIcon)await env.UPLOADS.put('app-icons/'+key,appIcon,{httpMetadata:{contentType:'image/png'}});else await env.UPLOADS.delete('app-icons/'+key);}
+  if(logo&&appIcon&&!await env.UPLOADS.head('app-icons/'+key))await env.UPLOADS.put('app-icons/'+key,appIcon,{httpMetadata:{contentType:'image/png'}});
   const imageKey=logo?key:prefix+newId;if(thumbnail)await env.UPLOADS.put('thumbnails/'+imageKey,thumbnail,{httpMetadata:{contentType:'image/jpeg'}});else if(logo)await env.UPLOADS.delete('thumbnails/'+imageKey);
   return json({id:newId,created:new Date().toISOString()});
  }catch(e){console.error('image operation failed',e.message);return json({error:e.status===413?e.message:'圖片操作未完成，請重試'},e.status||500);}
@@ -281,7 +281,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
  if(!['warehouse','supervisor'].includes(e.role))return false;
@@ -354,7 +354,7 @@ export async function wireImages(request,env){
 async function readPhotoUpload(request){
  const reader=request.body?.getReader();if(!reader)throw Error('請選擇圖片');
  const chunks=[];let size=0;const multipart=(request.headers.get('content-type')||'').startsWith('multipart/form-data');
- const isLogo=new URL(request.url).pathname==='/api/logo';const limit=2*1024*1024+(multipart?110*1024+(isLogo?1200*1024:0):0);
+ const pathname=new URL(request.url).pathname,isLogo=pathname==='/api/logo',isAppIcon=pathname==='/api/app-icon';const limit=2*1024*1024+(multipart?110*1024+(isLogo?1200*1024:0)+(isAppIcon?2*1024*1024:0):0);
  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});}chunks.push(value);}
  const data=new Uint8Array(size);let at=0;for(const c of chunks){data.set(c,at);at+=c.length;}
  if(!multipart)return {bytes:data,thumbnail:null};
@@ -363,7 +363,20 @@ async function readPhotoUpload(request){
  if(!photo||typeof photo.arrayBuffer!=='function'||photo.size>2*1024*1024)throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});
  let thumbnail=null;if(thumb){if(typeof thumb.arrayBuffer!=='function'||thumb.size>96*1024)throw Error('縮圖過大');thumbnail=new Uint8Array(await thumb.arrayBuffer());if(thumbnail[0]!==255||thumbnail[1]!==216||thumbnail[2]!==255)throw Error('縮圖格式不正確');}
  let appIcon=null;const icon=isLogo?form.get('appIcon'):null;if(icon){if(typeof icon.arrayBuffer!=='function'||icon.size>1200*1024)throw Error('手機圖示過大');appIcon=new Uint8Array(await icon.arrayBuffer());const v=new DataView(appIcon.buffer);if(appIcon.length<24||[137,80,78,71,13,10,26,10].some((n,i)=>appIcon[i]!==n)||v.getUint32(16)!==512||v.getUint32(20)!==512)throw Error('手機圖示格式不正確');}
- return {bytes:new Uint8Array(await photo.arrayBuffer()),thumbnail,appIcon};
+ let source=null,settings=null;
+ if(isAppIcon){
+  const original=form.get('source');
+  if(!original||typeof original.arrayBuffer!=='function'||original.size>2*1024*1024||!original.size)throw Error('請選擇 2 MB 以內的圖示原圖');
+  source=new Uint8Array(await original.arrayBuffer());
+  const hex=Array.from(source.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join('');
+  const type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;
+  if(!type)throw Error('圖示原圖需為 PNG、JPG 或 WebP');
+  const homeName=String(form.get('homeName')||'').trim(),background=String(form.get('background')||''),removeWhite=String(form.get('removeWhite'));
+  if(!homeName||Array.from(homeName).length>20||/[\u0000-\u001f\u007f]/.test(homeName))throw Error('主畫面名稱請填寫 1 至 20 個字');
+  if(!/^#[0-9a-fA-F]{6}$/.test(background)||!['true','false'].includes(removeWhite))throw Error('手機圖示顏色設定不正確');
+  settings={homeName,background:background.toLowerCase(),removeWhite,sourceType:type,customized:'true'};
+ }
+ return {bytes:new Uint8Array(await photo.arrayBuffer()),thumbnail,appIcon,source,settings};
 }
 
 export async function loginLogo(request,env){
@@ -421,9 +434,10 @@ export async function appIcon52(request,env){
   try{
    const employee=await employeeFor(request,env);
    if(!employee||employee.role!=='supervisor')return json({error:'只有主管可設定手機圖示'},403);
-   const {bytes}=await readPhotoUpload(request);
+   const {bytes,source,settings}=await readPhotoUpload(request);
    if(bytes.length<24||bytes.length>2*1024*1024||[137,80,78,71,13,10,26,10].some((n,i)=>bytes[i]!==n)||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(16)!==512||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(20)!==512)return json({error:'手機圖示須為 512×512 PNG'},400);
-   await env.UPLOADS.put('app-icons/'+key,bytes,{httpMetadata:{contentType:'image/png'}});
+   await env.UPLOADS.put('app-icons/'+key+'-source',source,{httpMetadata:{contentType:settings.sourceType}});
+   await env.UPLOADS.put('app-icons/'+key,bytes,{httpMetadata:{contentType:'image/png'},customMetadata:settings});
    return json({saved:true});
   }catch(e){return json({error:e.message||'手機圖示儲存失敗'},e.status||500);}
  }
@@ -431,4 +445,49 @@ export async function appIcon52(request,env){
  const file=await env.UPLOADS?.get('app-icons/'+key)||await env.UPLOADS?.get(key);
  if(!file)return new Response(null,{status:404});
  return new Response(request.method==='HEAD'?null:file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+}
+
+async function appHomeSettings55(env){
+ const defaults={homeName:'擎正管理',background:'#f3e8dc',removeWhite:true,revision:55};
+ try{
+  const key='images/'+await scopeKey(STORAGE_OWNER)+'/logo',file=await env.UPLOADS?.head('app-icons/'+key);
+  const meta=file?.customMetadata||{},uploaded=Date.parse(file?.uploaded||'');
+  return{homeName:typeof meta.homeName==='string'&&meta.homeName.trim()?meta.homeName:defaults.homeName,
+   background:/^#[0-9a-fA-F]{6}$/.test(meta.background||'')?meta.background:defaults.background,
+   removeWhite:meta.removeWhite==='false'?false:true,
+   revision:Number.isFinite(uploaded)?uploaded:defaults.revision};
+ }catch{return defaults;}
+}
+export async function appIconSettings55(request,env){
+ if(request.method!=='GET')return new Response(null,{status:405});
+ return json(await appHomeSettings55(env));
+}
+export async function appIconSource55(request,env){
+ if(request.method!=='GET')return new Response(null,{status:405});
+ if(!hasCredentials(request))return new Response(null,{status:401});
+ const employee=await employeeFor(request,env);
+ if(!employee||employee.role!=='supervisor')return new Response(null,{status:403});
+ const key='images/'+await scopeKey(STORAGE_OWNER)+'/logo';
+ const file=await env.UPLOADS?.get('app-icons/'+key+'-source');
+ if(!file)return new Response(null,{status:404});
+ return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
+}
+export function appManifestBody55(settings){return{
+ id:'/',name:settings.homeName,short_name:settings.homeName,lang:'zh-TW',start_url:'/',scope:'/',display:'standalone',
+ background_color:settings.background,theme_color:'#234e3c',icons:[{src:'/api/app-icon?v='+settings.revision,purpose:'any'}]
+};}
+export async function appManifest55(request,env){
+ if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
+ const body=JSON.stringify(appManifestBody55(await appHomeSettings55(env)));
+ return new Response(request.method==='HEAD'?null:body,{headers:{'Content-Type':'application/manifest+json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+}
+export function appIndexBody55(html,settings){
+ const name=settings.homeName.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+ return html.replace('<meta name="apple-mobile-web-app-title" content="擎正管理">','<meta name="apple-mobile-web-app-title" content="'+name+'">')
+  .replace('href="/api/app-icon?v=53"','href="/api/app-icon?v='+settings.revision+'"');
+}
+export async function appIndex55(request,env){
+ if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
+ const html=appIndexBody55(assets['/index.html'].body,await appHomeSettings55(env));
+ return new Response(request.method==='HEAD'?null:html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 }
