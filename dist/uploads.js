@@ -65,5 +65,59 @@ window.addEventListener('beforeunload',e=>{if(imageUploading){e.preventDefault()
 
 async function makeAppIcon52(file){
  const bitmap=await createImageBitmap(file);
- try{const canvas=document.createElement('canvas');canvas.width=canvas.height=512;const ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,512,512);const scale=432/Math.max(bitmap.width,bitmap.height),w=bitmap.width*scale,h=bitmap.height*scale;ctx.drawImage(bitmap,(512-w)/2,(512-h)/2,w,h);return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('手機圖示產生失敗')),'image/png'));}finally{bitmap.close();}
+ try{const canvas=document.createElement('canvas');drawAppIcon53(bitmap,canvas,'#f3e8dc',true);return await appIconBlob53(canvas);}finally{bitmap.close();}
 }
+
+// Keep the phone icon independent from the site's original logo.
+function drawAppIcon53(bitmap,canvas,background,removeWhite){
+ canvas.width=canvas.height=512;
+ const source=document.createElement('canvas'),shrink=Math.min(1,1024/Math.max(bitmap.width,bitmap.height));source.width=Math.max(1,Math.round(bitmap.width*shrink));source.height=Math.max(1,Math.round(bitmap.height*shrink));
+ const sc=source.getContext('2d',{willReadFrequently:true});sc.drawImage(bitmap,0,0);
+ const pixels=sc.getImageData(0,0,source.width,source.height);
+ if(removeWhite)for(let i=0;i<pixels.data.length;i+=4){
+  const opacity=Math.min(1,Math.max(0,(255-Math.min(pixels.data[i],pixels.data[i+1],pixels.data[i+2]))/40));
+  pixels.data[i+3]=Math.round(pixels.data[i+3]*opacity);
+ }
+ sc.putImageData(pixels,0,0);
+ let left=source.width,top=source.height,right=-1,bottom=-1;
+ for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++)if(pixels.data[(y*source.width+x)*4+3]>24){left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,x);bottom=Math.max(bottom,y);}
+ if(right<left)throw Error('圖示內容是空白，請換一張圖片');
+ const width=right-left+1,height=bottom-top+1,scale=410/Math.max(width,height),w=width*scale,h=height*scale;
+ const ctx=canvas.getContext('2d');ctx.fillStyle=background;ctx.fillRect(0,0,512,512);
+ ctx.drawImage(source,left,top,width,height,(512-w)/2,(512-h)/2,w,h);
+}
+function appIconBlob53(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('手機圖示產生失敗')),'image/png'));}
+function mobileIconDialog53(){
+ if(currentUser.role!=='supervisor')return;
+ modal('手機主畫面圖示','<p>這裡只調整手機桌面圖示，網站與登入畫面的 LOGO 不會改變。</p><label class="field">手機圖示專用圖片（選填）<input type="file" id="mobile-icon-file" accept="image/png,image/jpeg,image/webp"></label><label class="field">背景顏色 <input id="mobile-icon-background" type="color" value="#f3e8dc"></label><label><input id="mobile-icon-remove-white" type="checkbox" checked> 移除圖片原有的白色背景</label><p class="muted">保留原比例並自動置中。若原圖片本身已變形，請選擇未變形的原始圖片。</p><canvas id="mobile-icon-preview" width="512" height="512" style="display:block;width:160px;height:160px;max-width:100%;border-radius:34px;margin:12px auto;border:1px solid #ddd" aria-label="手機圖示預覽"></canvas>','儲存手機圖示',async()=>{
+  if(!source||!ready)throw Error('請等待手機圖示預覽完成');
+  const canvas=$('#mobile-icon-preview'),blob=await appIconBlob53(canvas);
+  if(blob.size>2*1024*1024)throw Error('圖示超過 2 MB，請選擇較小的圖片');
+  const body=new FormData();body.append('photo',blob,'app-icon.png');
+  const response=await apiFetch('/api/app-icon',{method:'POST',body});
+  const result=await response.json();if(!response.ok)throw Error(result.error||'手機圖示儲存失敗');
+  $('#modal').close();toast('手機圖示已更新。舊桌面圖示需移除後重新加入主畫面。');
+ });
+ let source=null,bitmap=null,version=0,ready=false;
+ const draw=async()=>{
+  const token=++version;ready=false;
+  try{
+   if(!source)return;
+   const next=await createImageBitmap(source);if(token!==version){next.close();return;}
+   bitmap?.close();bitmap=next;
+   drawAppIcon53(bitmap,$('#mobile-icon-preview'),$('#mobile-icon-background').value,$('#mobile-icon-remove-white').checked);
+   ready=true;
+   $('#form-error').textContent='';
+  }catch(e){const box=$('#form-error');if(box)box.textContent=e.message||'無法預覽圖片';}
+ };
+ $('#mobile-icon-file').onchange=e=>{source=e.target.files[0]||null;draw();};
+ $('#mobile-icon-background').oninput=$('#mobile-icon-remove-white').onchange=()=>{if(bitmap)try{drawAppIcon53(bitmap,$('#mobile-icon-preview'),$('#mobile-icon-background').value,$('#mobile-icon-remove-white').checked);ready=true;$('#form-error').textContent='';}catch(e){ready=false;$('#form-error').textContent=e.message;}};
+ apiFetch('/api/logo').then(r=>{if(!r.ok)throw Error('尚未上傳公司 LOGO，請選擇手機圖示圖片');return r.blob();}).then(b=>{if(source)return;source=b;draw();}).catch(e=>{if(!source)$('#form-error').textContent=e.message;});
+}
+const logoDialogBeforeMobile53=logoDialog;
+logoDialog=function(){
+ logoDialogBeforeMobile53();
+ const button=document.createElement('button');button.type='button';button.id='edit-mobile-icon';button.textContent='調整手機圖示';
+ button.onclick=mobileIconDialog53;
+ $('#logo-upload-time')?.after(button);
+};

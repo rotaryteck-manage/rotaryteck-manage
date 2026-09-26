@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
-import {images,loginLogo} from '../worker/server.mjs';
+import {images,loginLogo,appIcon52} from '../worker/server.mjs';
 globalThis.fetch=async(input,init={})=>{const auth=new Headers(init.headers).get('authorization')||'';const id=auth.slice(7);return id?Response.json({id,email:id+'@example.com',user_metadata:{name:id}}):Response.json({}, {status:401});};
 function database(){const {db,DB}=sqliteDatabase();const now=new Date().toISOString();db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('owner','owner@example.com','主管','supervisor','active',now,now);db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('viewer','viewer@example.com','一般','viewer','active',now,now);db.prepare("INSERT INTO employees (account_user_id,email,name,role,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run('warehouse','warehouse@example.com','庫房','warehouse','active',now,now);db.prepare("INSERT INTO company_state (company_id,body,revision,updated_at) VALUES (?,?,?,?)").run('warehouse-main',JSON.stringify({projects:[],deletedProjects:[{project:{id:'A'}}],platingProjects:[{id:'P',shipments:[{id:'S1'},{id:'S2'}]},{id:'Q',shipments:[{id:'S1'}]}]}),1,now);return DB;}
 test('private images, role enforcement, project ownership and persistent receipts',async()=>{const objects=new Map(),env={SUPABASE_URL:'https://test.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable',SUPABASE_SECRET_KEY:'secret',DB:database(),UPLOADS:{async put(key,body,meta){objects.set(key,{body,...meta,key,uploaded:new Date()});},async get(key){return objects.get(key);},async head(key){return objects.get(key);},async list({prefix}){return {objects:[...objects.values()].filter(x=>x.key.startsWith(prefix)),truncated:false};},async delete(keys){for(const key of Array.isArray(keys)?keys:[keys])objects.delete(key);}}};
@@ -15,6 +15,13 @@ test('private images, role enforcement, project ownership and persistent receipt
  assert.equal((await images(req('/api/logo','POST',new Uint8Array(2097153)),env)).status,413);
  assert.equal((await images(req('/api/logo','POST',png),env)).status,200);
  assert.equal((await (await images(req('/api/logo?meta=1'),env)).json()).exists,true);
+ assert.equal((await images(req('/api/logo'),env)).headers.get('Content-Type'),'image/png');
+ const icon=new Uint8Array(24);icon.set([137,80,78,71,13,10,26,10]);new DataView(icon.buffer).setUint32(16,512);new DataView(icon.buffer).setUint32(20,512);
+ const iconForm=new FormData();iconForm.append('photo',new Blob([icon],{type:'image/png'}),'phone.png');
+ assert.equal((await appIcon52(req('/api/app-icon','POST',iconForm,'viewer'),env)).status,403);
+ assert.equal((await appIcon52(req('/api/app-icon','POST',iconForm,'owner','https://evil.local'),env)).status,403);
+ assert.equal((await appIcon52(req('/api/app-icon','POST',iconForm),env)).status,200);
+ assert.deepEqual(new Uint8Array(await (await appIcon52(req('/api/app-icon','GET',undefined,''),env)).arrayBuffer()),icon);
  assert.equal((await images(req('/api/logo'),env)).headers.get('Content-Type'),'image/png');
  assert.equal((await images(req('/api/logo','POST',png,'viewer'),env)).status,403);
  const uploaded=await (await images(req('/api/receipts?project=A','POST',png),env)).json();assert.ok(uploaded.id);

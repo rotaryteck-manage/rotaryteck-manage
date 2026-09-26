@@ -414,9 +414,21 @@ export async function publicAppearance(request,env){
 }
 
 export async function appIcon52(request,env){
- if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
  const key='images/'+await scopeKey(STORAGE_OWNER)+'/logo';
+ if(request.method==='POST'){
+  if(!hasCredentials(request))return json({error:'請先登入'},401);
+  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
+  try{
+   const employee=await employeeFor(request,env);
+   if(!employee||employee.role!=='supervisor')return json({error:'只有主管可設定手機圖示'},403);
+   const {bytes}=await readPhotoUpload(request);
+   if(bytes.length<24||bytes.length>2*1024*1024||[137,80,78,71,13,10,26,10].some((n,i)=>bytes[i]!==n)||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(16)!==512||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(20)!==512)return json({error:'手機圖示須為 512×512 PNG'},400);
+   await env.UPLOADS.put('app-icons/'+key,bytes,{httpMetadata:{contentType:'image/png'}});
+   return json({saved:true});
+  }catch(e){return json({error:e.message||'手機圖示儲存失敗'},e.status||500);}
+ }
+ if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
  const file=await env.UPLOADS?.get('app-icons/'+key)||await env.UPLOADS?.get(key);
  if(!file)return new Response(null,{status:404});
- return new Response(request.method==='HEAD'?null:file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff'}});
+ return new Response(request.method==='HEAD'?null:file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 }
