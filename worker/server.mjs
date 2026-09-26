@@ -260,13 +260,14 @@ export async function images(request,env){
   const kind=url.searchParams.get('kind')||'dispatch';
   if(plating&&!['dispatch','area'].includes(kind))return json({error:'照片類別不正確'},400);
   const limit=2*1024*1024;
-  const {bytes,thumbnail}=await readPhotoUpload(request);
+  const {bytes,thumbnail,appIcon}=await readPhotoUpload(request);
   const hex=Array.from(bytes.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join('');
   const type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;
   if(!type)return json({error:'請上傳 PNG、JPG 或 WebP 圖片'},415);
   let name='圖片';try{name=decodeURIComponent(request.headers.get('x-file-name')||'圖片').slice(0,200);}catch{}
   const newId=crypto.randomUUID();
   await env.UPLOADS.put(logo?key:prefix+newId,bytes,{httpMetadata:{contentType:type},customMetadata:{name,actor:employee.name||employee.email||'使用者',...(plating?{kind}: {})}});
+  if(logo){if(appIcon)await env.UPLOADS.put('app-icons/'+key,appIcon,{httpMetadata:{contentType:'image/png'}});else await env.UPLOADS.delete('app-icons/'+key);}
   const imageKey=logo?key:prefix+newId;if(thumbnail)await env.UPLOADS.put('thumbnails/'+imageKey,thumbnail,{httpMetadata:{contentType:'image/jpeg'}});else if(logo)await env.UPLOADS.delete('thumbnails/'+imageKey);
   return json({id:newId,created:new Date().toISOString()});
  }catch(e){console.error('image operation failed',e.message);return json({error:e.status===413?e.message:'圖片操作未完成，請重試'},e.status||500);}
@@ -280,7 +281,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
  if(!['warehouse','supervisor'].includes(e.role))return false;
@@ -337,7 +338,7 @@ export async function wireImages(request,env){
  }
  if(request.method!=='POST')return json({error:'歷史照片保留，不提供刪除'},405);
  if(request.headers.get('origin')!==url.origin||!permitted(employee,'wire.photos'))return json({error:'沒有上傳權限'},403);
- const {bytes,thumbnail}=await readPhotoUpload(request);
+ const {bytes,thumbnail,appIcon}=await readPhotoUpload(request);
  const hex=Array.from(bytes.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join(''),type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;check(type,'請上傳 JPG、PNG 或 WebP 圖片');
  const photo={id:crypto.randomUUID(),actor:employee.name,actorId:String(employee.id),created:new Date().toISOString(),name:decodeURIComponent(request.headers.get('x-file-name')||'照片').slice(0,200)||'照片'};
  await env.DB.prepare('INSERT INTO wire_pending_uploads(id,created_at) VALUES (?,?)').bind(photo.id,photo.created).run();
@@ -353,7 +354,7 @@ export async function wireImages(request,env){
 async function readPhotoUpload(request){
  const reader=request.body?.getReader();if(!reader)throw Error('請選擇圖片');
  const chunks=[];let size=0;const multipart=(request.headers.get('content-type')||'').startsWith('multipart/form-data');
- const limit=2*1024*1024+(multipart?110*1024:0);
+ const isLogo=new URL(request.url).pathname==='/api/logo';const limit=2*1024*1024+(multipart?110*1024+(isLogo?1200*1024:0):0);
  while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});}chunks.push(value);}
  const data=new Uint8Array(size);let at=0;for(const c of chunks){data.set(c,at);at+=c.length;}
  if(!multipart)return {bytes:data,thumbnail:null};
@@ -361,7 +362,8 @@ async function readPhotoUpload(request){
  const photo=form.get('photo'),thumb=form.get('thumbnail');
  if(!photo||typeof photo.arrayBuffer!=='function'||photo.size>2*1024*1024)throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});
  let thumbnail=null;if(thumb){if(typeof thumb.arrayBuffer!=='function'||thumb.size>96*1024)throw Error('縮圖過大');thumbnail=new Uint8Array(await thumb.arrayBuffer());if(thumbnail[0]!==255||thumbnail[1]!==216||thumbnail[2]!==255)throw Error('縮圖格式不正確');}
- return {bytes:new Uint8Array(await photo.arrayBuffer()),thumbnail};
+ let appIcon=null;const icon=isLogo?form.get('appIcon'):null;if(icon){if(typeof icon.arrayBuffer!=='function'||icon.size>1200*1024)throw Error('手機圖示過大');appIcon=new Uint8Array(await icon.arrayBuffer());const v=new DataView(appIcon.buffer);if(appIcon.length<24||[137,80,78,71,13,10,26,10].some((n,i)=>appIcon[i]!==n)||v.getUint32(16)!==512||v.getUint32(20)!==512)throw Error('手機圖示格式不正確');}
+ return {bytes:new Uint8Array(await photo.arrayBuffer()),thumbnail,appIcon};
 }
 
 export async function loginLogo(request,env){
@@ -409,4 +411,12 @@ export async function publicAppearance(request,env){
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
  try{await ensureRecordStorage(env);const row=await env.DB.prepare('SELECT body FROM state_records WHERE record_key=?').bind(recordKey('root','appearance')).first(),a=row?.body?JSON.parse(row.body):{};
  return json({colors:{global:a.colors?.global||{},login:a.colors?.login||{}},text:{login:a.text?.login||{}},logoWidth:a.logoWidth,logoHeight:a.logoHeight});}catch{return json({});}
+}
+
+export async function appIcon52(request,env){
+ if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
+ const key='images/'+await scopeKey(STORAGE_OWNER)+'/logo';
+ const file=await env.UPLOADS?.get('app-icons/'+key)||await env.UPLOADS?.get(key);
+ if(!file)return new Response(null,{status:404});
+ return new Response(request.method==='HEAD'?null:file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff'}});
 }
