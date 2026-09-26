@@ -72,7 +72,7 @@ async function makeAppIcon52(file){
 function drawAppIcon53(bitmap,canvas,background,removeWhite){
  canvas.width=canvas.height=512;
  const source=document.createElement('canvas'),shrink=Math.min(1,1024/Math.max(bitmap.width,bitmap.height));source.width=Math.max(1,Math.round(bitmap.width*shrink));source.height=Math.max(1,Math.round(bitmap.height*shrink));
- const sc=source.getContext('2d',{willReadFrequently:true});sc.drawImage(bitmap,0,0);
+ const sc=source.getContext('2d',{willReadFrequently:true});sc.drawImage(bitmap,0,0,source.width,source.height);
  const pixels=sc.getImageData(0,0,source.width,source.height);
  if(removeWhite)for(let i=0;i<pixels.data.length;i+=4){
   const opacity=Math.min(1,Math.max(0,(255-Math.min(pixels.data[i],pixels.data[i+1],pixels.data[i+2]))/40));
