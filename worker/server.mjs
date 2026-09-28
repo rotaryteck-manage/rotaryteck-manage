@@ -1,7 +1,7 @@
 import {validateWorkflowState,workflowChangeAllowed} from './workflows.mjs';
 import {canDeleteProject,projectDeletionAllowed,builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
 import {recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
-import {scheduleApi,schedulePhotoApi,schedulePhotoUpload} from './schedule.mjs';
+import {scheduleApi,schedulePhotoApi,schedulePhotoUpload,scheduleMaterialPhotoApi,scheduleMaterialUpload} from './schedule.mjs';
 import {recordsExportApi} from './records-export.mjs';
 import {holidayApi60} from './holidays.mjs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
@@ -262,7 +262,7 @@ export async function images(request,env){
   if(!logo&&!permitted(employee,(plating?'plating':'warehouse')+'.photos'))return json({error:'沒有照片管理權限'},403);
   const kind=url.searchParams.get('kind')||'dispatch';
   if(plating&&!['dispatch','area'].includes(kind))return json({error:'照片類別不正確'},400);
-  const limit=2*1024*1024;
+  const limit=800*1024;
   const {bytes,thumbnail,appIcon}=await readPhotoUpload(request);
   const hex=Array.from(bytes.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join('');
   const type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;
@@ -284,7 +284,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUpload(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
  if(!['warehouse','supervisor'].includes(e.role))return false;
@@ -357,19 +357,19 @@ export async function wireImages(request,env){
 async function readPhotoUpload(request){
  const reader=request.body?.getReader();if(!reader)throw Error('請選擇圖片');
  const chunks=[];let size=0;const multipart=(request.headers.get('content-type')||'').startsWith('multipart/form-data');
- const pathname=new URL(request.url).pathname,isLogo=pathname==='/api/logo',isAppIcon=pathname==='/api/app-icon';const limit=2*1024*1024+(multipart?110*1024+(isLogo?1200*1024:0)+(isAppIcon?2*1024*1024:0):0);
- while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});}chunks.push(value);}
+ const pathname=new URL(request.url).pathname,isLogo=pathname==='/api/logo',isAppIcon=pathname==='/api/app-icon';const limit=800*1024+(multipart?110*1024+(isLogo?800*1024:0)+(isAppIcon?1600*1024:0):0);
+ while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();throw Object.assign(Error('照片必須壓縮至 800 KB 以內'),{status:413});}chunks.push(value);}
  const data=new Uint8Array(size);let at=0;for(const c of chunks){data.set(c,at);at+=c.length;}
  if(!multipart)return {bytes:data,thumbnail:null};
  const form=await new Response(data,{headers:{'Content-Type':request.headers.get('content-type')}}).formData();
  const photo=form.get('photo'),thumb=form.get('thumbnail');
- if(!photo||typeof photo.arrayBuffer!=='function'||photo.size>2*1024*1024)throw Object.assign(Error('照片必須壓縮至 2 MB 以內'),{status:413});
+ if(!photo||typeof photo.arrayBuffer!=='function'||photo.size>800*1024)throw Object.assign(Error('照片必須壓縮至 800 KB 以內'),{status:413});
  let thumbnail=null;if(thumb){if(typeof thumb.arrayBuffer!=='function'||thumb.size>96*1024)throw Error('縮圖過大');thumbnail=new Uint8Array(await thumb.arrayBuffer());if(thumbnail[0]!==255||thumbnail[1]!==216||thumbnail[2]!==255)throw Error('縮圖格式不正確');}
- let appIcon=null;const icon=isLogo?form.get('appIcon'):null;if(icon){if(typeof icon.arrayBuffer!=='function'||icon.size>1200*1024)throw Error('手機圖示過大');appIcon=new Uint8Array(await icon.arrayBuffer());const v=new DataView(appIcon.buffer);if(appIcon.length<24||[137,80,78,71,13,10,26,10].some((n,i)=>appIcon[i]!==n)||v.getUint32(16)!==512||v.getUint32(20)!==512)throw Error('手機圖示格式不正確');}
+ let appIcon=null;const icon=isLogo?form.get('appIcon'):null;if(icon){if(typeof icon.arrayBuffer!=='function'||icon.size>800*1024)throw Error('手機圖示過大');appIcon=new Uint8Array(await icon.arrayBuffer());const v=new DataView(appIcon.buffer);if(appIcon.length<24||[137,80,78,71,13,10,26,10].some((n,i)=>appIcon[i]!==n)||v.getUint32(16)!==512||v.getUint32(20)!==512)throw Error('手機圖示格式不正確');}
  let source=null,settings=null;
  if(isAppIcon){
   const original=form.get('source');
-  if(!original||typeof original.arrayBuffer!=='function'||original.size>2*1024*1024||!original.size)throw Error('請選擇 2 MB 以內的圖示原圖');
+  if(!original||typeof original.arrayBuffer!=='function'||original.size>800*1024||!original.size)throw Error('請選擇 800 KB 以內的圖示原圖');
   source=new Uint8Array(await original.arrayBuffer());
   const hex=Array.from(source.slice(0,12)).map(x=>x.toString(16).padStart(2,'0')).join('');
   const type=hex.startsWith('89504e470d0a1a0a')?'image/png':hex.startsWith('ffd8ff')?'image/jpeg':hex.startsWith('52494646')&&hex.slice(16)==='57454250'?'image/webp':null;
@@ -438,7 +438,7 @@ export async function appIcon52(request,env){
    const employee=await employeeFor(request,env);
    if(!employee||employee.role!=='supervisor')return json({error:'只有主管可設定手機圖示'},403);
    const {bytes,source,settings}=await readPhotoUpload(request);
-   if(bytes.length<24||bytes.length>2*1024*1024||[137,80,78,71,13,10,26,10].some((n,i)=>bytes[i]!==n)||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(16)!==512||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(20)!==512)return json({error:'手機圖示須為 512×512 PNG'},400);
+   if(bytes.length<24||bytes.length>800*1024||[137,80,78,71,13,10,26,10].some((n,i)=>bytes[i]!==n)||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(16)!==512||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(20)!==512)return json({error:'手機圖示須為 512×512 PNG'},400);
    await env.UPLOADS.put('app-icons/'+key+'-source',source,{httpMetadata:{contentType:settings.sourceType}});
    await env.UPLOADS.put('app-icons/'+key,bytes,{httpMetadata:{contentType:'image/png'},customMetadata:settings});
    return json({saved:true});

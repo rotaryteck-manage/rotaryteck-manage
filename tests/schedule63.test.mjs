@@ -8,7 +8,7 @@ import {builtinProfiles} from '../worker/wire-permissions.mjs';
 import {validateWorkflowState} from '../worker/workflows.mjs';
 
 test('work entry order persists and each person has one sorted weekly row with inline content',async()=>{
- const {db,DB}=database();for(const name of ['0004_schedule.sql','0006_schedule_weekly_notes.sql','0007_schedule_work_order.sql'])db.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
+ const {db,DB}=database();for(const name of ['0004_schedule.sql','0006_schedule_weekly_notes.sql','0007_schedule_work_order.sql','0008_schedule_material_photos.sql'])db.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
  db.exec("CREATE TABLE app_employee_settings(employee_id INTEGER PRIMARY KEY,profile_id TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0);INSERT INTO employees(account_user_id,email,name,role,status,created_at,updated_at) VALUES('a','a@example.com','黃瑞麟','viewer','active','now','now')");
  const boss={id:1,name:'主管',role:'supervisor',permissions:builtinProfiles[0].permissions},origin='https://example.test',env={DB};const entries=[['job-z','FAA','製作',1],['job-a','廠內布置','監督',2]].map(([id,title,content,sortIndex])=>({id,kind:'weekly',revision:0,day:'2026-09-29',endDay:'2026-10-02',title,category:JSON.stringify([content]),sortIndex,assignee:'["黃瑞麟"]',note:'',color:'#4e8069'}));
  const send=body=>scheduleApi(new Request(origin+'/api/schedule',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)}),env,boss);
@@ -30,7 +30,7 @@ test('migration restores existing jobs in insertion order, regardless of random 
 test('schedule text is accepted as a separate configurable area',()=>{assert.doesNotThrow(()=>validateWorkflowState({appearance:{text:{schedule:{'新增排程':'新增安排','工作內容':'作業內容'}}}}));assert.throws(()=>validateWorkflowState({appearance:{text:{unexpected:{'新增排程':'新增安排'}}}}));});
 
 test('editing and removing one person’s weekly jobs saves together or not at all',async()=>{
- const {db,DB}=database();for(const name of ['0004_schedule.sql','0006_schedule_weekly_notes.sql','0007_schedule_work_order.sql'])db.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
+ const {db,DB}=database();for(const name of ['0004_schedule.sql','0006_schedule_weekly_notes.sql','0007_schedule_work_order.sql','0008_schedule_material_photos.sql'])db.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
  db.exec("CREATE TABLE app_employee_settings(employee_id INTEGER PRIMARY KEY,profile_id TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0);INSERT INTO employees(account_user_id,email,name,role,status,created_at,updated_at) VALUES('a','a@example.com','黃瑞麟','viewer','active','now','now')");
  const boss={id:1,name:'主管',role:'supervisor',permissions:builtinProfiles[0].permissions},origin='https://example.test',env={DB};const send=body=>scheduleApi(new Request(origin+'/api/schedule',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)}),env,boss);
  const make=(id,title,revision=0)=>({id,kind:'weekly',revision,day:'2026-09-29',endDay:'2026-10-02',title,category:'["組裝"]',sortIndex:id==='a'?1:2,assignee:'["黃瑞麟"]',note:'',color:'#4e8069'});
