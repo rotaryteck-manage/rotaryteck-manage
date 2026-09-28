@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS schedule_options (
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ items TEXT NOT NULL,
+ contents TEXT NOT NULL
+);

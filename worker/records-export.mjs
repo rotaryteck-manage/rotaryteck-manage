@@ -8,9 +8,9 @@ export async function recordsExportApi(request,env,employee,readState,ownerKey){
  if(!date(from)||!date(to)||to<from||Date.parse(to)-Date.parse(from)>366*86400000||!types.length||types.some(x=>!['weekly','daily','receipt','shipment'].includes(x))||new Set(types).size!==types.length)return fail('請選擇資料類型與一年內的日期範圍');
  try{
   const result={weekly:[],daily:[],receipt:[],shipment:[],photos:[]},selected=new Set(types),inRange=day=>day>=from&&day<=to;
-  if(selected.has('weekly')){const rows=await env.DB.prepare("SELECT id,day,end_day,title,assignee,note,color,author_name,created_at FROM schedule_entries WHERE kind='weekly' AND day<=? AND end_day>=? ORDER BY day,id").bind(to,from).all();result.weekly=rows.results;}
+  if(selected.has('weekly')){const rows=await env.DB.prepare("SELECT id,day,end_day,title,assignee,category,note,color,author_name,created_at FROM schedule_entries WHERE kind='weekly' AND day<=? AND end_day>=? ORDER BY day,id").bind(to,from).all();result.weekly=rows.results;}
   if(selected.has('daily')){
-   const entries=await env.DB.prepare("SELECT id,day,title,assignee,note,author_name,created_at FROM schedule_entries WHERE kind='daily' AND day BETWEEN ? AND ? ORDER BY day,id").bind(from,to).all();
+   const entries=await env.DB.prepare("SELECT id,day,title,assignee,category,note,author_name,created_at FROM schedule_entries WHERE kind='daily' AND day BETWEEN ? AND ? ORDER BY day,id").bind(from,to).all();
    const reports=await env.DB.prepare('SELECT id,day,body,photo_key,photo_name,author_name,created_at FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY day,created_at,id').bind(from,to).all();
    result.daily=[...entries.results.map(e=>({...e,record_kind:'每日排程'})),...reports.results.map(e=>({...e,record_kind:'工作回報'}))].sort((a,b)=>a.day.localeCompare(b.day));
    if(photos)for(const row of reports.results)if(row.photo_key)result.photos.push({type:'每日工作紀錄',day:row.day,actor:row.author_name,name:row.photo_name,url:'/api/schedule-photo?id='+encodeURIComponent(row.id)+'&export=1'});
