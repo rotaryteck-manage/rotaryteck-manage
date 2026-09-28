@@ -40,7 +40,7 @@ export async function scheduleApi(request,env,employee){
  }catch(e){return scheduleJSON({error:e.message||'排程操作失敗'},400);}
 }
 export async function schedulePhotoApi(request,env,employee){
- try{if(!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看權限'},403);const url=new URL(request.url),id=url.searchParams.get('id');if(!id)return scheduleJSON({error:'缺少回報編號'},400);const row=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(id).first();if(!row?.photo_key)return scheduleJSON({error:'找不到照片'},404);
+ try{const url=new URL(request.url);if(url.searchParams.get('export')==='1'?!scheduleAllowed(employee,'records.export'):!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看權限'},403);const id=url.searchParams.get('id');if(!id)return scheduleJSON({error:'缺少回報編號'},400);const row=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(id).first();if(!row?.photo_key)return scheduleJSON({error:'找不到照片'},404);
   const file=await env.UPLOADS?.get(row.photo_key);if(!file)return scheduleJSON({error:'找不到照片'},404);return new Response(file.body,{headers:{'Content-Type':file.httpMetadata?.contentType||'image/jpeg','Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'}});
  }catch(e){return scheduleJSON({error:e.message},400);}
 }

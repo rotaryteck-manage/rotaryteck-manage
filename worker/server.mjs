@@ -2,6 +2,7 @@ import {validateWorkflowState,workflowChangeAllowed} from './workflows.mjs';
 import {canDeleteProject,projectDeletionAllowed,builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
 import {recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
 import {scheduleApi,schedulePhotoApi,schedulePhotoUpload} from './schedule.mjs';
+import {recordsExportApi} from './records-export.mjs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x);
 function check(ok,message){if(!ok)throw new Error(message);}
@@ -221,8 +222,8 @@ export async function images(request,env){
  const url=new URL(request.url),logo=url.pathname==='/api/logo',plating=url.pathname==='/api/plating-photos',shipmentId=url.searchParams.get('shipment'),projectId=url.searchParams.get('project');
  try{
   const employee=await employeeFor(request,env);if(!employee)return json({error:'此帳號尚未由主管啟用'},403);
-  if(url.searchParams.get('export')==='1'&&employee.role!=='supervisor')return json({error:'只有主管可以匯出'},403);
-  if(!logo&&!(url.searchParams.get('export')==='1'&&employee.role==='supervisor')&&!permitted(employee,(plating?'plating':'warehouse')+'.view'))return json({error:'沒有查看權限'},403);
+  if(url.searchParams.get('export')==='1'&&!permitted(employee,'records.export'))return json({error:'沒有匯出權限'},403);
+  if(!logo&&!(url.searchParams.get('export')==='1'&&permitted(employee,'records.export'))&&!permitted(employee,(plating?'plating':'warehouse')+'.view'))return json({error:'沒有查看權限'},403);
   const root='images/'+await scopeKey(STORAGE_OWNER)+'/',prefix=root+(plating?'plating/':'receipts/')+encodeURIComponent(projectId||'')+'/'+(plating?encodeURIComponent(shipmentId||'')+'/':'');
   if(!logo){
    const row=await companyRow(env);
@@ -236,7 +237,7 @@ export async function images(request,env){
   if(request.method==='GET'){
    if(logo&&url.searchParams.get('meta')==='1'){const file=await env.UPLOADS.head(key);return json({exists:!!file,created:file?.uploaded??null});}
    if(!logo&&!id){
-    if(url.searchParams.get('export')==='1'&&employee.role!=='supervisor')return json({error:'只有倉管與主管可以匯出照片'},403);
+    if(url.searchParams.get('export')==='1'&&!permitted(employee,'records.export'))return json({error:'沒有匯出權限'},403);
     const result=await env.UPLOADS.list({prefix,limit:1000,cursor:url.searchParams.get('cursor')||undefined,include:['customMetadata']});
     return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',actor:o.customMetadata?.actor||'',kind:o.customMetadata?.kind||'dispatch',created:o.uploaded})),truncated:result.truncated,cursor:result.truncated?result.cursor:undefined});
    }
@@ -282,7 +283,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
  if(!['warehouse','supervisor'].includes(e.role))return false;
@@ -321,7 +322,7 @@ export async function permissionsApi(request,env){
  if(input.order){check(Array.isArray(input.order)&&new Set(input.order).size===input.order.length,'員工排序不正確');const all=await env.DB.prepare('SELECT id FROM employees').all();check(all.results.length===input.order.length&&all.results.every(e=>input.order.includes(e.id)),'員工名單已變更，請重新載入');await env.DB.batch(input.order.map((id,i)=>env.DB.prepare("INSERT INTO app_employee_settings(employee_id,position) VALUES (?,?) ON CONFLICT(employee_id) DO UPDATE SET position=excluded.position").bind(id,i)));return json({saved:true});}
  if(request.method==='DELETE'){check(!builtinProfiles.some(p=>p.id===input.id),'內建權限不可刪除');const assigned=await env.DB.prepare('SELECT employee_id FROM app_employee_settings WHERE profile_id=? LIMIT 1').bind(input.id).first();check(!assigned,'此權限仍有員工使用，請先替員工改選其他權限');await env.DB.prepare('DELETE FROM app_permission_profiles WHERE id=?').bind(input.id).run();return json({deleted:true});}
  check(typeof input.name==='string'&&input.name.trim()&&input.name.length<=80,'請填寫權限名稱');check(Array.isArray(input.permissions)&&input.permissions.every(p=>Object.hasOwn(capabilityNames,p)),'權限項目不正確');
- const permissions=[...new Set(input.permissions)];for(const p of permissions)if(!p.endsWith('.view'))check(permissions.includes(p.split('.')[0]+'.view'),'請先勾選該區查看權限');
+  const permissions=[...new Set(input.permissions)];for(const p of permissions)if(!p.endsWith('.view')&&p!=='records.export')check(permissions.includes(p.split('.')[0]+'.view'),'請先勾選該區查看權限');
  const id=input.id||crypto.randomUUID();check(builtinProfiles.some(p=>p.id===id)||/^[a-f0-9-]{36}$/.test(id),'權限編號不正確');await env.DB.prepare('INSERT INTO app_permission_profiles(id,name,permissions) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,permissions=excluded.permissions').bind(id,input.name.trim(),JSON.stringify(permissions)).run();return json({id});
  }catch(e){return json({error:e.message||'權限設定失敗'},400);}
 }

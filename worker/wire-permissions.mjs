@@ -1,6 +1,7 @@
 import {restockChangeAllowed} from './workflows.mjs';
 export const capabilityNames={
  'schedule.view':'工作排程：查看','schedule.weekly':'工作排程：編輯每週排程（限主管）','schedule.daily':'工作排程：編輯每日排程（限主管）','schedule.material':'工作排程：收料與領料（限倉管、主管）','schedule.report':'工作排程：填寫每日回報',
+ 'records.export':'後台：匯出排程、工作紀錄與照片',
  'cases.deleteProject':'案件：刪除專案（限主管）','warehouse.deleteProject':'庫房：刪除專案（限主管）','plating.deleteProject':'電鍍：刪除專案（限倉管、主管）','wire.deleteProject':'線材：刪除專案（限倉管、主管）',
  'cases.view':'案件：查看','cases.manage':'案件：新增、修改、排序',
  'warehouse.view':'庫房：查看','warehouse.stock':'庫房：收料、領料','warehouse.manage':'庫房：建立、修改專案與管理零件','warehouse.photos':'庫房：上傳、刪除照片',
@@ -13,8 +14,15 @@ export async function ensurePermissions(env){await env.DB.batch([
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_order (profile_id TEXT PRIMARY KEY,position INTEGER NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS wire_pending_uploads (id TEXT PRIMARY KEY,created_at TEXT NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_profiles (id TEXT PRIMARY KEY,name TEXT NOT NULL,permissions TEXT NOT NULL)'),
- env.DB.prepare("CREATE TABLE IF NOT EXISTS app_employee_settings (employee_id INTEGER PRIMARY KEY,profile_id TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0)")
-]);}
+ env.DB.prepare("CREATE TABLE IF NOT EXISTS app_employee_settings (employee_id INTEGER PRIMARY KEY,profile_id TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0)"),
+ env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_migrations (id TEXT PRIMARY KEY)')
+]);
+ if(!await env.DB.prepare("SELECT id FROM app_permission_migrations WHERE id='records-export-v59'").first()){
+  const supervisor=await env.DB.prepare("SELECT permissions FROM app_permission_profiles WHERE id='supervisor'").first();
+  if(supervisor){const permissions=JSON.parse(supervisor.permissions);if(!permissions.includes('records.export'))await env.DB.prepare("UPDATE app_permission_profiles SET permissions=? WHERE id='supervisor'").bind(JSON.stringify([...permissions,'records.export'])).run()}
+  await env.DB.prepare("INSERT OR IGNORE INTO app_permission_migrations(id) VALUES('records-export-v59')").run();
+ }
+}
 export async function employeePermissions(env,e){
  await ensurePermissions(env);const setting=await env.DB.prepare('SELECT profile_id FROM app_employee_settings WHERE employee_id=?').bind(e.id).first();
  const profile=setting?.profile_id?await env.DB.prepare('SELECT * FROM app_permission_profiles WHERE id=?').bind(setting.profile_id).first():null;
