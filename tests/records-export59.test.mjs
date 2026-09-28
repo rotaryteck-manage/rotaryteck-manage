@@ -6,7 +6,7 @@ import {recordsExportApi} from '../worker/records-export.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 
 test('selected records honor date and permission; photo manifest matches selected reports',async()=>{
- const {db,DB}=database();db.exec(fs.readFileSync(new URL('../drizzle/0004_schedule.sql',import.meta.url),'utf8'));db.exec(fs.readFileSync(new URL('../drizzle/0006_schedule_weekly_notes.sql',import.meta.url),'utf8'));
+ const {db,DB}=database();db.exec(fs.readFileSync(new URL('../drizzle/0004_schedule.sql',import.meta.url),'utf8'));db.exec(fs.readFileSync(new URL('../drizzle/0007_schedule_work_order.sql',import.meta.url),'utf8'));db.exec(fs.readFileSync(new URL('../drizzle/0006_schedule_weekly_notes.sql',import.meta.url),'utf8'));
  const insert=db.prepare('INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
  insert.run('week','weekly','2026-09-28','2026-10-02','週工作','["Rui"]','#4e8069','','',0,'','1','主管','2026-09-28','2026-09-28',1);
  insert.run('daily','daily','2026-09-29','2026-09-29','每日安排','','#4e8069','','',0,'','1','主管','2026-09-29','2026-09-29',1);

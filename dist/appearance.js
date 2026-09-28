@@ -1,10 +1,10 @@
 'use strict';
-const appearanceAreas44={global:'全站共用',cases:'案件管理',warehouse:'庫房管理',plating:'電鍍管理',wire:'線材管理',schedule:'工作排程',audit:'資訊庫',admin:'管理後台',login:'登入畫面'};
+const appearanceAreas44={global:'全站共用',cases:'案件管理',warehouse:'庫房管理',plating:'電鍍管理',wire:'線材管理',audit:'資訊庫',schedule:'工作排程',admin:'管理後台',login:'登入畫面'};
 const palette44={background:['頁面底色','#f4f6f3'],surface:['區塊／視窗底色','#ffffff'],text:['主要文字','#234336'],muted:['說明文字','#687762'],border:['框線','#cad8c9'],primary:['主要／選取按鈕底色','#244f3c'],primaryText:['主要／選取按鈕文字','#ffffff'],button:['一般按鈕底色','#ffffff'],buttonText:['一般按鈕文字','#29513b'],tableHead:['表格標題底色','#e7eedf'],rowAlt:['表格交錯底色','#f3f7ef'],field:['輸入欄位底色','#ffffff'],danger:['刪除／錯誤／需補貨','#b42318'],warning:['提示／到期提醒','#a85a08'],info:['進貨中／資訊','#1769aa'],success:['足量／完成','#237642']};
 let publicAppearance44={},appearancePreview44=null,textObserver44,appearanceQueued44=false;
 const textOrigins44=new WeakMap(),attrOrigins44=new WeakMap();
 function appearanceConfig44(){return appearancePreview44||(cloudReady?state.appearance:publicAppearance44)||{};}
-function currentArea44(){return $('.login-page')?'login':location.hash==='#admin'?'admin':(['cases','warehouse','plating','wire','schedule','audit'].includes(activeManagementPage()?.id)?activeManagementPage().id:'global');}
+function currentArea44(){return $('.login-page')?'login':location.hash==='#admin'?'admin':location.hash==='#schedule'?'schedule':(['cases','warehouse','plating','wire','audit'].includes(activeManagementPage()?.id)?activeManagementPage().id:'global');}
 function elementArea44(el){return el.closest('[data-ui-area]')?.dataset.uiArea||currentArea44();}
 function displayText44(value,area=currentArea44()){
  const cfg=appearanceConfig44(),v=String(value),key=v.trim(),labels={...cfg.text?.global,...cfg.text?.[area]};
@@ -18,7 +18,7 @@ function applyAppearance44(){
  const cfg=appearanceConfig44(),global={...Object.fromEntries(Object.entries(palette44).map(([k,v])=>[k,v[1]])),...cfg.colors?.global};
  for(const [k,v]of Object.entries(global))document.documentElement.style.setProperty('--ui-'+k,v);
  const route=currentArea44();document.body.dataset.uiArea=route;
- for(const [selector,area]of [['.case-workspace','cases'],['.warehouse-fold,#warehouse-dialog','warehouse'],['.plating-workspace','plating'],['.wire-workspace','wire'],['.schedule-workspace','schedule'],['.audit-workspace','audit'],['.login-page','login'],['[data-section-key]','admin']])document.querySelectorAll(selector).forEach(el=>el.dataset.uiArea=selector==='[data-section-key]'?({warehouse:'warehouse',plating:'plating','wire-admin':'wire','admin-cases':'cases'}[el.dataset.sectionKey]||'admin'):area);
+ for(const [selector,area]of [['.case-workspace','cases'],['.warehouse-fold,#warehouse-dialog','warehouse'],['.plating-workspace','plating'],['.wire-workspace','wire'],['.audit-workspace','audit'],['.schedule-workspace','schedule'],['.login-page','login'],['[data-section-key]','admin']])document.querySelectorAll(selector).forEach(el=>el.dataset.uiArea=selector==='[data-section-key]'?({warehouse:'warehouse',plating:'plating','wire-admin':'wire','admin-cases':'cases'}[el.dataset.sectionKey]||'admin'):area);
  document.querySelectorAll('[data-ui-area]').forEach(el=>{for(const k of Object.keys(palette44)){const v=cfg.colors?.[el.dataset.uiArea]?.[k];if(v)el.style.setProperty('--ui-'+k,v);else el.style.removeProperty('--ui-'+k);}});
  document.querySelectorAll('.site-logo,.login-logo').forEach(img=>{img.style.width=(cfg.logoWidth||44)+'px';img.style.height=(cfg.logoHeight||44)+'px';img.style.maxWidth='100%';img.style.maxHeight=(cfg.logoHeight||44)+'px';});
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
