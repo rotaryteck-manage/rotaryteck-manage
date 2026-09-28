@@ -1,5 +1,5 @@
 'use strict';
-function canDo(key){if(Array.isArray(currentUser.permissions))return currentUser.permissions.includes(key);if(currentUser.role==='supervisor')return true;const base=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos'];return base.includes(key)||(currentUser.role==='warehouse'&&['wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete'].includes(key));}
+function canDo(key){if(Array.isArray(currentUser.permissions))return currentUser.permissions.includes(key);if(currentUser.role==='supervisor')return true;const base=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos','schedule.view','schedule.report'];return base.includes(key)||(currentUser.role==='warehouse'&&['wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete','schedule.material'].includes(key));}
 let permissionProfiles=[],permissionCapabilities={};
 async function loadPermissionProfiles(){const r=await apiFetch('/api/permissions'),d=await r.json();if(!r.ok)throw Error(d.error);permissionProfiles=d.items;permissionCapabilities=d.capabilities;for(const p of permissionProfiles.filter(p=>p.builtin))roleNames[p.id]=p.name;}
 function permissionDialog(profile){
@@ -18,7 +18,7 @@ loadEmployees=async function(){try{await loadPermissionProfiles();}catch(e){cons
 const employeeDialogBeforePermissions=employeeDialog;
 employeeDialog=function(id){employeeDialogBeforePermissions(id);const e=employeesCache.find(x=>x.id===id),label=document.createElement('label');label.className='field';label.innerHTML='自訂權限<select name="profileId"><option value="">預設一般員工</option>'+permissionProfiles.filter(p=>!p.builtin).map(p=>'<option value="'+esc(p.id)+'" '+(p.id===e?.profileId?'selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select>';$('#modal select[name="role"]').closest('.form-grid').after(label);const role=$('#modal select[name="role"]');const update=()=>{label.hidden=role.value!=='viewer';label.querySelector('select').disabled=role.value!=='viewer';};role.addEventListener('change',update);update();};
 const pagesBeforePermissions=managementPages;
-managementPages=function(){return pagesBeforePermissions().filter(p=>!['cases','warehouse','plating','wire'].includes(p.id)||canDo(p.id+'.view'));};
+managementPages=function(){return pagesBeforePermissions().filter(p=>!['cases','warehouse','plating','wire','schedule'].includes(p.id)||canDo(p.id+'.view'));};
 
 function numberedOrderDialog(title,items,onSave,onBack){
  let ordered=items.map(x=>({...x}));

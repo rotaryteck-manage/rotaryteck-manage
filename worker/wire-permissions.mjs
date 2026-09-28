@@ -1,13 +1,14 @@
 import {restockChangeAllowed} from './workflows.mjs';
 export const capabilityNames={
+ 'schedule.view':'工作排程：查看','schedule.weekly':'工作排程：編輯每週排程（限主管）','schedule.daily':'工作排程：編輯每日排程（限主管）','schedule.material':'工作排程：收料與領料（限倉管、主管）','schedule.report':'工作排程：填寫每日回報',
  'cases.deleteProject':'案件：刪除專案（限主管）','warehouse.deleteProject':'庫房：刪除專案（限主管）','plating.deleteProject':'電鍍：刪除專案（限倉管、主管）','wire.deleteProject':'線材：刪除專案（限倉管、主管）',
  'cases.view':'案件：查看','cases.manage':'案件：新增、修改、排序',
  'warehouse.view':'庫房：查看','warehouse.stock':'庫房：收料、領料','warehouse.manage':'庫房：建立、修改專案與管理零件','warehouse.photos':'庫房：上傳、刪除照片',
  'plating.view':'電鍍：查看','plating.manage':'電鍍：新增、修改、刪除送鍍紀錄','plating.photos':'電鍍：上傳、刪除照片',
  'wire.view':'線材：查看','wire.create':'線材：新增線材與線捆','wire.edit':'線材：修改線材與線捆','wire.delete':'線材：刪除空白線材與線捆','wire.cut':'線材：新增裁線紀錄','wire.editOwn':'線材：修改自己的裁線紀錄','wire.photos':'線材：上傳照片'
 };
-export const builtinViewer=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos'];
-export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:[...builtinViewer,'wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete']},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
+export const builtinViewer=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos','schedule.view','schedule.report'];
+export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:[...builtinViewer,'wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete','schedule.material']},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
 export async function ensurePermissions(env){await env.DB.batch([
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_order (profile_id TEXT PRIMARY KEY,position INTEGER NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS wire_pending_uploads (id TEXT PRIMARY KEY,created_at TEXT NOT NULL)'),
