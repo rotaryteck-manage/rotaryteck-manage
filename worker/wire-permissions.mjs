@@ -1,6 +1,6 @@
 import {restockChangeAllowed} from './workflows.mjs';
 export const capabilityNames={
- 'schedule.view':'工作排程：查看','schedule.weekly':'工作排程：編輯每週排程（限主管）','schedule.daily':'工作排程：編輯每日排程（限主管）','schedule.material':'工作排程：收料與領料（限倉管、主管）','schedule.report':'工作排程：填寫每日回報',
+ 'schedule.view':'工作排程：查看','schedule.weekly':'工作排程：編輯每週排程（限主管）','schedule.daily':'工作排程：編輯每日排程（限主管、倉管）','schedule.material':'工作排程：登錄每日收料與出送貨（限倉管、主管）','schedule.report':'工作排程：填寫每日回報',
  'records.export':'後台：匯出排程、工作紀錄與照片',
  'cases.deleteProject':'案件：刪除專案（限主管）','warehouse.deleteProject':'庫房：刪除專案（限主管）','plating.deleteProject':'電鍍：刪除專案（限倉管、主管）','wire.deleteProject':'線材：刪除專案（限倉管、主管）',
  'cases.view':'案件：查看','cases.manage':'案件：新增、修改、排序',
@@ -9,7 +9,7 @@ export const capabilityNames={
  'wire.view':'線材：查看','wire.create':'線材：新增線材與線捆','wire.edit':'線材：修改線材與線捆','wire.delete':'線材：刪除空白線材與線捆','wire.cut':'線材：新增裁線紀錄','wire.editOwn':'線材：修改自己的裁線紀錄','wire.photos':'線材：上傳照片'
 };
 export const builtinViewer=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos','schedule.view','schedule.report'];
-export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:[...builtinViewer,'wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete','schedule.material']},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
+export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:[...builtinViewer,'wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete','schedule.daily','schedule.material']},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
 export async function ensurePermissions(env){await env.DB.batch([
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_order (profile_id TEXT PRIMARY KEY,position INTEGER NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS wire_pending_uploads (id TEXT PRIMARY KEY,created_at TEXT NOT NULL)'),
@@ -17,6 +17,11 @@ export async function ensurePermissions(env){await env.DB.batch([
  env.DB.prepare("CREATE TABLE IF NOT EXISTS app_employee_settings (employee_id INTEGER PRIMARY KEY,profile_id TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0)"),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_migrations (id TEXT PRIMARY KEY)')
 ]);
+ if(!await env.DB.prepare("SELECT id FROM app_permission_migrations WHERE id='schedule-daily-warehouse-v61'").first()){
+  const warehouse=await env.DB.prepare("SELECT permissions FROM app_permission_profiles WHERE id='warehouse'").first();
+  if(warehouse){const permissions=JSON.parse(warehouse.permissions);if(!permissions.includes('schedule.daily'))await env.DB.prepare("UPDATE app_permission_profiles SET permissions=? WHERE id='warehouse'").bind(JSON.stringify([...permissions,'schedule.daily'])).run()}
+  await env.DB.prepare("INSERT OR IGNORE INTO app_permission_migrations(id) VALUES('schedule-daily-warehouse-v61')").run();
+ }
  if(!await env.DB.prepare("SELECT id FROM app_permission_migrations WHERE id='records-export-v59'").first()){
   const supervisor=await env.DB.prepare("SELECT permissions FROM app_permission_profiles WHERE id='supervisor'").first();
   if(supervisor){const permissions=JSON.parse(supervisor.permissions);if(!permissions.includes('records.export'))await env.DB.prepare("UPDATE app_permission_profiles SET permissions=? WHERE id='supervisor'").bind(JSON.stringify([...permissions,'records.export'])).run()}
