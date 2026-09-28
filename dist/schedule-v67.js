@@ -22,7 +22,7 @@ scheduleDayRecord56=function(day,section='jobs',materialId=''){
  if(section==='jobs'){
   title='工作紀錄';const known=(scheduleData56.people||[]).map(p=>p.name),names=[...new Set([...known,...jobs.flatMap(scheduleAssignees56)])].filter(n=>jobs.some(e=>scheduleAssignees56(e).includes(n)));
   const sorted=[...jobs].sort((a,b)=>(a.sort_index||0)-(b.sort_index||0)||String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id));
-  body='<div class="schedule-daily-list67">'+(names.map(name=>'<section class="schedule-daily-person67"><h3>'+scheduleEsc56(name)+'</h3>'+sorted.filter(e=>scheduleAssignees56(e).includes(name)).map((e,i)=>'<div class="schedule-daily-job67"><span>'+scheduleEsc56(scheduleLabel63(e))+'</span>'+(scheduleCan56('daily')?'<button type="button" data-edit-daily="'+scheduleEsc56(e.id)+'" aria-label="編輯 '+scheduleEsc56(e.title)+'">編輯</button>':'')+'</div>').join('')+'</section>').join('')||'<p class="muted">當日沒有排程工作</p>')+'</div>';
+  body='<div class="schedule-daily-list67">'+(jobs.length?'<div class="schedule-record-toolbar69">'+(scheduleCan56('daily')?'<button type="button" data-edit-daily-day="'+day+'">編輯當日排程</button>':'')+'</div>':'')+(names.flatMap(name=>sorted.filter(e=>scheduleAssignees56(e).includes(name)).map(e=>'<div class="schedule-daily-job67"><span><strong>'+scheduleEsc56(name)+'</strong>　'+scheduleEsc56(scheduleLabel63(e))+'</span></div>')).join('')||'<p class="muted">當日沒有排程工作</p>')+'</div>';
  }else if(section==='reports'){
   title='工作回報';body='<div class="schedule-chat67">'+(reports.map(r=>{const job=entries.find(e=>e.id===r.entry_id);return '<article class="schedule-message67"><span class="schedule-avatar67">'+scheduleEsc56(r.author_name)+'</span><div class="schedule-bubble67">'+(job?'<strong>'+scheduleEsc56(scheduleLabel63(job))+'</strong>':'')+'<p>'+scheduleEsc56(r.body)+'</p>'+(r.photo_key?'<img data-schedule-photo="'+scheduleEsc56(r.id)+'" alt="'+scheduleEsc56(r.author_name)+' 的工作照片">':'')+'<small>'+scheduleEsc56(String(r.created_at||'').replace('T',' ').slice(0,16))+'</small>'+(r.author_id===String(currentUser.id)||currentUser.role==='supervisor'?'<button type="button" data-schedule-delete-report="'+scheduleEsc56(r.id)+'">刪除回報</button>':'')+'</div></article>'}).join('')||'<p class="schedule-chat-empty67">尚無工作回報</p>')+'</div>'+(canDo('schedule.report')?'<button type="button" class="primary" id="schedule-add-report">新增工作回報</button>':'');
  }else{
@@ -30,7 +30,7 @@ scheduleDayRecord56=function(day,section='jobs',materialId=''){
  }
  modal(title+' · '+day,'<div class="schedule-records schedule-records67">'+body+'</div>',null);
  $('#schedule-add-report')?.addEventListener('click',()=>scheduleReportDialog56(day));
- document.querySelectorAll('#modal [data-edit-daily]').forEach(b=>b.onclick=()=>scheduleEntryDialog56(jobs.find(e=>e.id===b.dataset.editDaily)));
+ document.querySelectorAll('#modal [data-edit-daily-day]').forEach(b=>b.onclick=()=>scheduleEntryDialog56(jobs[0]));
  document.querySelectorAll('#modal [data-edit-material]').forEach(b=>b.onclick=()=>scheduleMaterialDialog61(materials.find(e=>e.id===b.dataset.editMaterial)));
  document.querySelectorAll('#modal [data-schedule-delete-report]').forEach(b=>b.onclick=async()=>{if(!await confirmAction('確定刪除這筆工作回報？'))return;try{await scheduleSend56({kind:'report',id:b.dataset.scheduleDeleteReport},'DELETE');$('#modal').close();scheduleRender56()}catch(e){toast(e.message)}});
  if(section==='reports')schedulePhotoLoad56($('#modal'));
@@ -63,3 +63,18 @@ scheduleMaterialDialog61=function(entry){
  });
  if(entry){const remove=document.createElement('button');remove.type='button';remove.className='danger-button';remove.textContent='刪除料件';remove.onclick=async()=>{if(!await confirmAction('確定刪除這筆料件紀錄與照片？'))return;try{await scheduleSend56({kind:'material',id:entry.id,revision:entry.revision},'DELETE');$('#modal').close();scheduleRender56()}catch(e){$('#form-error').textContent=e.message}};$('#form-error').before(remove)}
 };
+
+// Keep the visible roster above the dates while each work item retains its own assignees.
+function schedulePlacePeople69(list){
+ const blocks=[...list.querySelectorAll('.schedule-task60')];let panel=list.parentNode.querySelector('#schedule-people-top69');
+ if(!panel){panel=document.createElement('div');panel.id='schedule-people-top69';panel.className='schedule-people-top69';panel.setAttribute('aria-label','人員名單');const before=list.id==='schedule-task-list60'?list.previousElementSibling:list;list.parentNode.insertBefore(panel,before);
+  panel.addEventListener('change',event=>{const row=event.target.closest('.schedule-people-row69');if(!row)return;const people=[...row.querySelectorAll('.schedule-choice60 input[type="checkbox"]')],all=row.querySelector('.schedule-all69 input');if(event.target===all)people.forEach(input=>{input.checked=all.checked});const selected=people.filter(input=>input.checked).length;all.checked=people.length>0&&selected===people.length;all.indeterminate=selected>0&&selected<people.length});
+ }
+ for(const [i,block] of blocks.entries()){
+  const key=block.dataset.taskIndex;let row=[...panel.children].find(node=>node.dataset.taskIndex===key);
+  if(!row){const picker=block.querySelector('.schedule-people63');if(!picker)continue;row=document.createElement('section');row.className='schedule-people-row69';row.dataset.taskIndex=key;const heading=document.createElement('div');heading.className='schedule-people-heading69';heading.innerHTML='<strong></strong><label class="schedule-all69"><input type="checkbox"> 全選</label>';row.append(heading,picker)}
+  row.querySelector('strong').textContent='人員名單 · 工作 '+(i+1);panel.append(row);
+  const inputs=[...row.querySelectorAll('.schedule-choice60 input[type="checkbox"]')],checked=inputs.filter(input=>input.checked).length,all=row.querySelector('.schedule-all69 input');all.checked=inputs.length>0&&checked===inputs.length;all.indeterminate=checked>0&&checked<inputs.length;
+ }
+ for(const row of [...panel.children])if(!blocks.some(block=>block.dataset.taskIndex===row.dataset.taskIndex))row.remove();
+}

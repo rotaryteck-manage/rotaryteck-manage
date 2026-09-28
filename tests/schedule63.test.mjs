@@ -29,6 +29,15 @@ test('migration restores existing jobs in insertion order, regardless of random 
 
 test('schedule text is accepted as a separate configurable area',()=>{assert.doesNotThrow(()=>validateWorkflowState({appearance:{text:{schedule:{'新增排程':'新增安排','工作內容':'作業內容'}}}}));assert.throws(()=>validateWorkflowState({appearance:{text:{unexpected:{'新增排程':'新增安排'}}}}));});
 
+test('one-day weekly work occupies only that date, beside later work',()=>{
+ const source=fs.readFileSync(new URL('../dist/schedule.js',import.meta.url),'utf8'),snippet=source.slice(source.indexOf('function scheduleGroup64('),source.indexOf('async function scheduleSend56('));
+ const day='2026-09-28',entries=[{id:'holiday',kind:'weekly',day,end_day:day,title:'教師節',category:'["放假"]',assignee:'["黃瑞麟"]',color:'#ffaaaa',sort_index:1},{id:'job',kind:'weekly',day:'2026-09-29',end_day:'2026-10-02',title:'FAA',category:'["製作"]',assignee:'["黃瑞麟"]',color:'#ffaaaa',sort_index:2}];
+ const root={innerHTML:'',querySelectorAll:()=>[]},ctx={scheduleData56:{entries,people:[{name:'黃瑞麟'}]},scheduleTab56:'weekly',scheduleAnchor56:day,scheduleWeek56:x=>x,scheduleMonth56:x=>x.slice(0,7)+'-01',scheduleShift56:(x,n)=>{const d=new Date(x+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)},scheduleAssignees56:e=>JSON.parse(e.assignee||'[]'),scheduleEsc56:x=>String(x),scheduleInk56:()=> '#173a2b',scheduleCan56:()=>true,scheduleLayout63:()=>{},$:x=>x==='#schedule-content56'?root:{textContent:''}};ctx.scheduleWeekDays56=x=>Array.from({length:7},(_,i)=>ctx.scheduleShift56(x,i));
+ ctx.scheduleLabel63=e=>e.title+'('+JSON.parse(e.category)[0]+')';vm.runInNewContext(snippet,ctx);vm.runInNewContext('scheduleDraw56()',ctx);
+ assert.match(root.innerHTML,/grid-column:2 \/ 3;grid-row:2[^>]*>.*?教師節/s);assert.match(root.innerHTML,/grid-column:3 \/ 7;grid-row:2[^>]*>.*?FAA/s);
+ assert.equal((root.innerHTML.match(/schedule-plan-bar schedule-plan-group64/g)||[]).length,2);
+});
+
 test('editing and removing one person’s weekly jobs saves together or not at all',async()=>{
  const {db,DB}=database();for(const name of ['0004_schedule.sql','0006_schedule_weekly_notes.sql','0007_schedule_work_order.sql','0008_schedule_material_photos.sql','0009_schedule_material_project.sql'])db.exec(fs.readFileSync(new URL('../drizzle/'+name,import.meta.url),'utf8'));
  db.exec("CREATE TABLE app_employee_settings(employee_id INTEGER PRIMARY KEY,profile_id TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL DEFAULT 0);INSERT INTO employees(account_user_id,email,name,role,status,created_at,updated_at) VALUES('a','a@example.com','黃瑞麟','viewer','active','now','now')");
