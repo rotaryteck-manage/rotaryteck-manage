@@ -27,3 +27,8 @@ body .management-nav button{display:inline-flex!important;flex:0 1 auto!importan
 .boot-card76 p{font-size:14px;letter-spacing:2px;margin:0;color:#50685a}
 @keyframes boot-pulse76{0%,100%{opacity:.18}50%{opacity:1}}
 @media(prefers-reduced-motion:reduce){.boot-bars76 i{animation:none;opacity:.65}#boot-loading76{transition:none}}
+
+/* v77: logo aligns with the brand line, subtitle shares the full group center. */
+.boot-brand76{line-height:1.2}
+.boot-brand76 img{flex:0 0 auto;width:40px;height:40px}
+.boot-subtitle77{font-size:16px;font-weight:400;letter-spacing:3px;margin-top:5px;text-align:center}
