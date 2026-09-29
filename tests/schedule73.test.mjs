@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi,scheduleUnique73} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi,scheduleUnique73} from '../worker/schedule.mjs';
 import {validateWorkflowState,workflowChangeAllowed,preparedQuantity} from '../worker/workflows.mjs';
 import {stateChangeAllowed} from '../worker/server.mjs';
 function fixture(){
@@ -45,3 +45,7 @@ test('quantity correction is independent, rejects simultaneous movements, and pr
  const before={projects:[p]},after=structuredClone(before);after.projects[0].parts[0].preparedAdjustment73=0;assert.equal(workflowChangeAllowed(before,after,{role:'warehouse'}),false);assert.equal(workflowChangeAllowed(before,after,{role:'supervisor'}),true);
  after.warehouseOptions73={cabinets:['自訂櫃'],shelves:['9層']};assert.doesNotThrow(()=>validateWorkflowState(after));assert.equal(workflowChangeAllowed(before,after,{role:'warehouse'}),false);after.warehouseOptions73.shelves=['1層','1層'];assert.throws(()=>validateWorkflowState(after),/不可重複/);
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});

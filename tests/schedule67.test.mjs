@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {database} from './helpers/d1.mjs';
-import {scheduleApi,schedulePhotoUpload,scheduleMaterialUpload,scheduleMaterialPhotoApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi,schedulePhotoUpload as raw_schedulePhotoUpload,scheduleMaterialUpload as raw_scheduleMaterialUpload,scheduleMaterialPhotoApi} from '../worker/schedule.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 
 test('daily report needs an assigned job and an uploaded photo, with no text-only residue',async()=>{
@@ -56,3 +56,9 @@ test('shared image compression keeps small photos and reduces larger photos belo
  assert.equal(await vm.runInNewContext('compressReceiptImage(file)',Object.assign(context,{file:small})),small);
  const result=await vm.runInNewContext('compressReceiptImage(file)',Object.assign(context,{file:big}));assert.ok(result.size<=800*1024);assert.equal(result.type,'image/jpeg');
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});
+const schedulePhotoUpload=(request,env,e)=>raw_schedulePhotoUpload(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});
+const scheduleMaterialUpload=(request,env,e)=>raw_scheduleMaterialUpload(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});

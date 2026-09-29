@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {database} from './helpers/d1.mjs';
-import {scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 import {validateWorkflowState} from '../worker/workflows.mjs';
 
@@ -48,3 +48,7 @@ test('editing and removing one person’s weekly jobs saves together or not at a
  assert.equal((await send({...stale,deletions:[{id:'b',revision:1}]})).status,200);assert.deepEqual(db.prepare('SELECT title FROM schedule_entries ORDER BY sort_index').all().map(x=>x.title),['FAA更新']);
  assert.equal((await send({kind:'batch',entries:[],deletions:[{id:'a',revision:2}]})).status,200);assert.equal(db.prepare('SELECT count(*) AS n FROM schedule_entries').get().n,0);
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});

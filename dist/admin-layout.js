@@ -4,7 +4,7 @@ function orderedAdminKeys(keys,saved){return [...new Set([...(Array.isArray(save
 let adminActiveSection='employee-admin',adminSorting=false;
 const renderAdminBeforeLayout=renderAdmin;
 renderAdmin=function(){
- renderAdminBeforeLayout();if(currentUser.role!=='supervisor')return;
+ renderAdminBeforeLayout();if(!canDo('admin.view'))return;
  const main=$('main'),cards=[...main.querySelectorAll(':scope > .admin-card')],map=new Map();
  for(const card of cards){const key=adminSectionKey(card);if(!key)continue;const panel=document.createElement('section');panel.className='admin-card admin-tab-panel';panel.id=card.id;panel.dataset.sectionKey=key;const title=card.querySelector('summary h2');if(title)panel.append(title);const body=card.querySelector('.admin-card-body');if(body)panel.append(body);card.replaceWith(panel);map.set(key,panel);}
  const top=$('#export-all').parentElement,publish=$('#publish-site').parentElement;
@@ -27,7 +27,7 @@ renderAdmin=function(){
 async function collectPhotoPages(url){const items=[],seen=new Set();let cursor='';do{const r=await apiFetch(url+(cursor?'&cursor='+encodeURIComponent(cursor):'')),data=await r.json();if(!r.ok)throw Error(data.error||'照片清單讀取失敗');if(!Array.isArray(data.items))throw Error('照片清單格式不正確');items.push(...data.items);if(!data.truncated)break;if(!data.cursor||seen.has(data.cursor))throw Error('照片清單不完整，請重試');cursor=data.cursor;seen.add(cursor);}while(true);return items.sort((a,b)=>String(a.created).localeCompare(String(b.created))||String(a.id).localeCompare(String(b.id)));}
 let everyPhotoBusy=false;
 async function exportEveryPhoto(button){
- if(currentUser.role!=='supervisor'||everyPhotoBusy)return;if(!await authorizeExport())return;
+ if(!canDo('admin.view')||everyPhotoBusy)return;if(!await authorizeExport())return;
  everyPhotoBusy=true;button.disabled=true;const original=button.textContent,snapshot=structuredClone(state),entries=[],rows=[['管理區','案名','送鍍次數／線捆編號','類別','人員','上傳時間','原始檔名','ZIP位置']];let bytes=0;
  async function append(url,path,item,meta){const r=await apiFetch(url);if(!r.ok)throw Error('照片下載失敗：'+meta[1]);const type=r.headers.get('content-type')||'';if(!type.startsWith('image/'))throw Error('照片格式不正確');const data=new Uint8Array(await r.arrayBuffer());bytes+=data.length;if(bytes>250*1024*1024||entries.length>=60000)throw Error('照片量較大，請改用各管理區的分案匯出');const ext=type.includes('png')?'png':type.includes('webp')?'webp':'jpg',name=path+'.'+ext;entries.push({name,data,date:item.created});rows.push([...meta,item.actor||'未記錄人員',receiptTime(item.created),item.name||'',name]);button.textContent='正在整理 '+entries.length+' 張照片…';}
  try{

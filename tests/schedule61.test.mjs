@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {database} from './helpers/d1.mjs';
-import {scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 
 test('warehouse can schedule daily work and register materials, while only supervisors write weekly notes',async()=>{
@@ -27,3 +27,7 @@ test('new weekly notes and daily material entries appear in scoped exports',asyn
  db.exec("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision) VALUES ('material-2','material','2026-09-28','2026-09-28','螺帽','','#4e8069','','收料',42,'','1','主管','now','now',1)");
  const {recordsExportApi}=await import('../worker/records-export.mjs');const employee={permissions:builtinProfiles[0].permissions},r=await recordsExportApi(new Request('https://example.test/api/records-export?from=2026-09-28&to=2026-09-30&types=weekly,receipt'),{DB},employee,async()=>({projects:[],deletedProjects:[],platingProjects:[]}),async()=> 'owner');assert.equal(r.status,200);const data=await r.json();assert.equal(data.weekly.find(x=>x.title==='每週備註').note,'現場確認');assert.equal(data.receipt.find(x=>x.item==='螺帽').quantity,42);
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});

@@ -19,7 +19,7 @@ async function scheduleApiCore71(request,env,employee){
    const people=await env.DB.prepare("SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id WHERE e.status='active' ORDER BY COALESCE(x.position,e.id),e.id").all();
    const weeklyNotes=await env.DB.prepare('SELECT week_start,body,updated_at,author_name FROM schedule_weekly_notes WHERE week_start BETWEEN ? AND ? ORDER BY week_start').bind(from,to).all();
    await scheduleLeaveTable72(env);const leaves=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id').bind(to+'T23:59:59',from+'T00:00').all();
-   return scheduleJSON({leaves:leaves.results.map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results,weeklyNotes:weeklyNotes.results,people:people.results,options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':''}))});
+   return scheduleJSON({leaves:(scheduleAllowed(employee,'schedule.leave.view')?leaves.results:[]).map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results,weeklyNotes:weeklyNotes.results,people:people.results,options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':''}))});
   }
   if(request.headers.get('origin')!==url.origin)return scheduleJSON({error:'來源驗證失敗'},403);
   if(method!=='POST'&&method!=='DELETE')return scheduleJSON({error:'不支援的操作'},405);
@@ -32,15 +32,16 @@ async function scheduleApiCore71(request,env,employee){
   if(kind==='leave')return scheduleLeave72(request,env,employee,input);
   if(['copy_week','reset_week','text_delete'].includes(kind))return scheduleExtra71(request,env,employee,input);
   if(kind==='options'){
-   if(method!=='POST'||employee.role!=='supervisor'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'只有主管可以設定工作選項'},403);
+   if(method!=='POST'||!scheduleAllowed(employee,'schedule.options'))return scheduleJSON({error:'沒有管理工作選單的權限'},403);
    const valid=list=>Array.isArray(list)&&list.length<=100&&list.every(v=>typeof v==='string'&&v.trim()===v&&v.length>0&&v.length<=80)&&new Set(list).size===list.length;
    if(!valid(input.items)||!valid(input.contents))return scheduleJSON({error:'選項不可空白、重複或超過 80 字'},400);
    await scheduleOptions60(env);await env.DB.prepare('INSERT INTO schedule_options(id,items,contents) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET items=excluded.items,contents=excluded.contents').bind(JSON.stringify(input.items),JSON.stringify(input.contents)).run();return scheduleJSON({saved:true});
   }
   if(kind==='batch'){
-   if(method!=='POST'||!['supervisor','warehouse'].includes(employee.role)||!Array.isArray(input.entries)||!Array.isArray(input.deletions||[])||input.entries.length+(input.deletions||[]).length<1||input.entries.length+(input.deletions||[]).length>20)return scheduleJSON({error:'無法批次儲存工作'},403);
+   if(method!=='POST'||!Array.isArray(input.entries)||!Array.isArray(input.deletions||[])||input.entries.length+(input.deletions||[]).length<1||input.entries.length+(input.deletions||[]).length>20)return scheduleJSON({error:'無法批次儲存工作'},403);
+   if(input.entries.some(item=>!scheduleAllowed(employee,'schedule.'+item.kind+(item.revision?'.edit':'.create'))))return scheduleJSON({error:'沒有新增或編輯此排程的權限'},403);
    const ids=new Set(),people=await env.DB.prepare("SELECT name FROM employees WHERE status='active'").all(),active=new Set(people.results.map(x=>x.name)),statements=[];
-   for(const item of input.entries){const cap=item.kind==='weekly'?'schedule.weekly':item.kind==='daily'?'schedule.daily':'';if(!cap||(item.kind==='weekly'&&employee.role!=='supervisor')||!scheduleAllowed(employee,cap)||!scheduleText(item.id,80)||ids.has(item.id)||!scheduleDate(item.day)||!scheduleDate(item.endDay)||item.endDay<item.day||Date.parse(item.endDay)-Date.parse(item.day)>31*86400000||item.kind==='daily'&&item.day!==item.endDay||!scheduleText(item.title,160)||typeof item.note!=='string'||item.note.length>1000||!/^#[0-9a-fA-F]{6}$/.test(item.color)||!Number.isInteger(item.revision)||item.revision<0||item.sortIndex!==undefined&&(!Number.isInteger(item.sortIndex)||item.sortIndex<0||item.sortIndex>1000000))return scheduleJSON({error:'第 '+(statements.length+1)+' 項工作不完整'},400);ids.add(item.id);
+   for(const item of input.entries){const cap=item.kind==='weekly'?'schedule.weekly':item.kind==='daily'?'schedule.daily':'';if(!cap||!scheduleAllowed(employee,cap+(item.revision?'.edit':'.create'))||!scheduleText(item.id,80)||ids.has(item.id)||!scheduleDate(item.day)||!scheduleDate(item.endDay)||item.endDay<item.day||Date.parse(item.endDay)-Date.parse(item.day)>31*86400000||item.kind==='daily'&&item.day!==item.endDay||!scheduleText(item.title,160)||typeof item.note!=='string'||item.note.length>1000||!/^#[0-9a-fA-F]{6}$/.test(item.color)||!Number.isInteger(item.revision)||item.revision<0||item.sortIndex!==undefined&&(!Number.isInteger(item.sortIndex)||item.sortIndex<0||item.sortIndex>1000000))return scheduleJSON({error:'第 '+(statements.length+1)+' 項工作不完整'},400);ids.add(item.id);
     let assignees,contents;try{assignees=JSON.parse(item.assignee);contents=JSON.parse(item.category)}catch{return scheduleJSON({error:'請勾選工作內容及人員'},400)}
     if(!Array.isArray(assignees)||!assignees.length||assignees.length>50||new Set(assignees).size!==assignees.length||!assignees.every(x=>active.has(x))||!Array.isArray(contents)||!contents.length||contents.length>100||!contents.every(x=>typeof x==='string'&&x.trim()&&x.length<=80))return scheduleJSON({error:'工作人員或內容選擇不正確'},400);
     const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(item.id).first();if(old&&old.kind!==item.kind)return scheduleJSON({error:'排程類型不符'},400);if((old?.revision||0)!==item.revision)return scheduleJSON({error:'排程已由他人修改，請重新載入'},409);
@@ -49,19 +50,19 @@ async function scheduleApiCore71(request,env,employee){
     if(!scheduleText(removal.id,80)||ids.has(removal.id)||!Number.isInteger(removal.revision)||removal.revision<1)return scheduleJSON({error:'刪除工作資料不正確'},400);
     ids.add(removal.id);const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(removal.id).first();
     if(!old||!['weekly','daily'].includes(old.kind))return scheduleJSON({error:'找不到工作'},404);
-    if((old.kind==='weekly'&&employee.role!=='supervisor')||!scheduleAllowed(employee,'schedule.'+old.kind))return scheduleJSON({error:'沒有刪除此排程的權限'},403);
+    if(!scheduleAllowed(employee,'schedule.'+old.kind+'.delete'))return scheduleJSON({error:'沒有刪除此排程的權限'},403);
     if(old.revision!==removal.revision)return scheduleJSON({error:'排程已由他人修改，請重新載入'},409);
     statements.push(env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=? AND kind=?').bind(removal.id,removal.revision,old.kind));
    }await env.DB.batch(statements);return scheduleJSON({saved:true,count:statements.length});
   }
   if(kind==='weekly_note'){
-   if(method!=='POST'||employee.role!=='supervisor'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'只有具有每週排程權限的主管可修改備註'},403);
+   if(method!=='POST'||!scheduleAllowed(employee,'schedule.note'))return scheduleJSON({error:'沒有修改每週備註的權限'},403);
    if(!scheduleDate(input.weekStart)||new Date(input.weekStart+'T00:00:00Z').getUTCDay()!==1||typeof input.body!=='string'||input.body.length>2000)return scheduleJSON({error:'備註日期或內容不正確'},400);
    const body=input.body.trim();if(body)await env.DB.prepare('INSERT INTO schedule_weekly_notes(week_start,body,updated_at,author_id,author_name) VALUES(?,?,?,?,?) ON CONFLICT(week_start) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at,author_id=excluded.author_id,author_name=excluded.author_name').bind(input.weekStart,body,now,String(employee.id),employee.name).run();
    else await env.DB.prepare('DELETE FROM schedule_weekly_notes WHERE week_start=?').bind(input.weekStart).run();return scheduleJSON({saved:true});
   }
   if(kind==='material'){
-   if(!['supervisor','warehouse'].includes(employee.role)||!scheduleAllowed(employee,'schedule.material'))return scheduleJSON({error:'沒有每日物料登錄權限'},403);
+   if(!scheduleAllowed(employee,'schedule.material.'+(method==='DELETE'?'delete':input.revision?'edit':'create')))return scheduleJSON({error:'沒有每日物料登錄權限'},403);
    if(method==='DELETE'){const old=await env.DB.prepare("SELECT revision,receipt_photo_key,item_photo_key FROM schedule_entries WHERE id=? AND kind='material'").bind(input.id).first();if(!old)return scheduleJSON({error:'找不到物料紀錄'},404);if(old.revision!==input.revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);await env.DB.prepare("DELETE FROM schedule_entries WHERE id=? AND kind='material' AND revision=?").bind(input.id,input.revision).run();for(const key of [old.receipt_photo_key,old.item_photo_key])if(key)await env.UPLOADS?.delete(key);return scheduleJSON({deleted:true})}
    if(!scheduleText(input.id,80)||!scheduleDate(input.day)||!scheduleText(input.title,160)||!['收料','出貨','送貨'].includes(input.category)||!Number.isSafeInteger(input.quantity)||input.quantity<1||input.quantity>1000000||typeof input.note!=='string'||input.note.length>1000||!Number.isInteger(input.revision)||input.revision<0)return scheduleJSON({error:'請填寫物料日期、品項、數量與類型'},400);
    const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(input.id).first();if(old&&old.kind!==kind)return scheduleJSON({error:'紀錄類型不符'},400);if((old?.revision||0)!==input.revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
@@ -69,12 +70,21 @@ async function scheduleApiCore71(request,env,employee){
    else await env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision) VALUES (?,'material',?,? ,?,'','#4e8069',?,?,?,'',?,?,?,?,1)").bind(input.id,input.day,input.day,input.title.trim(),input.note.trim(),input.category,input.quantity,String(employee.id),employee.name,now,now).run();return scheduleJSON({saved:true});
   }
   if(kind==='report'){
-   if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);
-   if(method==='DELETE'){const old=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(input.id).first();if(!old)return scheduleJSON({error:'找不到回報'},404);if(employee.role!=='supervisor'&&old.author_id!==String(employee.id))return scheduleJSON({error:'只能刪除自己的回報'},403);await env.DB.prepare('DELETE FROM schedule_reports WHERE id=? AND author_id=?').bind(old.id,old.author_id).run();if(old.photo_key)await env.UPLOADS?.delete(old.photo_key);return scheduleJSON({deleted:true});}
+   if(method==='POST'){
+    if(typeof input.previousBody!=='string')return scheduleJSON({error:'新增回報需上傳工作照片'},400);
+    const old=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(input.id).first();
+    if(!old)return scheduleJSON({error:'找不到工作回報'},404);
+    if(!scheduleAllowed(employee,'schedule.report.editAll')&&!(old.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.editOwn')))return scheduleJSON({error:'沒有修改此回報的權限'},403);
+    if(!scheduleText(input.body,3000))return scheduleJSON({error:'請填寫回報內容'},400);
+    if(input.previousBody!==old.body)return scheduleJSON({error:'回報已更新，請重新開啟'},409);
+    const result=await env.DB.prepare('UPDATE schedule_reports SET body=? WHERE id=? AND body=?').bind(input.body.trim(),old.id,old.body).run();
+    return result.meta?.changes?scheduleJSON({saved:true}):scheduleJSON({error:'回報已更新，請重新開啟'},409);
+   }
+   if(method==='DELETE'){const old=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(input.id).first();if(!old)return scheduleJSON({error:'找不到回報'},404);if(!scheduleAllowed(employee,'schedule.report.deleteAll')&&!(old.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.deleteOwn')))return scheduleJSON({error:'只能刪除自己的回報'},403);await env.DB.prepare('DELETE FROM schedule_reports WHERE id=? AND author_id=?').bind(old.id,old.author_id).run();if(old.photo_key)await env.UPLOADS?.delete(old.photo_key);return scheduleJSON({deleted:true});}
    return scheduleJSON({error:'請選擇安排給自己的工作，並上傳工作照片'},400);
   }
   if(!['weekly','daily','special'].includes(kind))return scheduleJSON({error:'排程類型不正確'},400);
-  const capability=kind==='weekly'?'schedule.weekly':'schedule.daily';if((kind==='weekly'||kind==='special'?employee.role!=='supervisor':!['supervisor','warehouse'].includes(employee.role))||!scheduleAllowed(employee,capability))return scheduleJSON({error:'沒有此排程的修改權限'},403);
+  const capability=kind==='weekly'?'schedule.weekly':'schedule.daily';if(!scheduleAllowed(employee,capability+(method==='DELETE'?'.delete':input.revision?'.edit':'.create')))return scheduleJSON({error:'沒有此排程的修改權限'},403);
   if(method==='DELETE'){const old=await env.DB.prepare('SELECT id,revision,kind FROM schedule_entries WHERE id=?').bind(input.id).first();if(!old)return scheduleJSON({error:'找不到項目'},404);if(old.kind!==kind)return scheduleJSON({error:'排程類型不符'},400);if(old.revision!==input.revision)return scheduleJSON({error:'排程已被他人修改，請重新載入'},409);await env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=?').bind(input.id,input.revision).run();return scheduleJSON({deleted:true});}
   if(input.sortIndex!==undefined&&(!Number.isInteger(input.sortIndex)||input.sortIndex<0||input.sortIndex>1000000))return scheduleJSON({error:'工作順序不正確'},400);
   if(!scheduleText(input.id,80)||!scheduleDate(input.day)||!scheduleDate(input.endDay)||input.endDay<input.day||Date.parse(input.endDay)-Date.parse(input.day)>31*86400000||!scheduleText(input.title,160)||typeof input.assignee!=='string'||input.assignee.length>2000||typeof input.note!=='string'||input.note.length>1000||!/^#[0-9a-fA-F]{6}$/.test(input.color))return scheduleJSON({error:'請檢查排程日期與內容'},400);
@@ -95,11 +105,12 @@ export async function schedulePhotoApi(request,env,employee){
  }catch(e){return scheduleJSON({error:e.message},400);}
 }
 async function schedulePhotoUploadCore71(request,env,employee){
- try{if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);if(request.headers.get('origin')!==new URL(request.url).origin)return scheduleJSON({error:'來源驗證失敗'},403);
+ try{if(!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看權限'},403);if(request.headers.get('origin')!==new URL(request.url).origin)return scheduleJSON({error:'來源驗證失敗'},403);
   if(Number(request.headers.get('content-length')||0)>1000000)return scheduleJSON({error:'照片不可超過 800 KB'},413);
   const form=await request.formData(),id=String(form.get('id')||''),photo=form.get('photo');
   if(!(photo instanceof File)||!['image/jpeg','image/png','image/webp'].includes(photo.type)||photo.size>schedulePhotoLimit67||photo.size===0||!env.UPLOADS)return scheduleJSON({error:'請選擇小於 800 KB 的 JPG、PNG 或 WebP'},400);
   if(form.get('mode')==='create'){
+   if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);
    const day=String(form.get('day')||''),body=String(form.get('body')||'').trim(),entryId=String(form.get('entryId')||'');
    if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(body,3000)||!scheduleText(entryId,80))return scheduleJSON({error:'請填寫日期、工作與回報內容'},400);
    const entry=await env.DB.prepare("SELECT kind,day,end_day,assignee FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
@@ -108,7 +119,7 @@ async function schedulePhotoUploadCore71(request,env,employee){
    try{await env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,key,String(photo.name).slice(0,200),String(employee.id),employee.name,new Date().toISOString()).run()}catch(e){await env.UPLOADS.delete(key);throw e}
    return scheduleJSON({saved:true});
   }
-  const row=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(id).first();if(!row||row.author_id!==String(employee.id)&&employee.role!=='supervisor')return scheduleJSON({error:'只能修改自己的回報'},403);
+  const row=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(id).first();if(!row||!scheduleAllowed(employee,'schedule.report.editAll')&&!(row.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.editOwn')))return scheduleJSON({error:'只能修改自己的回報'},403);
   const key='schedule/'+id+'/'+crypto.randomUUID();await env.UPLOADS.put(key,photo.stream(),{httpMetadata:{contentType:photo.type}});await env.DB.prepare('UPDATE schedule_reports SET photo_key=?,photo_name=? WHERE id=?').bind(key,String(photo.name).slice(0,200),id).run();if(row.photo_key)await env.UPLOADS.delete(row.photo_key);return scheduleJSON({saved:true});
  }catch(e){return scheduleJSON({error:e.message||'照片上傳失敗'},400);}
 }
@@ -123,15 +134,15 @@ export async function scheduleMaterialPhotoApi(request,env,employee){
 }
 async function scheduleMaterialUploadCore71(request,env,employee){
  const stored=[];try{
-  if(request.method!=='POST'||!['supervisor','warehouse'].includes(employee.role)||!scheduleAllowed(employee,'schedule.material'))return scheduleJSON({error:'沒有每日料件登錄權限'},403);
+  if(request.method!=='POST'||!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有每日料件登錄權限'},403);
   if(request.headers.get('origin')!==new URL(request.url).origin)return scheduleJSON({error:'來源驗證失敗'},403);
   if(Number(request.headers.get('content-length')||0)>1900000)return scheduleJSON({error:'照片不可超過 800 KB'},413);
   const form=await request.formData(),id=String(form.get('id')||''),day=String(form.get('day')||''),title=String(form.get('title')||'').trim(),projectName=String(form.get('projectName')||'').trim(),category=String(form.get('category')||''),quantity=Number(form.get('quantity')),revision=Number(form.get('revision')),note=String(form.get('note')||'');
   if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(title,160)||!scheduleText(projectName,160)||!['收料','出貨','送貨'].includes(category)||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000000||!Number.isInteger(revision)||revision<0||note.length>1000)return scheduleJSON({error:'請檢查案件名稱、料件日期、類型、名稱和數量'},400);
-  const old=await env.DB.prepare("SELECT kind,revision,author_id,author_name,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE id=?").bind(id).first();if(old&&old.kind!=='material')return scheduleJSON({error:'紀錄類型不符'},400);if((old?.revision||0)!==revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
+  const old=await env.DB.prepare("SELECT kind,revision,author_id,author_name,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE id=?").bind(id).first();if(old&&old.kind!=='material')return scheduleJSON({error:'紀錄類型不符'},400);if(!scheduleAllowed(employee,'schedule.material.'+(old?'edit':'create')))return scheduleJSON({error:'沒有料件操作權限'},403);if((old?.revision||0)!==revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
   let authorId=old?.author_id||String(employee.id),authorName=old?.author_name||employee.name;
   const requested=String(form.get('authorId')||'');
-  if(requested&&requested!==authorId){if(employee.role!=='supervisor')return scheduleJSON({error:'只有主管可修改登記人'},403);const person=await env.DB.prepare("SELECT id,name FROM employees WHERE id=? AND status='active'").bind(requested).first();if(!person)return scheduleJSON({error:'登記人已停用或不存在'},400);authorId=String(person.id);authorName=person.name;}
+  if(requested&&requested!==authorId){if(!scheduleAllowed(employee,'schedule.material.author'))return scheduleJSON({error:'沒有修改登記人的權限'},403);const person=await env.DB.prepare("SELECT id,name FROM employees WHERE id=? AND status='active'").bind(requested).first();if(!person)return scheduleJSON({error:'登記人已停用或不存在'},400);authorId=String(person.id);authorName=person.name;}
   const photos={};for(const [type,field] of [['receipt','receiptPhoto'],['item','photo']]){
    const file=form.get(field)||form.get(type==='item'?'itemPhoto':'receiptPhoto');if(!file||typeof file==='string'||!file.size)continue;
    if(!(file instanceof File)||!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>schedulePhotoLimit67||!env.UPLOADS)return scheduleJSON({error:'請選擇小於 800 KB 的 JPG、PNG 或 WebP'},400);
@@ -157,9 +168,10 @@ async function scheduleTables71(env){
 async function scheduleExtra71(request,env,employee,input){
  const url=new URL(request.url),method=request.method;
  if(!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看工作排程的權限'},403);
- if(employee.role!=='supervisor')return scheduleJSON({error:'只有主管可以操作'},403);
+ 
  await scheduleTables71(env);
  if(method==='GET'){
+  if(!scheduleAllowed(employee,'schedule.text.'+url.searchParams.get('kind')))return scheduleJSON({error:'沒有查看此文字紀錄的權限'},403);
   const from=url.searchParams.get('from'),to=url.searchParams.get('to'),kind=url.searchParams.get('kind');
   if(!scheduleDate(from)||!scheduleDate(to)||to<from||Date.parse(to)-Date.parse(from)>370*86400000||!['daily','weekly'].includes(kind))return scheduleJSON({error:'日期或類型不正確'},400);
   const rows=await env.DB.prepare('SELECT * FROM schedule_text71 WHERE kind=? AND day BETWEEN ? AND ? ORDER BY created_at DESC,id').bind(kind,from,to).all();
@@ -170,10 +182,11 @@ async function scheduleExtra71(request,env,employee,input){
  }
  if(request.headers.get('origin')!==url.origin)return scheduleJSON({error:'來源驗證失敗'},403);
  if(input.kind==='text_delete'){
+  if(!scheduleAllowed(employee,'schedule.text.delete'))return scheduleJSON({error:'沒有刪除文字紀錄的權限'},403);
   if(method!=='DELETE'||!scheduleText(input.id,120))return scheduleJSON({error:'紀錄編號不正確'},400);
   await env.DB.batch([env.DB.prepare('INSERT OR IGNORE INTO schedule_hidden_text71(id) VALUES(?)').bind(input.id),env.DB.prepare('DELETE FROM schedule_text71 WHERE id=?').bind(input.id)]);return scheduleJSON({deleted:true});
  }
- if(method!=='POST'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'沒有每週排程權限'},403);
+ if(method!=='POST'||!scheduleAllowed(employee,input.kind==='copy_week'?'schedule.copy':'schedule.reset'))return scheduleJSON({error:'沒有每週排程權限'},403);
  const week=input.weekStart,end=scheduleDate(week)?scheduleShift71(week,6):'';
  if(!scheduleDate(week)||new Date(week+'T00:00:00Z').getUTCDay()!==1)return scheduleJSON({error:'請選擇正確的週別'},400);
  const now=new Date().toISOString(),statements=[];
@@ -234,7 +247,7 @@ async function scheduleLeaveTable72(env){await env.DB.prepare('CREATE TABLE IF N
 }
 function leaveTime72(value){return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)&&scheduleDate(value.slice(0,10))&&Number(value.slice(11,13))<24&&Number(value.slice(14))<60;}
 async function scheduleLeave72(request,env,employee,input){
- if(!['supervisor','warehouse'].includes(employee.role)||!scheduleAllowed(employee,'schedule.daily'))return scheduleJSON({error:'只有具有每日排程權限的主管、倉管可以登記請假'},403);
+ if(!scheduleAllowed(employee,'schedule.leave.'+(request.method==='DELETE'?'delete':input.revision?'edit':'create')))return scheduleJSON({error:'沒有此請假操作的權限'},403);
  if(!scheduleText(input.id,80)||!Number.isInteger(input.revision)||input.revision<0)return scheduleJSON({error:'請假資料不正確'},400);
  await scheduleLeaveTable72(env);await scheduleTables71(env);
  const old=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE id=?').bind(input.id).first();
@@ -273,7 +286,7 @@ export function scheduleUnique73(rows,existing=[]){
 }
 async function scheduleSnapshot73(rows){const bytes=new TextEncoder().encode(JSON.stringify(rows));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 async function scheduleDedupe73(request,env,employee,input=null){
- if(employee.role!=='supervisor'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'只有主管可整理每週重複排程'},403);
+ if(!scheduleAllowed(employee,'schedule.dedupe'))return scheduleJSON({error:'沒有整理重複排程的權限'},403);
  const url=new URL(request.url),week=input?.weekStart||url.searchParams.get('weekStart');if(!scheduleDate(week)||new Date(week+'T00:00Z').getUTCDay()!==1)return scheduleJSON({error:'請選擇正確週別'},400);const end=scheduleShift71(week,6);
  const result=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=? ORDER BY created_at,id").bind(week,end).all(),rows=result.results;
  const plan=scheduleUnique73(rows),token=await scheduleSnapshot73(rows),preview=plan.changes.map(c=>({id:c.before.id,title:c.before.title,day:c.before.day,endDay:c.before.end_day,people:c.removed,action:c.after?'移除重複指派':'移除重複工作'}));
@@ -297,7 +310,7 @@ async function schedulePalette73(request,env,employee,input=null){
  await env.DB.prepare('CREATE TABLE IF NOT EXISTS schedule_palette73(id INTEGER PRIMARY KEY CHECK(id=1),colors TEXT NOT NULL,revision INTEGER NOT NULL)').run();
  const row=await env.DB.prepare('SELECT colors,revision FROM schedule_palette73 WHERE id=1').first();
  if(request.method==='GET')return scheduleJSON({colors:row?JSON.parse(row.colors):paletteDefaults73,revision:row?.revision||0});
- if(request.method!=='POST'||employee.role!=='supervisor'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'只有主管可設定共用色票'},403);
+ if(request.method!=='POST'||!scheduleAllowed(employee,'schedule.palette'))return scheduleJSON({error:'沒有設定共用色票的權限'},403);
  if(!Array.isArray(input.colors)||input.colors.length!==10||!input.colors.every(c=>typeof c==='string'&&/^#[0-9a-f]{6}$/i.test(c))||!Number.isInteger(input.revision)||input.revision<0)return scheduleJSON({error:'請設定 10 格有效顏色'},400);
  if((row?.revision||0)!==input.revision)return scheduleJSON({error:'共用色票已更新，請重新開啟設定'},409);
  const colors=JSON.stringify(input.colors.map(x=>x.toLowerCase())),r=row?await env.DB.prepare('UPDATE schedule_palette73 SET colors=?,revision=revision+1 WHERE id=1 AND revision=?').bind(colors,input.revision).run():await env.DB.prepare('INSERT OR IGNORE INTO schedule_palette73 VALUES(1,?,1)').bind(colors).run();

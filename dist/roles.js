@@ -1,23 +1,24 @@
 'use strict';
 const roleNames={viewer:'一般員工',warehouse:'庫房管理',supervisor:'主管'};
-const roleDescriptions={viewer:'依權限設定中的勾選項目開放功能',warehouse:'依權限設定開放功能，另可調整補貨狀態',supervisor:'依權限設定開放操作，另保留管理後台、匯出與補貨狀態權限'};
+const roleDescriptions={viewer:'依權限設定中的勾選項目開放功能',warehouse:'依後台勾選開放各項功能',supervisor:'依後台勾選開放各項操作；保留管理入口與權限設定'};
 let employeesCache=[];
 function applyRoleUI(){
  const role=currentUser.role,label=currentUser.roleLabel||roleNames[role]||'未授權',header=$('.header-actions');
  if(header&&!$('#current-role')){const badge=document.createElement('span');badge.id='current-role';badge.className='role-badge role-'+role;badge.textContent=(currentUser.name||'使用者')+' · '+label;header.prepend(badge);}
  if(header&&!$('#account-actions')){const wrap=document.createElement('span');wrap.id='account-actions';wrap.innerHTML='<button type="button" class="small" id="change-password">修改密碼</button> <button type="button" class="small" id="logout">登出</button>';header.append(wrap);$('#change-password').onclick=passwordDialog;$('#logout').onclick=logout;}
  const remove=selectors=>document.querySelectorAll(selectors).forEach(el=>el.remove());
- if(role!=='supervisor')remove('#edit-site,#content-admin,.audit-fold,#export-cases,#export-warehouse');
+ if(!canAdmin75())remove('#edit-site,#content-admin');if(!canDo('admin.audit'))remove('.audit-fold');if(!canDo('admin.export'))remove('#export-cases,#export-warehouse');
  if(!canDo('cases.manage'))remove('#new-case,[data-case-status],[data-case-edit],[data-case-up],[data-case-down]');
+ if(!canDo('warehouse.restore'))remove('#deleted-projects');
  if(!canDeleteProjectUI('warehouse'))remove('#delete-project');
  if(!canDo('warehouse.manage')){
- remove('#new-project,#deleted-projects,[data-project-up],[data-project-down],.project-order-controls,#rename-project,#import-bom,#add-part,#restore-part,[data-remove],#save-custom');
+ remove('#new-project,[data-project-up],[data-project-down],.project-order-controls,#rename-project,#import-bom,#add-part,#restore-part,[data-remove],#save-custom');
  document.querySelectorAll('.name-input,.spec-input,.demand-input,.sets-input,.location-input input,.location-input select,#receipt-form input[name="basketCount"],#receipt-form .admin-card input').forEach(el=>el.readOnly=true);
  document.querySelectorAll('.location-input select,#receipt-form .admin-card select').forEach(el=>el.disabled=true);
  }
- if(!canDo('warehouse.stock')&&!canDo('warehouse.manage')){document.querySelectorAll('#receipt-form input,#receipt-form select').forEach(el=>{if(el.type!=='hidden')el.disabled=true;});remove('#receipt-form button[type="submit"]');}
+ if(!['warehouse.receive','warehouse.issue','warehouse.preparedAdjust','warehouse.stockAdjust'].some(canDo)&&!canDo('warehouse.manage')){document.querySelectorAll('#receipt-form input,#receipt-form select').forEach(el=>{if(el.type!=='hidden')el.disabled=true;});remove('#receipt-form button[type="submit"]');}
  if(!canDo('warehouse.photos'))remove('#upload-receipts,#receipt-files');
- if(role!=='supervisor')remove('#export-project-photos,#export-all-photos-main');
+ if(!canDo('admin.export'))remove('#export-project-photos,#export-all-photos-main');
 }
 async function loadEmployees(){
  const box=$('#employee-list');if(!box)return;
@@ -28,7 +29,7 @@ async function loadEmployees(){
  }catch(e){box.innerHTML='<p class="error">'+esc(e.message)+'</p>';}
 }
 function enhanceEmployeesAdmin(){
- const main=$('main');if(!main||$('#employee-admin')||currentUser.role!=='supervisor')return;
+ const main=$('main');if(!main||$('#employee-admin')||!canDo('admin.employees'))return;
  const card=document.createElement('section');card.id='employee-admin';card.className='admin-card employee-admin';card.innerHTML='<div class="employee-title"><h2>'+esc(adminText('employeeTitle'))+'</h2><button type="button" id="new-employee" class="primary">'+esc(adminText('inviteEmployeeButton'))+'</button></div><div id="employee-list">正在載入員工…</div>';const first=main.querySelector('.admin-card');if(first)first.before(card);else main.append(card);$('#new-employee').onclick=()=>employeeDialog();loadEmployees();
 }
 function employeeDialog(id){
@@ -39,5 +40,5 @@ async function deleteEmployee(id){const e=employeesCache.find(x=>x.id===id);if(!
 function passwordDialog(){modal('修改登入密碼',field('新密碼','password','','type="password" minlength="8" required autocomplete="new-password"')+field('再次輸入新密碼','confirm','','type="password" minlength="8" required autocomplete="new-password"')+'<small>密碼至少 8 碼，需包含英文字母與數字。</small>','更新密碼',async fd=>{const password=String(fd.get('password')||''),confirmPassword=String(fd.get('confirm')||'');if(password!==confirmPassword)error('兩次輸入的密碼不同。');if(password.length<8||!/[A-Za-z]/.test(password)||!/\d/.test(password))error('密碼至少 8 碼，需包含英文字母與數字。');const cfg=await getAuthConfig(),session=await authSession(),r=await requestFetch(cfg.url+'/auth/v1/user',{method:'PUT',headers:{apikey:cfg.publishableKey,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify({password})}),data=await r.json();if(!r.ok)error(data.message||'密碼更新失敗');$('#modal').close();toast('密碼已更新');});}
 const renderBeforeRoles=render;render=function(){renderBeforeRoles();applyRoleUI();};
 function makeAdminCardsCollapsible(){document.querySelectorAll('section.admin-card').forEach(card=>{const title=card.querySelector('h2')?.textContent||'設定';const details=document.createElement('details');details.className=card.className;details.id=card.id;details.innerHTML='<summary><h2>'+esc(title)+'</h2><span>'+esc(adminText('expandLabel'))+'</span></summary><div class="admin-card-body"></div>';card.querySelector('h2')?.remove();while(card.firstChild)details.querySelector('.admin-card-body').append(card.firstChild);card.replaceWith(details);});}
-const renderAdminBeforeRoles=renderAdmin;renderAdmin=function(){if(currentUser.role!=='supervisor'){history.replaceState(null,'',location.pathname);render();toast('只有主管可以進入管理後台');return;}renderAdminBeforeRoles();enhanceEmployeesAdmin();makeAdminCardsCollapsible();applyRoleUI();};
+const renderAdminBeforeRoles=renderAdmin;renderAdmin=function(){if(!canAdmin75()){history.replaceState(null,'',location.pathname);render();toast('沒有進入管理後台的權限');return;}renderAdminBeforeRoles();enhanceEmployeesAdmin();makeAdminCardsCollapsible();applyRoleUI();};
 const renderContentBeforeRoles=renderContent;renderContent=function(...args){renderContentBeforeRoles(...args);applyRoleUI();};

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
 const shift=(day,n)=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
 function fixture(){
  const db=new DatabaseSync(':memory:');
@@ -37,6 +37,10 @@ test('legacy editing uses net stock deltas and preserves other lines',()=>{
 test('existing copies from previous versions are not copied twice',async()=>{const{db,send,item}=fixture();await send({kind:'batch',entries:[{...item('source','weekly'),day:'2026-09-21',endDay:'2026-09-21',title:'同工作'},{...item('target','weekly'),day:'2026-09-28',endDay:'2026-09-28',title:'同工作'}]});const result=await(await send({kind:'copy_week',weekStart:'2026-09-28'})).json();assert.equal(result.already,true);assert.equal(db.prepare('SELECT count(*) n FROM schedule_entries').get().n,2)});
 test('supervisor changes material author; warehouse cannot impersonate',async()=>{
  const {db,DB,boss,warehouse}=fixture();const {scheduleMaterialUpload}=await import('../worker/schedule.mjs');db.exec("INSERT INTO employees(account_user_id,email,name,role,status,created_at,updated_at) VALUES('b','b@test.local','乙','viewer','active','now','now')");
- const upload=(revision,authorId,user)=>{const f=new FormData();for(const[k,v]of Object.entries({id:'m',day:'2026-09-29',title:'螺帽',projectName:'FAA',category:'收料',quantity:2,revision,authorId}))f.set(k,String(v));return scheduleMaterialUpload(new Request('https://test.local/api/schedule-material-upload',{method:'POST',headers:{origin:'https://test.local'},body:f}),{DB},{...user,permissions:[...user.permissions,'schedule.material']})};
+ const upload=(revision,authorId,user)=>{const f=new FormData();for(const[k,v]of Object.entries({id:'m',day:'2026-09-29',title:'螺帽',projectName:'FAA',category:'收料',quantity:2,revision,authorId}))f.set(k,String(v));return scheduleMaterialUpload(new Request('https://test.local/api/schedule-material-upload',{method:'POST',headers:{origin:'https://test.local'},body:f}),{DB},{...user,permissions:migratePermissions75([...user.permissions,'schedule.material'],user.role)})};
  assert.equal((await upload(0,'1',boss)).status,200);assert.equal((await upload(1,'2',warehouse)).status,403);assert.equal((await upload(1,'2',boss)).status,200);assert.equal(db.prepare("SELECT author_name FROM schedule_entries WHERE id='m'").get().author_name,'乙');assert.equal((await upload(1,'1',boss)).status,409);assert.equal(db.prepare("SELECT count(*) n FROM schedule_text71").get().n,2);
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});

@@ -1,8 +1,8 @@
 'use strict';
-const leaveCan72=()=>['supervisor','warehouse'].includes(currentUser.role)&&canDo('schedule.daily');
+const leaveCan72=()=>['create','edit','delete'].some(k=>canDo('schedule.leave.'+k));
 function leaveOnDay72(e,day){return e.start_at<scheduleShift56(day,1)+'T00:00'&&e.end_at>day+'T00:00';}
 function leaveDialog72(entry=null,day=scheduleAnchor56){
- if(!leaveCan72())return;
+ if(!canDo('schedule.leave.'+(entry?'edit':'create')))return;
  const id=entry?.id||crypto.randomUUID(),selected=new Set((entry?.people||[]).map(p=>String(p.id))),people=scheduleData56.people||[];
  modal(entry?'編輯請假':'請假登記','<div class="form-grid"><label class="field">開始時間<input type="datetime-local" name="start" value="'+esc(entry?.start_at||day+'T08:30')+'" required></label><label class="field">結束時間<input type="datetime-local" name="end" value="'+esc(entry?.end_at||day+'T17:30')+'" required></label><label class="field">原因<select name="reason">'+['事假','病假','公假','其他'].map(v=>'<option '+(entry?.reason===v?'selected':'')+'>'+v+'</option>').join('')+'</select></label><label class="field" id="leave-other74" hidden>其他原因<input name="reasonNote" maxlength="200" value="'+esc(entry?.reason_note||'')+'" placeholder="請填寫原因"></label></div><fieldset class="leave-people72"><legend>請假人員（可複選多人）</legend>'+people.map(p=>'<label><input type="checkbox" name="people" value="'+esc(p.id)+'" '+(selected.has(String(p.id))?'checked':'')+'>'+esc(p.name)+'</label>').join('')+'</fieldset><p class="muted">時間以台灣時間登記；跨日請假會顯示於各個請假日期。</p>','確認登記',async fd=>{
   const start=String(fd.get('start')),end=String(fd.get('end')),chosen=fd.getAll('people').map(String);
@@ -21,7 +21,7 @@ function leaveRecords72(day){
 const scheduleDrawBefore72=scheduleDraw56;
 scheduleDraw56=function(){
  scheduleDrawBefore72();if(scheduleTab56!=='daily')return;
- const bar=$('.schedule-action-controls');if(bar&&leaveCan72()&&!document.querySelector('[data-leave-new72]')){const row=document.createElement('div');row.className='leave-toolbar72';row.innerHTML='<button type="button" data-leave-new72>請假登記</button>';bar.after(row);row.querySelector('button').onclick=()=>leaveDialog72();}
+ const bar=$('.schedule-action-controls');if(bar&&canDo('schedule.leave.create')&&!document.querySelector('[data-leave-new72]')){const row=document.createElement('div');row.className='leave-toolbar72';row.innerHTML='<button type="button" data-leave-new72>請假登記</button>';bar.after(row);row.querySelector('button').onclick=()=>leaveDialog72();}
  document.querySelectorAll('.schedule-calendar-day67[data-day]').forEach(cell=>{
   const day=cell.dataset.day,records=(scheduleData56.leaves||[]).filter(e=>leaveOnDay72(e,day));if(!records.length)return;
   const links=cell.querySelector('.schedule-calendar-links67');
@@ -33,13 +33,13 @@ function warehouseRows72(){
  const p=project(),table=$('#warehouse-dialog .editable-bom');if(!p||!table)return;
  if(!table.querySelector('[data-date-heading72]')){
   for(const title of ['收料時間','領料時間']){const th=document.createElement('th');th.dataset.dateHeading72='';th.textContent=title;table.tHead.rows[0].append(th)}
-  for(const row of table.querySelectorAll('tbody tr[data-item]')){const item=p.parts.find(i=>i.id===row.dataset.item);if(!item)continue;for(const [field,title]of [['receivedDate72','收料時間'],['issuedDate72','領料時間']]){const td=document.createElement('td');td.className='warehouse-date-cell72';const text=item[field]?item[field].replaceAll('-','/'):'－';if(currentUser.role==='supervisor'&&canDo('warehouse.manage')){const b=document.createElement('button');b.type='button';b.className='warehouse-date72';b.dataset.dateField72=field;b.textContent=text;b.setAttribute('aria-label',item.name+' '+title+' '+text);b.onclick=()=>warehouseDateDialog72(p.id,item.id,field,title);td.append(b)}else{td.textContent=text}row.append(td)}}
+  for(const row of table.querySelectorAll('tbody tr[data-item]')){const item=p.parts.find(i=>i.id===row.dataset.item);if(!item)continue;for(const [field,title]of [['receivedDate72','收料時間'],['issuedDate72','領料時間']]){const td=document.createElement('td');td.className='warehouse-date-cell72';const text=item[field]?item[field].replaceAll('-','/'):'－';if(canDo(field==='receivedDate72'?'warehouse.receivedDate':'warehouse.issuedDate')){const b=document.createElement('button');b.type='button';b.className='warehouse-date72';b.dataset.dateField72=field;b.textContent=text;b.setAttribute('aria-label',item.name+' '+title+' '+text);b.onclick=()=>warehouseDateDialog72(p.id,item.id,field,title);td.append(b)}else{td.textContent=text}row.append(td)}}
  }
  let ready=0,waiting=0;
  for(const row of table.querySelectorAll('tbody tr[data-item]')){const i=p.parts.find(x=>x.id===row.dataset.item);if(!i)continue;const complete=preparedQuantity(p,i)>=totalNeed(i)&&inStock(p,i.id)>=preparedQuantity(p,i);if(row.hidden)continue;const index=complete?ready++:waiting++;row.dataset.ready72=complete?'yes':'no';row.dataset.stripe72=String(index%2);}
 }
 function warehouseDateDialog72(projectId,partId,key,title){
- if(currentUser.role!=='supervisor'||!canDo('warehouse.manage'))return;
+ if(!canDo(key==='receivedDate72'?'warehouse.receivedDate':'warehouse.issuedDate'))return;
  if(cloudBusy||failedCandidate){toast('請先完成儲存或處理上方提示');return;}
  const p=state.projects.find(p=>p.id===projectId),i=p?.parts.find(i=>i.id===partId);if(!i)return;
  captureDraft();const before=i[key]||'';

@@ -20,7 +20,7 @@ const renderBeforeNumberSorting=render;
 render=function(){renderBeforeNumberSorting();addManagementSortButton(document.querySelector('.plating-workspace .plating-head'),'plating');addManagementSortButton(document.querySelector('.wire-workspace .wire-tools'),'wire');};
 const adminBeforeNumberSorting=renderAdmin;
 renderAdmin=function(){
- adminBeforeNumberSorting();if(currentUser.role!=='supervisor')return;
+ adminBeforeNumberSorting();if(!canAdmin75())return;
  document.querySelectorAll('[data-admin-case-up],[data-admin-case-down],[data-plating-admin-move]').forEach(el=>el.remove());
  addManagementSortButton(document.querySelector('#admin-cases .admin-actions'),'cases');
  addManagementSortButton(document.querySelector('[data-section-key="plating"] .plating-actions'),'plating');

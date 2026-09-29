@@ -192,12 +192,19 @@ export async function employeesApi(request,env){
  if(!hasCredentials(request))return json({error:'請先登入後再使用'},401);
  if(!env.DB)return json({error:'雲端資料庫尚未就緒'},503);
  try{
-  const current=await employeeFor(request,env);if(!current||current.role!=='supervisor')return json({error:'只有主管可以管理員工權限'},403);
+  const current=await employeeFor(request,env);if(!current||!permitted(current,'admin.employees'))return json({error:'只有主管可以管理員工權限'},403);
   if(request.method==='GET'){const result=await env.DB.prepare("SELECT e.id,e.email,e.name,e.role,e.status,e.created_at,e.last_login_at,e.account_user_id,COALESCE(x.profile_id,'') AS profileId FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id").all();return json({items:result.results||[],currentEmployeeId:current.id});}
   if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
   const input=await request.json(),roles=['viewer','warehouse','supervisor'],email=String(input.email||'').trim().toLowerCase(),name=String(input.name||'').trim(),role=String(input.role||''),status=String(input.status||'active');
   check(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email),'請填寫有效的員工信箱');check(name&&name.length<=80,'請填寫員工姓名');check(roles.includes(role),'權限層級不正確');check(['active','disabled'].includes(status),'帳號狀態不正確');
   const profileId=String(input.profileId||'');if(profileId)check(!builtinProfiles.some(p=>p.id===profileId)&&role==='viewer'&&await env.DB.prepare('SELECT id FROM app_permission_profiles WHERE id=?').bind(profileId).first(),'找不到自訂權限');
+  if(!permitted(current,'admin.permissions')||current.role!=='supervisor'){
+   check(role!=='supervisor','沒有授予主管身分的權限');
+   const saved=await env.DB.prepare('SELECT permissions FROM app_permission_profiles WHERE id=?').bind(profileId||role).first();
+   const assigned=saved?JSON.parse(saved.permissions):builtinProfiles.find(p=>p.id===role)?.permissions||[];
+   check(assigned.every(k=>current.permissions.includes(k)),'不能授予自己沒有的權限');
+   if(input.id){const target=await env.DB.prepare('SELECT * FROM employees WHERE id=?').bind(Number(input.id)).first();check(target&&target.id!==current.id&&target.role!=='supervisor','不能修改自己或主管帳號');await employeePermissions(env,target);check(target.permissions.every(k=>current.permissions.includes(k)),'不能管理權限高於自己的帳號');}
+  }
   const now=new Date().toISOString();
   if(request.method==='POST'){
    const redirect=new URL('/?invited=1',request.url).toString();
@@ -223,8 +230,8 @@ export async function images(request,env){
  const url=new URL(request.url),logo=url.pathname==='/api/logo',plating=url.pathname==='/api/plating-photos',shipmentId=url.searchParams.get('shipment'),projectId=url.searchParams.get('project');
  try{
   const employee=await employeeFor(request,env);if(!employee)return json({error:'此帳號尚未由主管啟用'},403);
-  if(url.searchParams.get('export')==='1'&&!permitted(employee,'records.export'))return json({error:'沒有匯出權限'},403);
-  if(!logo&&!(url.searchParams.get('export')==='1'&&permitted(employee,'records.export'))&&!permitted(employee,(plating?'plating':'warehouse')+'.view'))return json({error:'沒有查看權限'},403);
+  if(url.searchParams.get('export')==='1'&&!(permitted(employee,'records.export')||permitted(employee,'admin.export')))return json({error:'沒有匯出權限'},403);
+  if(!logo&&!(url.searchParams.get('export')==='1'&&(permitted(employee,'records.export')||permitted(employee,'admin.export')))&&!permitted(employee,(plating?'plating':'warehouse')+'.view'))return json({error:'沒有查看權限'},403);
   const root='images/'+await scopeKey(STORAGE_OWNER)+'/',prefix=root+(plating?'plating/':'receipts/')+encodeURIComponent(projectId||'')+'/'+(plating?encodeURIComponent(shipmentId||'')+'/':'');
   if(!logo){
    const row=await companyRow(env);
@@ -238,7 +245,7 @@ export async function images(request,env){
   if(request.method==='GET'){
    if(logo&&url.searchParams.get('meta')==='1'){const file=await env.UPLOADS.head(key);return json({exists:!!file,created:file?.uploaded??null});}
    if(!logo&&!id){
-    if(url.searchParams.get('export')==='1'&&!permitted(employee,'records.export'))return json({error:'沒有匯出權限'},403);
+    if(url.searchParams.get('export')==='1'&&!(permitted(employee,'records.export')||permitted(employee,'admin.export')))return json({error:'沒有匯出權限'},403);
     const result=await env.UPLOADS.list({prefix,limit:1000,cursor:url.searchParams.get('cursor')||undefined,include:['customMetadata']});
     return json({items:result.objects.map(o=>({id:o.key.slice(prefix.length),name:o.customMetadata?.name||'收據圖片',actor:o.customMetadata?.actor||'',kind:o.customMetadata?.kind||'dispatch',created:o.uploaded})),truncated:result.truncated,cursor:result.truncated?result.cursor:undefined});
    }
@@ -252,13 +259,13 @@ export async function images(request,env){
     const file=await env.UPLOADS.head(key);if(!file)return json({error:'找不到圖片'},404);
     await env.UPLOADS.delete(key);await env.UPLOADS.delete('thumbnails/'+key);return json({deleted:true});
    }
-   if(employee.role!=='supervisor')return json({error:'只有主管可以永久刪除全部照片'},403);
+   if(!permitted(employee,'admin.photoPurge'))return json({error:'沒有永久刪除照片權限'},403);
    let cursor;do{const result=await env.UPLOADS.list({prefix,limit:1000,cursor});if(result.objects.length)await env.UPLOADS.delete(result.objects.flatMap(o=>[o.key,'thumbnails/'+o.key]));cursor=result.truncated?result.cursor:undefined;}while(cursor);
    return json({deleted:true});
   }
   if(request.method!=='POST')return json({error:'不支援的操作'},405);
   if(request.headers.get('origin')!==url.origin)return json({error:'來源驗證失敗'},403);
-  if(logo&&employee.role!=='supervisor')return json({error:'只有主管可以更換 LOGO'},403);
+  if(logo&&!permitted(employee,'admin.settings'))return json({error:'只有主管可以更換 LOGO'},403);
   if(!logo&&!permitted(employee,(plating?'plating':'warehouse')+'.photos'))return json({error:'沒有照片管理權限'},403);
   const kind=url.searchParams.get('kind')||'dispatch';
   if(plating&&!['dispatch','area'].includes(kind))return json({error:'照片類別不正確'},400);
@@ -279,15 +286,15 @@ export async function accessApi(request,env){
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
  if(!hasCredentials(request))return json({error:'請先登入'},401);
  try{const employee=await employeeFor(request,env);if(!employee)return json({error:'帳號未啟用'},403);
- if(new URL(request.url).pathname==='/api/backup-state'){if(employee.role!=='supervisor')return json({error:'只有主管可以匯出'},403);const row=await companyRow(env);return json({state:JSON.parse(row.body)});}
- if(new URL(request.url).pathname==='/api/export-access')return employee.role==='supervisor'?json({allowed:true}):json({error:'只有主管可以匯出'},403);
+ if(new URL(request.url).pathname==='/api/backup-state'){if(!permitted(employee,'admin.export'))return json({error:'沒有匯出權限'},403);const row=await companyRow(env);return json({state:JSON.parse(row.body)});}
+ if(new URL(request.url).pathname==='/api/export-access')return permitted(employee,'admin.export')?json({allowed:true}):json({error:'只有主管可以匯出'},403);
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
 export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUpload(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
- if(!['warehouse','supervisor'].includes(e.role))return false;
+ if(!permitted(e,'admin.auditDelete'))return false;
  const old=before.logs||[],next=after.logs||[];
  if(old.length!==next.length+1)return false;
  const ids=new Set(next.map(x=>x.id));
@@ -296,26 +303,47 @@ export function singleLogRemovalAllowed(before,after,e){
  return stableJSON(a)===stableJSON(b);
 }
 export function stateChangeAllowed(before,after,e){
- if(!projectDeletionAllowed(before,after,e))return false;
+ if(permitted(e,'admin.import')&&importAppend75(before,after))return true;
+ if(!projectDeletionAllowed(before,after,e)||!granularState75(before,after,e))return false;
  if(singleLogRemovalAllowed(before,after,e))return true;
  if(!wireChangeAllowed(before,after,e)||!workflowChangeAllowed(before,after,e))return false;
- const supervisor=e.role==='supervisor';
+ const supervisor=permitted(e,'admin.auditDelete');
  const added=(after.logs||[]).filter(l=>!(before.logs||[]).some(x=>x.id===l.id));if(!supervisor&&added.some(l=>l.actor!==e.name))return false;
  if(!supervisor&&!logsOnlyAppend(before,after))return false;
  const a=structuredClone(before),b=structuredClone(after);
  if(canDeleteProject(e,'plating'))for(const old of a.platingProjects||[]){const n=(b.platingProjects||[]).find(x=>x.id===old.id);if(n&&!old.archived&&n.archived)for(const k of ['archived','deletedAt','purgeAfter'])old[k]=n[k];}
  if(canDeleteProject(e,'cases'))a.cases=(a.cases||[]).filter(x=>(b.cases||[]).some(n=>n.id===x.id));
  if(canDeleteProject(e,'warehouse')){const removed=(a.projects||[]).filter(x=>!(b.projects||[]).some(n=>n.id===x.id));a.projects=(a.projects||[]).filter(x=>!removed.includes(x));b.deletedProjects=(b.deletedProjects||[]).filter(entry=>!removed.some(x=>stableJSON(x)===stableJSON(entry.project)));a.deletedProjects??=[];}
+
+ for(const [key,cap]of Object.entries({warehouseOptions73:'warehouse.options',platingVendors:'plating.options'}))if(permitted(e,cap)){delete a[key];delete b[key];}
+ for(const p of b.projects||[]){const prev=(a.projects||[]).find(x=>x.id===p.id);if(!prev)continue;
+  for(const i of p.parts||[]){const old=prev.parts.find(x=>x.id===i.id);if(!old)continue;
+   for(const [field,cap]of Object.entries({receivedDate72:'warehouse.receivedDate',issuedDate72:'warehouse.issuedDate',preparedAdjustment73:'warehouse.preparedAdjust'}))if(permitted(e,cap)){delete old[field];delete i[field];}
+  }
+  if(permitted(e,'warehouse.stockAdjust'))p.inventory=structuredClone(prev.inventory);
+  if(permitted(e,'warehouse.historyEdit')&&stableJSON(p.materialLogs)!==stableJSON(prev.materialLogs)){
+   p.inventory=structuredClone(prev.inventory);
+   for(const part of [...(p.parts||[]),...(p.archivedParts||[]).map(x=>x.part)]){const old=[...(prev.parts||[]),...(prev.archivedParts||[]).map(x=>x.part)].find(x=>x.id===part.id);if(old)part.received=old.received;}
+   if(prev.materialLogs===undefined)delete p.materialLogs;else p.materialLogs=structuredClone(prev.materialLogs);
+  }
+ }
+ if(permitted(e,'admin.settings'))for(const key of ['appearance','siteText','adminText','wireText','platingText','contentDraft','contentPublished','adminOrder','managementOrder','uiOrder','scheduleText','auditSecurity','adminLayout','appIconSettings','adminSectionOrder']){delete a[key];delete b[key];}
+ if(permitted(e,'warehouse.purge'))a.deletedProjects=(a.deletedProjects||[]).filter(x=>(b.deletedProjects||[]).some(n=>n.project?.id===x.project?.id)||(b.projects||[]).some(n=>n.id===x.project?.id));
+ if(permitted(e,'warehouse.restore')){
+  for(const p of b.projects||[])if(!(a.projects||[]).some(x=>x.id===p.id)){const deleted=(a.deletedProjects||[]).find(x=>x.project?.id===p.id);if(deleted&&stableJSON(deleted.project)===stableJSON(p)){a.projects.splice(Math.min(deleted.index??a.projects.length,a.projects.length),0,structuredClone(p));a.deletedProjects=a.deletedProjects.filter(x=>x!==deleted);}}
+ }
+ for(const [kind,key]of [['plating','platingProjects'],['wire','wireTypes']])if(permitted(e,kind+'.restore'))for(const old of a[key]||[]){const n=(b[key]||[]).find(x=>x.id===old.id);if(n&&old.archived&&!n.archived)for(const k of ['archived','deletedAt','purgeAfter']){delete old[k];delete n[k];}}
  for(const key of ['logs','wireTypes','wireReels','wireCuts']){delete a[key];delete b[key];}
  if(permitted(e,'cases.manage')){delete a.cases;delete b.cases;}
  if(permitted(e,'plating.manage')){delete a.platingProjects;delete b.platingProjects;}
  if(permitted(e,'warehouse.manage')){delete a.projects;delete b.projects;delete a.deletedProjects;delete b.deletedProjects;}
- else if(permitted(e,'warehouse.stock')){const old={projects:a.projects||[],logs:[]},next={projects:b.projects||[],logs:[]};if(!warehouseChangeAllowed(old,next))return false;delete a.projects;delete b.projects;}
- if(supervisor){for(const key of ['cases','platingProjects','projects','deletedProjects'])if(stableJSON(a[key])!==stableJSON(b[key]))return false;return true;}return stableJSON(a)===stableJSON(b);
+ else if(permitted(e,'warehouse.receive')||permitted(e,'warehouse.issue')){const old={projects:a.projects||[],logs:[]},next={projects:b.projects||[],logs:[]};if(!warehouseChangeAllowed(old,next))return false;delete a.projects;delete b.projects;}
+ return stableJSON(a)===stableJSON(b);
 }
 async function setEmployeeProfile(env,id,profileId){await env.DB.prepare("INSERT INTO app_employee_settings(employee_id,profile_id,position) VALUES (?,?,?) ON CONFLICT(employee_id) DO UPDATE SET profile_id=excluded.profile_id").bind(id,profileId,id).run();}
 export async function permissionsApi(request,env){
- try{const e=await employeeFor(request,env);if(!e||e.role!=='supervisor')return json({error:'只有主管可以設定權限'},403);
+ try{const e=await employeeFor(request,env);if(!e||!(permitted(e,'admin.employees')||e.role==='supervisor'&&permitted(e,'admin.permissions')))return json({error:'沒有管理權限'},403);
+ if(request.method!=='GET'&&(e.role!=='supervisor'||!permitted(e,'admin.permissions')))return json({error:'只有授權主管可以設定權限'},403);
  if(request.method==='GET'){const result=await env.DB.prepare('SELECT * FROM app_permission_profiles ORDER BY name,id').all(),saved=result.results.map(p=>({...p,permissions:JSON.parse(p.permissions)})),items=[...builtinProfiles.map(p=>({...p,...saved.find(x=>x.id===p.id),builtin:true})),...saved.filter(p=>!builtinProfiles.some(b=>b.id===p.id))],ordering=await env.DB.prepare('SELECT profile_id,position FROM app_permission_order ORDER BY position').all(),positions=new Map(ordering.results.map(r=>[r.profile_id,r.position]));items.sort((a,b)=>(positions.get(a.id)??999999)-(positions.get(b.id)??999999));return json({capabilities:capabilityNames,items});}
  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
  const input=await boundedJSON(request,65536);
@@ -324,12 +352,12 @@ export async function permissionsApi(request,env){
  if(request.method==='DELETE'){check(!builtinProfiles.some(p=>p.id===input.id),'內建權限不可刪除');const assigned=await env.DB.prepare('SELECT employee_id FROM app_employee_settings WHERE profile_id=? LIMIT 1').bind(input.id).first();check(!assigned,'此權限仍有員工使用，請先替員工改選其他權限');await env.DB.prepare('DELETE FROM app_permission_profiles WHERE id=?').bind(input.id).run();return json({deleted:true});}
  check(typeof input.name==='string'&&input.name.trim()&&input.name.length<=80,'請填寫權限名稱');check(Array.isArray(input.permissions)&&input.permissions.every(p=>Object.hasOwn(capabilityNames,p)),'權限項目不正確');
   const permissions=[...new Set(input.permissions)];for(const p of permissions)if(!p.endsWith('.view')&&p!=='records.export')check(permissions.includes(p.split('.')[0]+'.view'),'請先勾選該區查看權限');
- const id=input.id||crypto.randomUUID();check(builtinProfiles.some(p=>p.id===id)||/^[a-f0-9-]{36}$/.test(id),'權限編號不正確');await env.DB.prepare('INSERT INTO app_permission_profiles(id,name,permissions) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,permissions=excluded.permissions').bind(id,input.name.trim(),JSON.stringify(permissions)).run();return json({id});
+ const id=input.id||crypto.randomUUID();if(id==='supervisor')check(['admin.view','admin.employees','admin.permissions'].every(k=>permissions.includes(k)),'主管必須保留後台、人員及權限管理，避免鎖住系統');check(builtinProfiles.some(p=>p.id===id)||/^[a-f0-9-]{36}$/.test(id),'權限編號不正確');await env.DB.prepare('INSERT INTO app_permission_profiles(id,name,permissions) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,permissions=excluded.permissions').bind(id,input.name.trim(),JSON.stringify(permissions)).run();return json({id});
  }catch(e){return json({error:e.message||'權限設定失敗'},400);}
 }
 export async function wireImages(request,env){
- try{const employee=await employeeFor(request,env),url=new URL(request.url);if(!employee||(!permitted(employee,'wire.view')&&!(employee.role==='supervisor'&&url.searchParams.get('export')==='1')))return json({error:'沒有查看線材的權限'},403);
- if(url.searchParams.get('export')==='1'&&employee.role!=='supervisor')return json({error:'只有主管可以匯出'},403);
+ try{const employee=await employeeFor(request,env),url=new URL(request.url);if(!employee||(!permitted(employee,'wire.view')&&!(permitted(employee,'admin.export')&&url.searchParams.get('export')==='1')))return json({error:'沒有查看線材的權限'},403);
+ if(url.searchParams.get('export')==='1'&&!permitted(employee,'admin.export'))return json({error:'沒有匯出權限'},403);
  if(!env.UPLOADS)return json({error:'照片儲存尚未就緒'},503);
  const data=await companyRow(env),s=JSON.parse(data.body),reel=(s.wireReels||[]).find(r=>r.id===url.searchParams.get('reel'));
  if(!reel)return json({error:'找不到線捆'},404);
@@ -436,7 +464,7 @@ export async function appIcon52(request,env){
   if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
   try{
    const employee=await employeeFor(request,env);
-   if(!employee||employee.role!=='supervisor')return json({error:'只有主管可設定手機圖示'},403);
+   if(!employee||!permitted(employee,'admin.settings'))return json({error:'只有主管可設定手機圖示'},403);
    const {bytes,source,settings}=await readPhotoUpload(request);
    if(bytes.length<24||bytes.length>800*1024||[137,80,78,71,13,10,26,10].some((n,i)=>bytes[i]!==n)||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(16)!==512||new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(20)!==512)return json({error:'手機圖示須為 512×512 PNG'},400);
    await env.UPLOADS.put('app-icons/'+key+'-source',source,{httpMetadata:{contentType:settings.sourceType}});
@@ -469,7 +497,7 @@ export async function appIconSource55(request,env){
  if(request.method!=='GET')return new Response(null,{status:405});
  if(!hasCredentials(request))return new Response(null,{status:401});
  const employee=await employeeFor(request,env);
- if(!employee||employee.role!=='supervisor')return new Response(null,{status:403});
+ if(!employee||!permitted(employee,'admin.settings'))return new Response(null,{status:403});
  const key='images/'+await scopeKey(STORAGE_OWNER)+'/logo';
  const file=await env.UPLOADS?.get('app-icons/'+key+'-source');
  if(!file)return new Response(null,{status:404});
@@ -493,4 +521,30 @@ export async function appIndex55(request,env){
  if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
  const html=appIndexBody55(assets['/index.html'].body,await appHomeSettings55(env));
  return new Response(request.method==='HEAD'?null:html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+}
+
+export function granularState75(before,after,e){
+ const equal=(a,b)=>stableJSON(a)===stableJSON(b);
+ for(const [kind,key]of [['cases','cases'],['warehouse','projects'],['plating','platingProjects'],['wire','wireTypes']]){
+  for(const p of before[key]||[]){const n=(after[key]||[]).find(x=>x.id===p.id);if(n&&p.archived&&!n.archived&&!permitted(e,kind+'.restore'))return false;}
+ }
+ const deleted=before.deletedProjects||[];
+ if(deleted.some(x=>!(after.deletedProjects||[]).some(n=>n.project?.id===x.project?.id)&&!(after.projects||[]).some(n=>n.id===x.project?.id))&&!permitted(e,'warehouse.purge'))return false;
+ for(const p of after.projects||[])if(deleted.some(x=>x.project?.id===p.id)&&!permitted(e,'warehouse.restore'))return false;
+ for(const p of after.projects||[]){const old=(before.projects||[]).find(x=>x.id===p.id);if(!old)continue;
+  for(const i of p.parts||[]){const prev=old.parts.find(x=>x.id===i.id);if(!prev)continue;
+   const received=i.received-prev.received,delta=(p.inventory?.[i.id]||0)-(old.inventory?.[i.id]||0);
+   const history=permitted(e,'warehouse.historyEdit')&&!equal(p.materialLogs,old.materialLogs);
+   if(received>0&&!history&&!permitted(e,'warehouse.receive'))return false;
+   if(received<0&&!history&&!permitted(e,'warehouse.stockAdjust'))return false;
+   if(delta!==received&&!history&&!permitted(e,'warehouse.stockAdjust')&&!(delta<received&&permitted(e,'warehouse.issue')))return false;
+  }
+ }
+ return true;
+}
+
+function importAppend75(before,after){
+ const a=structuredClone(before),b=structuredClone(after);
+ for(const key of ['projects','deletedProjects']){const old=a[key]||[],next=b[key]||[];if(next.length<old.length||old.some(x=>!next.some(n=>stableJSON(n)===stableJSON(x))))return false;delete a[key];delete b[key];}
+ const old=before.logs||[],next=after.logs||[];if(old.some(x=>!next.some(n=>stableJSON(n)===stableJSON(x))))return false;delete a.logs;delete b.logs;return stableJSON(a)===stableJSON(b);
 }

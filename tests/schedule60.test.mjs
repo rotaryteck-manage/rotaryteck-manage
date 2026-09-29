@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {database} from './helpers/d1.mjs';
-import {scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
 import {parseGovernmentHolidays60} from '../worker/holidays.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 
@@ -21,3 +21,7 @@ test('official holiday CSV keeps holiday names and ordinary workdays distinct',(
  const csv='\ufeff西元日期,星期,是否放假,備註\n'+Array.from({length:365},(_,i)=>{const date=new Date(Date.UTC(2026,0,i+1)).toISOString().slice(0,10).replaceAll('-','');return date+',一,'+(date==='20260928'?'2,教師節':'0,')}).join('\n');
  const days=parseGovernmentHolidays60(csv,2026);assert.deepEqual(days['2026-09-28'],{off:true,name:'教師節'});assert.equal(days['2026-09-30'].off,false);assert.throws(()=>parseGovernmentHolidays60('broken',2026));
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});

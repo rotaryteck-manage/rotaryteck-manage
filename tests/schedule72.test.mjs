@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
 import {validateWorkflowState,workflowChangeAllowed,preparedQuantity} from '../worker/workflows.mjs';
 import {stateChangeAllowed} from '../worker/server.mjs';
 function fixture(){
@@ -30,7 +30,7 @@ test('leave rejects invalid people, dates, reasons and unauthorized writes',asyn
 test('leave and audit writes roll back together',async()=>{const{db,send,leave}=fixture();await send(leave);db.exec("CREATE TRIGGER fail_log BEFORE INSERT ON schedule_text71 BEGIN SELECT RAISE(ABORT,'test'); END");assert.equal((await send({...leave,revision:1,reason:'病假'})).status,400);assert.equal(db.prepare('SELECT reason FROM schedule_leave72').get().reason,'事假')});
 test('date fields survive normal stock writes and are restricted to supervisor even with manage permission',()=>{
  const before={projects:[{id:'p',parts:[{id:'i',need:1,sets:1,received:2,receivedDate72:'2026-09-29'}],archivedParts:[],inventory:{i:0}}],logs:[]},after=structuredClone(before);after.projects[0].parts[0].issuedDate72='2026-09-30';
- assert.equal(workflowChangeAllowed(before,after,{role:'viewer'}),false);assert.equal(stateChangeAllowed(before,after,{role:'warehouse',permissions:['warehouse.manage']}),false);assert.equal(stateChangeAllowed(before,after,{role:'supervisor',permissions:['warehouse.manage']}),true);assert.doesNotThrow(()=>validateWorkflowState(after));
+ assert.equal(workflowChangeAllowed(before,after,{role:'viewer'}),false);assert.equal(stateChangeAllowed(before,after,{role:'warehouse',permissions:['warehouse.manage']}),false);assert.equal(stateChangeAllowed(before,after,{role:'supervisor',permissions:['warehouse.manage','warehouse.issuedDate','warehouse.receivedDate']}),true);assert.doesNotThrow(()=>validateWorkflowState(after));
  after.projects[0].parts[0].issuedDate72='2026-02-30';assert.throws(()=>validateWorkflowState(after),/日期/);after.projects[0].parts[0].issuedDate72='';assert.doesNotThrow(()=>validateWorkflowState(after));assert.equal(preparedQuantity(before.projects[0],before.projects[0].parts[0]),2);
  const stock=structuredClone(before);stock.projects[0].inventory.i=1;assert.equal(workflowChangeAllowed(before,stock,{role:'warehouse'}),true);
  const restored=structuredClone(before);restored.projects[0].archivedParts=[{part:restored.projects[0].parts.pop()}];assert.equal(workflowChangeAllowed(before,restored,{role:'warehouse'}),true);restored.projects[0].archivedParts[0].part.receivedDate72='2026-10-01';assert.equal(workflowChangeAllowed(before,restored,{role:'warehouse'}),false);
@@ -51,3 +51,7 @@ test('other leave reason is required, persisted, idempotent, audited and cleared
  assert.equal((await send({kind:'leave',id:leave.id,revision:3},undefined,'DELETE')).status,200);
  assert.ok(db.prepare('SELECT body FROM schedule_text71').all().some(r=>r.body.includes('刪除請假')&&r.body.includes('家庭安排')));
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});

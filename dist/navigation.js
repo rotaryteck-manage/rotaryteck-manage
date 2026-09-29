@@ -1,8 +1,8 @@
 'use strict';
 function managementPages(){
- const pages=[{id:'cases',title:siteText('casesTitle')},{id:'warehouse',title:siteText('heading')},{id:'plating',title:typeof pt==='function'?pt('title'):'電鍍管理'},{id:'wire',title:typeof wt==='function'?wt('title'):'線材管理'},{id:'schedule',title:'工作排程'}];
+ const pages=[{id:'cases',title:siteText('casesTitle')},{id:'warehouse',title:siteText('heading')},{id:'plating',title:typeof pt==='function'?pt('title'):'電鍍管理'},{id:'wire',title:typeof wt==='function'?wt('title'):'線材管理'}];
  for(const page of config().pages||[])pages.push({id:'page/'+page.id,title:page.title,page});
- if(currentUser.role==='supervisor')pages.push({id:'audit',title:siteText('auditTitle')});
+ if(canDo('admin.audit'))pages.push({id:'audit',title:siteText('auditTitle')});
  return pages;
 }
 function activeManagementPage(){

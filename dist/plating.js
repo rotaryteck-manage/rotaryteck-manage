@@ -20,19 +20,19 @@ function platingVendorControl(value,existing){
  return '<label class="field">'+pe('vendor')+'<select name="vendor" required><option value="">'+pe(options.length?'vendorChoose':'vendorEmpty')+'</option>'+[...options,...(old?[value]:[])].map(v=>'<option value="'+esc(v)+'" '+(v===value?'selected':'')+'>'+esc(v)+(old&&v===value?'（'+pe('vendorOld')+'）':'')+'</option>').join('')+'</select></label>';
 }
 async function savePlatingVendors(values,action,detail){
- if(currentUser.role!=='supervisor')throw Error('只有主管可以修改廠商選項');
+ if(!canDo('plating.options'))throw Error('只有主管可以修改廠商選項');
  state.platingVendors=values;addAudit(action,detail,pt('title')+' > '+pt('vendorSettings'));
  await saveCloud(state);if(failedCandidate)throw Error('選項尚未儲存，請處理上方提示');renderAdmin();
 }
 function managePlatingVendors(){
- if(currentUser.role!=='supervisor')return;
+ if(!canDo('plating.options'))return;
  platingModal(pe('vendorSettings'),platingVendors().map((v,i)=>'<div class="admin-row"><strong>'+esc(v)+'</strong><button type="button" data-vendor-edit="'+i+'">'+pe('edit')+'</button><button type="button" class="danger-button" data-vendor-delete="'+i+'">'+pe('delete')+'</button></div>').join('')+'<button type="button" id="vendor-add">＋ '+pe('vendorAdd')+'</button>','',null);
  $('#vendor-add').onclick=()=>editPlatingVendor();
  document.querySelectorAll('[data-vendor-edit]').forEach(b=>b.onclick=()=>editPlatingVendor(Number(b.dataset.vendorEdit)));
  document.querySelectorAll('[data-vendor-delete]').forEach(b=>b.onclick=async()=>{if(!await confirmAction(pt('vendorDeletePrompt')))return;try{const values=[...platingVendors()],removed=values.splice(Number(b.dataset.vendorDelete),1)[0];await savePlatingVendors(values,'移除電鍍廠商選項',removed);managePlatingVendors();}catch(e){$('#form-error').textContent=e.message;}});
 }
 function editPlatingVendor(index){
- if(currentUser.role!=='supervisor')return;
+ if(!canDo('plating.options'))return;
  const values=[...platingVendors()],old=values[index];
  platingModal(pe(old?'edit':'vendorAdd'),field(pe('vendor'),'vendorName',old||'','required maxlength="100"'),pe('save'),async fd=>{
  const value=String(fd.get('vendorName')||'').trim();if(!value)throw Error(pt('requiredVendor'));
@@ -161,7 +161,7 @@ function editPlatingShipment(projectId,shipmentId,copy=false){
 const renderBeforePlating=render;render=function(){renderBeforePlating();if(activeManagementPage().id==='plating')renderPlating();};
 async function deletePlatingProject(id){return archiveProject51('plating',id);}
 const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
- renderAdminBeforePlating();if(currentUser.role!=='supervisor')return;
+ renderAdminBeforePlating();if(!canDo('plating.options'))return;
  const card=document.createElement('details');card.className='admin-card';card.innerHTML='<summary><h2>'+pe('title')+'</h2></summary><div class="admin-card-body"><div class="plating-actions"><button type="button" id="plating-text">'+pe('textSettings')+'</button><button type="button" id="admin-plating-new">＋ '+pe('newProject')+'</button><a class="admin-back-button" href="#plating">'+pe('open')+'</a></div>'+platingProjects().map((p,i)=>'<div class="admin-row"><strong>'+esc(p.name)+'</strong><button type="button" data-plating-admin-open="'+esc(p.id)+'">'+pe('edit')+'</button><button type="button" data-plating-admin-move="'+esc(p.id)+'" data-delta="-1" '+(i===0?'disabled':'')+'>'+pe('previous')+'</button><button type="button" data-plating-admin-move="'+esc(p.id)+'" data-delta="1" '+(i===platingProjects().length-1?'disabled':'')+'>'+pe('next')+'</button><button type="button" class="danger-button" data-plating-admin-delete="'+esc(p.id)+'">'+pe('delete')+'</button></div>').join('')+'</div>';$('main').append(card);
  const vendorButton=document.createElement('button');vendorButton.type='button';vendorButton.textContent=pt('vendorSettings');vendorButton.id='plating-vendors';vendorButton.onclick=managePlatingVendors;card.querySelector('.plating-actions').append(vendorButton);
  $('#admin-plating-new').onclick=()=>editPlatingProject();

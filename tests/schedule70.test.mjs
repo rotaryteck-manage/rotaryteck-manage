@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
 const shift=(day,n)=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
 function fixture(){
  const db=new DatabaseSync(':memory:');
@@ -39,3 +39,7 @@ test('calendar fills adjacent months including year changes and uses exact recor
  ctx.scheduleAnchor56='2027-01-15';ctx.scheduleDraw56();assert.match(root.innerHTML,/data-day="2026-12-28"/);assert.match(root.innerHTML,/data-day="2027-01-31"/);
  ctx.scheduleAnchor56='2026-11-01';ctx.scheduleDraw56();assert.equal((root.innerHTML.match(/data-day="/g)||[]).length,42);assert.match(root.innerHTML,/data-day="2026-12-06"/);
 });
+
+// v75 fixture migration: these regression cases represent existing profiles.
+import {migratePermissions75} from '../worker/wire-permissions.mjs';
+const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});
