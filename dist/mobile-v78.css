@@ -89,3 +89,41 @@ body:has(.schedule-workspace) #toast{bottom:calc(80px + env(safe-area-inset-bott
 body:has(.schedule-workspace) .header-actions{width:100%;flex-wrap:wrap;justify-content:flex-start!important}
 body:has(.schedule-workspace) #account-actions{display:contents!important}
 }
+
+@media(max-width:700px){
+
+body .mobile-day78{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+}
+
+body .mobile-date78{
+    order:1;
+}
+
+body .mobile-holiday78{
+    order:2;
+    display:block;
+    width:100%;
+    height:auto;
+    min-height:0;
+    margin:2px 0 0;
+    padding:0 2px;
+    box-sizing:border-box;
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    text-align:center;
+    font-size:9px;
+    line-height:12px;
+    color:#a24444;
+}
+
+body .mobile-slots79{
+    order:3;
+}
+
+}
