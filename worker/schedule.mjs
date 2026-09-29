@@ -9,6 +9,8 @@ async function scheduleApiCore71(request,env,employee){
  try{
   if(!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看工作排程的權限'},403);
   const url=new URL(request.url),method=request.method;
+  if(method==='GET'&&url.searchParams.get('view')==='dedupe')return scheduleDedupe73(request,env,employee);
+  if(method==='GET'&&url.searchParams.get('view')==='palette')return schedulePalette73(request,env,employee);
   if(method==='GET'&&url.searchParams.get('view')==='text')return scheduleExtra71(request,env,employee,null);
   if(method==='GET'){
    const from=url.searchParams.get('from'),to=url.searchParams.get('to');if(!scheduleDate(from)||!scheduleDate(to)||to<from||Date.parse(to)-Date.parse(from)>370*86400000)return scheduleJSON({error:'日期範圍不正確'},400);
@@ -25,6 +27,8 @@ async function scheduleApiCore71(request,env,employee){
   if(!request.headers.get('content-type')?.includes('application/json'))return scheduleJSON({error:'格式不正確'},415);
   const input=await request.json();if(JSON.stringify(input).length>300000)return scheduleJSON({error:'資料過大'},413);
   const now=new Date().toISOString(),kind=input.kind;
+  if(kind==='palette')return schedulePalette73(request,env,employee,input);
+  if(kind==='dedupe_week')return scheduleDedupe73(request,env,employee,input);
   if(kind==='leave')return scheduleLeave72(request,env,employee,input);
   if(['copy_week','reset_week','text_delete'].includes(kind))return scheduleExtra71(request,env,employee,input);
   if(kind==='options'){
@@ -180,9 +184,9 @@ async function scheduleExtra71(request,env,employee,input){
   if(!rows.results.length)return scheduleJSON({error:'上週沒有可複製的安排'},400);
   statements.push(env.DB.prepare('INSERT INTO schedule_copies71(week,created_at) VALUES(?,?)').bind(week,now));
   const target=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=?").bind(week,end).all();
-  const signature=e=>JSON.stringify([e.day,e.end_day,e.title,e.assignee,e.category,e.color,e.note]);const available=new Map();for(const e of target.results){const key=signature(e);available.set(key,(available.get(key)||0)+1)}
-  const missing=rows.results.filter(e=>{const key=signature({...e,day:scheduleShift71(e.day<source?source:e.day,7),end_day:scheduleShift71(e.end_day>last?last:e.end_day,7)}),n=available.get(key)||0;if(n){available.set(key,n-1);return false}return true});
-  for(const e of missing)statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES(?,'weekly',?,?,?,?,?,?,?,0,'',?,?,?,?,1,?)").bind(crypto.randomUUID(),scheduleShift71(e.day<source?source:e.day,7),scheduleShift71(e.end_day>last?last:e.end_day,7),e.title,e.assignee,e.color,e.note,e.category,String(employee.id),employee.name,now,now,e.sort_index||0));
+  const projected=rows.results.map(e=>({...e,day:scheduleShift71(e.day<source?source:e.day,7),end_day:scheduleShift71(e.end_day>last?last:e.end_day,7)}));
+  const missing=scheduleUnique73(projected,target.results).kept;
+  for(const e of missing)statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES(?,'weekly',?,?,?,?,?,?,?,0,'',?,?,?,?,1,?)").bind(crypto.randomUUID(),e.day,e.end_day,e.title,e.assignee,e.color,e.note,e.category,String(employee.id),employee.name,now,now,e.sort_index||0));
   statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'weekly',week,employee.name,'複製上週排程｜新增 '+missing.length+' 項',now));
   try{await env.DB.batch(statements)}catch(e){if(await env.DB.prepare('SELECT week FROM schedule_copies71 WHERE week=?').bind(week).first())return scheduleJSON({saved:true,already:true});throw e}return scheduleJSON({saved:true,count:missing.length,already:missing.length===0});
  }
@@ -201,7 +205,7 @@ async function scheduleExtra71(request,env,employee,input){
 async function scheduleAudited71(request,env,employee,handler){
  if(request.method==='GET')return handler(request,env,employee);
  let input={};try{const copy=request.clone();if(request.headers.get('content-type')?.includes('application/json'))input=await copy.json();else{const f=await copy.formData();for(const key of ['id','day','title','category','quantity','projectName','authorId','body','entryId'])input[key]=String(f.get(key)||'');input.kind='daily'}}catch{return handler(request,env,employee)}
- if(['copy_week','reset_week','text_delete','options','leave'].includes(input.kind))return handler(request,env,employee);
+ if(['copy_week','reset_week','text_delete','options','leave','palette','dedupe_week'].includes(input.kind))return handler(request,env,employee);
  await scheduleTables71(env);
  const ids=[input.id,...(input.entries||[]).map(e=>e.id),...(input.deletions||[]).map(e=>e.id)].filter(Boolean),before=[];
  for(const id of ids){const old=await env.DB.prepare('SELECT * FROM schedule_entries WHERE id=?').bind(id).first();if(old)before.push(old)}
@@ -248,4 +252,49 @@ async function scheduleLeave72(request,env,employee,input){
  const results=await env.DB.batch([stmt,env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(crypto.randomUUID(),'daily',target.start.slice(0,10),employee.name,body,now)]);
  if(!results[0].meta?.changes)return scheduleJSON({error:'資料已變更或完成登記，請重新載入'},409);
  return scheduleJSON({saved:true,deleted:deleting});
+}
+
+function scheduleNames73(e){try{const v=JSON.parse(e.assignee);if(Array.isArray(v))return [...new Set(v.filter(n=>typeof n==='string'&&n))]}catch{}return e.assignee?[e.assignee]:[];}
+function scheduleSignature73(e){let content=e.category;try{const v=JSON.parse(content);if(Array.isArray(v))content=JSON.stringify([...new Set(v)].sort())}catch{}return JSON.stringify([e.day,e.end_day,e.title,content,e.color?.toLowerCase(),e.note||'',e.project_id||'',e.quantity||0]);}
+// Deduplicate assignments, not entire multi-person records. Different dates/notes/colours remain distinct.
+export function scheduleUnique73(rows,existing=[]){
+ const seen=new Set(),kept=[],changes=[];
+ const keys=e=>(scheduleNames73(e).length?scheduleNames73(e):['']).map(n=>JSON.stringify([scheduleSignature73(e),n]));
+ for(const e of existing)for(const key of keys(e))seen.add(key);
+ for(const e of rows){const names=scheduleNames73(e),all=names.length?names:[''],remaining=all.filter(n=>!seen.has(JSON.stringify([scheduleSignature73(e),n])));for(const n of remaining)seen.add(JSON.stringify([scheduleSignature73(e),n]));
+  if(remaining.length){const next={...e,assignee:names.length?JSON.stringify(remaining):''};kept.push(next);if(remaining.length!==all.length)changes.push({before:e,after:next,removed:all.filter(n=>!remaining.includes(n))});}
+  else changes.push({before:e,after:null,removed:all});
+ }return{kept,changes};
+}
+async function scheduleSnapshot73(rows){const bytes=new TextEncoder().encode(JSON.stringify(rows));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');}
+async function scheduleDedupe73(request,env,employee,input=null){
+ if(employee.role!=='supervisor'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'只有主管可整理每週重複排程'},403);
+ const url=new URL(request.url),week=input?.weekStart||url.searchParams.get('weekStart');if(!scheduleDate(week)||new Date(week+'T00:00Z').getUTCDay()!==1)return scheduleJSON({error:'請選擇正確週別'},400);const end=scheduleShift71(week,6);
+ const result=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=? ORDER BY created_at,id").bind(week,end).all(),rows=result.results;
+ const plan=scheduleUnique73(rows),token=await scheduleSnapshot73(rows),preview=plan.changes.map(c=>({id:c.before.id,title:c.before.title,day:c.before.day,endDay:c.before.end_day,people:c.removed,action:c.after?'移除重複指派':'移除重複工作'}));
+ if(request.method==='GET')return scheduleJSON({token,weekStart:week,items:preview,removedRows:plan.changes.filter(c=>!c.after).length,assignments:plan.changes.reduce((n,c)=>n+c.removed.length,0)});
+ if(request.method!=='POST'||request.headers.get('origin')!==url.origin)return scheduleJSON({error:'不支援的操作'},403);
+ if(input.token!==token)return scheduleJSON({error:'排程已變動，請重新預覽後確認'},409);
+ if(!plan.changes.length)return scheduleJSON({saved:true,count:0});
+ await scheduleTables71(env);await env.DB.prepare('CREATE TABLE IF NOT EXISTS schedule_guard73(id TEXT PRIMARY KEY,valid INTEGER NOT NULL CHECK(valid=1))').run();
+ const id=crypto.randomUUID(),now=new Date().toISOString(),statements=[];
+ // All guards and changes run in one transaction: any concurrent edit aborts the entire cleanup.
+ statements.push(env.DB.prepare("INSERT INTO schedule_guard73 VALUES(?,CASE WHEN (SELECT count(*) FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=?)=? THEN 1 ELSE 0 END)").bind(id,week,end,rows.length));
+ for(const e of rows)statements.push(env.DB.prepare('UPDATE schedule_guard73 SET valid=CASE WHEN EXISTS(SELECT 1 FROM schedule_entries WHERE id=? AND revision=?) THEN 1 ELSE 0 END WHERE id=?').bind(e.id,e.revision,id));
+ for(const c of plan.changes){if(c.after)statements.push(env.DB.prepare('UPDATE schedule_entries SET assignee=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?').bind(c.after.assignee,now,c.before.id,c.before.revision));else statements.push(env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=?').bind(c.before.id,c.before.revision));}
+ statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'weekly',week,employee.name,'整理重複排程｜'+week+' 至 '+end+'｜'+preview.map(c=>c.action+'：'+c.title+'／'+c.people.join('、')).join('；'),now));
+ statements.push(env.DB.prepare('DELETE FROM schedule_guard73 WHERE id=?').bind(id));
+ try{await env.DB.batch(statements)}catch(e){if(String(e.message).includes('CHECK'))return scheduleJSON({error:'排程已由他人更新，請重新預覽'},409);throw e}
+ return scheduleJSON({saved:true,count:plan.changes.length});
+}
+const paletteDefaults73=['#ffd0d0','#ffe2cf','#fff5b3','#dbedcd','#cdebdc','#cdeaff','#d8ddfa','#e8d5ef','#d4d4d4','#ffffff'];
+async function schedulePalette73(request,env,employee,input=null){
+ await env.DB.prepare('CREATE TABLE IF NOT EXISTS schedule_palette73(id INTEGER PRIMARY KEY CHECK(id=1),colors TEXT NOT NULL,revision INTEGER NOT NULL)').run();
+ const row=await env.DB.prepare('SELECT colors,revision FROM schedule_palette73 WHERE id=1').first();
+ if(request.method==='GET')return scheduleJSON({colors:row?JSON.parse(row.colors):paletteDefaults73,revision:row?.revision||0});
+ if(request.method!=='POST'||employee.role!=='supervisor'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'只有主管可設定共用色票'},403);
+ if(!Array.isArray(input.colors)||input.colors.length!==10||!input.colors.every(c=>typeof c==='string'&&/^#[0-9a-f]{6}$/i.test(c))||!Number.isInteger(input.revision)||input.revision<0)return scheduleJSON({error:'請設定 10 格有效顏色'},400);
+ if((row?.revision||0)!==input.revision)return scheduleJSON({error:'共用色票已更新，請重新開啟設定'},409);
+ const colors=JSON.stringify(input.colors.map(x=>x.toLowerCase())),r=row?await env.DB.prepare('UPDATE schedule_palette73 SET colors=?,revision=revision+1 WHERE id=1 AND revision=?').bind(colors,input.revision).run():await env.DB.prepare('INSERT OR IGNORE INTO schedule_palette73 VALUES(1,?,1)').bind(colors).run();
+ if(!r.meta?.changes)return scheduleJSON({error:'共用色票已更新，請重新開啟設定'},409);return scheduleJSON({saved:true,colors:JSON.parse(colors),revision:input.revision+1});
 }

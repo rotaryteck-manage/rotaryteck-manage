@@ -1,6 +1,6 @@
 // Shared, deterministic rules used by the browser and the API.
 export function taipeiDate(value=Date.now()){return new Date(value).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});}
-export function preparedQuantity(p,i){const b=p.production?.baseline?.[i.id];return b?Math.max(0,b.stock+i.received-b.received):i.received;}
+export function preparedQuantity(p,i){const b=p.production?.baseline?.[i.id];const base=b?Math.max(0,b.stock+i.received-b.received):i.received;return Math.max(0,base+(i.preparedAdjustment73||0));}
 export function restockActive(r,now=Date.now()){return r.status==='low'||r.status==='ordered'||!!r.restock?.received&&now<Date.parse(r.restock.received.time)+7*86400000;}
 export function restockTransition(reel,action,who,time=new Date().toISOString(),id){
  const r=structuredClone(reel),stamp={time,actor:who.name,actorId:String(who.id)};
@@ -29,6 +29,9 @@ export function restockChangeAllowed(a,b,e,now=Date.now()){
 export function validDate(v){return typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;}
 export function warehouseDateParts72(s){return [...(s.projects||[]),...(s.deletedProjects||[]).map(x=>x.project)].filter(Boolean).flatMap(p=>[...(p.parts||[]),...(p.archivedParts||[]).map(x=>x.part)].filter(Boolean).map(i=>({key:JSON.stringify([p.id,i.id]),part:i})));}
 export function validateWorkflowState(s){
+ if(s.warehouseOptions73!==undefined){const o=s.warehouseOptions73;if(!o||typeof o!=='object'||Array.isArray(o))throw Error('庫房位置選單格式不正確');for(const k of ['cabinets','shelves'])if(!Array.isArray(o[k])||!o[k].length||o[k].length>100||o[k].some(x=>typeof x!=='string'||!x.trim()||x!==x.trim()||x.length>40)||new Set(o[k]).size!==o[k].length)throw Error('庫房位置選項不可重複或空白');}
+ for(const p of s.projects||[])for(const i of p.parts||[])if(!Number.isSafeInteger(preparedQuantity(p,i)))throw Error('本次已備數量超出安全範圍');
+ for(const {part} of warehouseDateParts72(s))if(part.preparedAdjustment73!==undefined&&!Number.isSafeInteger(part.preparedAdjustment73))throw Error('本次已備修正數量不正確');
  for(const {part} of warehouseDateParts72(s))for(const key of ['receivedDate72','issuedDate72'])if(part[key]!==undefined&&part[key]!==''&&!validDate(part[key]))throw Error('收料／領料日期不正確');
  if(s.appearance!==undefined){const a=s.appearance,areas=['global','cases','warehouse','plating','wire','audit','schedule','admin','login'];if(!a||typeof a!=='object'||Array.isArray(a))throw Error('外觀設定不正確');for(const [area,colors]of Object.entries(a.colors||{})){if(!areas.includes(area)||!colors||Object.values(colors).some(v=>typeof v!=='string'||!/^#[0-9a-fA-F]{6}$/.test(v)))throw Error('配色格式不正確');}for(const [area,labels]of Object.entries(a.text||{})){if(!areas.includes(area)||!labels||Object.entries(labels).some(([k,v])=>!k||k.length>500||typeof v!=='string'||!v.trim()||v.length>500))throw Error('文字設定不正確');}if(a.logoWidth!==undefined&&(!Number.isInteger(a.logoWidth)||a.logoWidth<32||a.logoWidth>240)||a.logoHeight!==undefined&&(!Number.isInteger(a.logoHeight)||a.logoHeight<24||a.logoHeight>100))throw Error('LOGO 尺寸超出範圍');}
 
@@ -36,7 +39,8 @@ export function validateWorkflowState(s){
  for(const p of s.projects||[]){if(!p.production)continue;const c=p.production;if(!validDate(c.start)||!Number.isSafeInteger(c.sets)||c.sets<1||!c.baseline||!c.id)throw Error('本次製作資料不正確');for(const i of p.parts){if(i.sets!==c.sets)throw Error('零件套數必須與本次製作一致');const b=c.baseline[i.id];if(b&&(!Number.isSafeInteger(b.stock)||b.stock<0||!Number.isSafeInteger(b.received)||b.received<0))throw Error('備料基準不正確');}}
 }
 export function workflowChangeAllowed(before,after,e){
- if(e.role!=='supervisor'){const old=new Map(warehouseDateParts72(before).map(x=>[x.key,x.part]));for(const {key,part} of warehouseDateParts72(after))for(const field of ['receivedDate72','issuedDate72'])if((part[field]||'')!==(old.get(key)?.[field]||''))return false;}
+ if(e.role!=='supervisor'&&JSON.stringify(before.warehouseOptions73)!==JSON.stringify(after.warehouseOptions73))return false;
+ if(e.role!=='supervisor'){const old=new Map(warehouseDateParts72(before).map(x=>[x.key,x.part]));for(const {key,part} of warehouseDateParts72(after))for(const field of ['receivedDate72','issuedDate72','preparedAdjustment73'])if((part[field]||'')!==(old.get(key)?.[field]||''))return false;}
 
  for(const p of after.platingProjects||[])for(const s of p.shipments||[]){const old=before.platingProjects?.find(x=>x.id===p.id)?.shipments.find(x=>x.id===s.id);if(JSON.stringify(old)!==JSON.stringify(s)&&(!s.welderId?.trim()||!s.welderName?.trim()))return false;}
  for(const c of after.cases||[]){const old=before.cases?.find(x=>x.id===c.id);if(c.status==='結案'&&old?.status!=='結案'&&!validDate(c.actualClosedDate))return false;if(c.status!=='結案'&&c.actualClosedDate)return false;}
