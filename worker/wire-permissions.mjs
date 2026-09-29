@@ -20,7 +20,13 @@ export function migratePermissions75(values,role){
 const legacyViewer75=['cases.view','warehouse.view','plating.view','wire.view','wire.cut','wire.editOwn','wire.photos','schedule.view','schedule.report'];
 export const builtinViewer=migratePermissions75(legacyViewer75,'viewer');
 export const builtinProfiles=[{id:'supervisor',name:'主管',permissions:Object.keys(capabilityNames)},{id:'warehouse',name:'倉管',permissions:migratePermissions75([...legacyViewer75,'wire.deleteProject','plating.deleteProject','warehouse.stock','warehouse.photos','plating.manage','plating.photos','wire.create','wire.edit','wire.delete','schedule.daily','schedule.material'],'warehouse')},{id:'viewer',name:'一般員工',permissions:builtinViewer}];
-export async function ensurePermissions(env){await env.DB.batch([
+const ensurePermissionsReady76=new WeakMap();
+export async function ensurePermissions(env){
+ let pending=ensurePermissionsReady76.get(env.DB);
+ if(!pending){pending=ensurePermissionsCore76(env).catch(error=>{ensurePermissionsReady76.delete(env.DB);throw error;});ensurePermissionsReady76.set(env.DB,pending);}
+ return pending;
+}
+async function ensurePermissionsCore76(env){await env.DB.batch([
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_order (profile_id TEXT PRIMARY KEY,position INTEGER NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS wire_pending_uploads (id TEXT PRIMARY KEY,created_at TEXT NOT NULL)'),
  env.DB.prepare('CREATE TABLE IF NOT EXISTS app_permission_profiles (id TEXT PRIMARY KEY,name TEXT NOT NULL,permissions TEXT NOT NULL)'),

@@ -28,6 +28,7 @@ persist=function(){saveCloud(state).catch(e=>oldToast(e.message));};
 saveEditState=function(candidate){if(!cloudReady||cloudBusy||failedCandidate)error('請先等候雲端儲存完成。');state=candidate;persist();};
 for(const event of ['click','submit','input','change'])document.addEventListener(event,e=>{
  if(e.target.closest('#close-modal,#cancel-modal'))return;
+ if(cloudReady&&cloudBusy&&!failedCandidate&&event==='click'&&e.target.closest('a[href^="#"],[data-schedule-tab],[data-project]'))return;
  if(!cloudReady&&e.target.closest('a'))return;
  if((!cloudReady||cloudBusy||failedCandidate)&&!e.target.closest('#cloud-status,.login-page,[data-confirmation]')){
   e.preventDefault();e.stopImmediatePropagation();
@@ -38,5 +39,5 @@ for(const event of ['click','submit','input','change'])document.addEventListener
  }
 },true);
 window.addEventListener('beforeunload',e=>{if(cloudBusy||failedCandidate){e.preventDefault();e.returnValue='';}});
-async function startCloud(){try{const r=await apiFetch('/api/state');const data=await r.json();if(!r.ok)throw Error(data.error||'載入失敗');if(data.storageVersion!==2)throw Error('儲存服務尚未更新，請確認 Cloudflare 部署已完成');if(data.serverTime&&typeof serverClockOffset44!=='undefined')serverClockOffset44=Date.parse(data.serverTime)-Date.now();state=data.state||{projects:[],deletedProjects:[],logs:[]};recordVersions=data.versions||{};revision=data.revision;currentUser=data.currentUser||currentUser;confirmed=JSON.parse(JSON.stringify(state));cloudReady=true;migrateSimpleInventory();render();routeAdmin();}catch(e){$('#app').innerHTML='<main><h1>暫時無法連接雲端庫房</h1><p>'+esc(e.message)+'</p><p>請確認主管已在管理後台啟用你的員工帳號。</p><button class="primary" id="retry-login">重新登入</button></main>';$('#cloud-status')?.remove();$('#retry-login').onclick=logout;}}
-document.addEventListener('DOMContentLoaded',async()=>{if(await ensureAuth())startCloud();});
+async function startCloud(){try{const r=await apiFetch('/api/state');const data=await r.json();if(!r.ok)throw Error(data.error||'載入失敗');if(data.storageVersion!==2)throw Error('儲存服務尚未更新，請確認 Cloudflare 部署已完成');if(data.serverTime&&typeof serverClockOffset44!=='undefined')serverClockOffset44=Date.parse(data.serverTime)-Date.now();state=data.state||{projects:[],deletedProjects:[],logs:[]};recordVersions=data.versions||{};revision=data.revision;currentUser=data.currentUser||currentUser;confirmed=JSON.parse(JSON.stringify(state));cloudReady=true;migrateSimpleInventory();routeAdmin();}catch(e){$('#app').innerHTML='<main><h1>暫時無法連接雲端庫房</h1><p>'+esc(e.message)+'</p><p>請確認主管已在管理後台啟用你的員工帳號。</p><button class="primary" id="retry-login">重新登入</button></main>';$('#cloud-status')?.remove();$('#retry-login').onclick=logout;}}
+document.addEventListener('DOMContentLoaded',async()=>{try{if(await ensureAuth())await startCloud();}finally{if(typeof finishBoot76==='function')finishBoot76();}});

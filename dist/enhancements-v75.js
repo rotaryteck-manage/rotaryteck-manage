@@ -48,14 +48,6 @@ renderAdmin=function(){
  for(const [kind,label]of [['warehouse','庫房'],['plating','電鍍'],['wire','線材']])add(kind+'.restore','復原'+label+'專案',()=>kind==='warehouse'?deletedProjectsDialog():openBulk(kind,undefined,true));
  enhanceEmployeesAdmin();makeAdminCardsCollapsible();applyRoleUI();cloudBar();
 };
-const permissionDialogBefore75=permissionDialog;
-permissionDialog=function(profile){
- permissionDialogBefore75(profile);
- const box=$('#modal .permission-options');if(!box)return;
- const labels=[...box.children];box.replaceChildren();
- const groups=new Map();
- for(const label of labels){const key=label.querySelector('input').value,group=key.startsWith('schedule.')?'排程與工作紀錄':({warehouse:'庫房',cases:'案件',plating:'電鍍',wire:'線材',admin:'後台',records:'紀錄匯出'})[key.split('.')[0]]||'其他';if(!groups.has(group)){const fieldset=document.createElement('fieldset');fieldset.style.gridColumn='1 / -1';const legend=document.createElement('legend');legend.textContent=group;fieldset.append(legend);groups.set(group,fieldset);box.append(fieldset);}groups.get(group).append(label);}
-};
 
 const employeeDialogBefore75=employeeDialog;
 employeeDialog=function(id){employeeDialogBefore75(id);if(currentUser.role==='supervisor'&&canDo('admin.permissions'))return;const role=$('#modal [name=role]');role?.querySelector('[value=supervisor]')?.remove();};

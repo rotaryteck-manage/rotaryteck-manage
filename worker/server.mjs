@@ -113,7 +113,13 @@ const storageSchema=[
  'CREATE TABLE IF NOT EXISTS state_commits (request_id TEXT PRIMARY KEY NOT NULL,signature TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),result TEXT NOT NULL,created_at TEXT NOT NULL)'
 ];
 function recordChunks(entries){const chunks=[];let batch=[],size=0;for(const entry of entries){const bytes=new TextEncoder().encode(JSON.stringify(entry)).length;if(batch.length&&size+bytes>500000){chunks.push(batch);batch=[];size=0;}batch.push(entry);size+=bytes;}if(batch.length)chunks.push(batch);return chunks;}
+const ensureRecordStorageReady76=new WeakMap();
 async function ensureRecordStorage(env){
+ let pending=ensureRecordStorageReady76.get(env.DB);
+ if(!pending){pending=ensureRecordStorageCore76(env).catch(error=>{ensureRecordStorageReady76.delete(env.DB);throw error;});ensureRecordStorageReady76.set(env.DB,pending);}
+ return pending;
+}
+async function ensureRecordStorageCore76(env){
  await env.DB.batch(storageSchema.map(sql=>env.DB.prepare(sql)));
  if(await env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1').first())return;
  const legacy=await legacyCompanyRow(env),initial=normalizeLogIds(legacy?JSON.parse(legacy.body):{projects:[],deletedProjects:[],logs:[]});
