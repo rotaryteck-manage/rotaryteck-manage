@@ -37,3 +37,47 @@ body .schedule-workspace>.schedule-head{order:1}
 body .schedule-workspace>.mobile-selected78{order:2}
 body .schedule-workspace>#schedule-content56,body .schedule-workspace>.schedule-holiday-warning60{order:3}
 }
+/* v79: compact record index, scoped to mobile scheduling only. */
+@media(max-width:700px){
+body:has(.schedule-workspace){background:#f5f4ed}
+body:has(.schedule-workspace) .header{padding:8px 10px;min-height:0;gap:6px}
+body:has(.schedule-workspace) .brand{font-size:14px;gap:5px}
+body:has(.schedule-workspace) .header-actions{gap:4px;justify-content:flex-start}
+body:has(.schedule-workspace) .header-actions button{width:auto!important;min-width:0!important;height:30px!important;min-height:30px!important;padding:3px 7px!important;font-size:11px!important}
+body:has(.schedule-workspace) main{padding:6px 5px 0}
+body:has(.schedule-workspace) .demo:has(.management-nav){padding:4px 0;margin-bottom:8px;gap:4px}
+body:has(.schedule-workspace) .management-nav{gap:4px;padding:0}
+body:has(.schedule-workspace) .management-nav button{min-height:28px!important;padding:4px 7px!important;font-size:11px!important;border-radius:5px}
+body .schedule-workspace{border:0;border-radius:0;background:transparent;padding:0 0 calc(80px + env(safe-area-inset-bottom,0px));box-shadow:none}
+body .schedule-toolbar{padding:0 5px;margin-bottom:8px}
+body .schedule-period-controls{border:0;background:transparent;padding:0;justify-content:flex-start}
+body .schedule-period-controls strong{order:-1;margin-right:auto;font-size:23px;font-weight:700;letter-spacing:-.5px}
+body .schedule-period-controls button{border:0;background:transparent;padding:5px!important;height:30px!important;min-height:0!important;font-size:11px!important}
+body .schedule-tabs{gap:5px;background:#e8ece2;border-radius:9px;padding:4px;box-sizing:border-box}
+body .schedule-tabs button{border:0;border-radius:6px;height:33px!important;background:transparent;font-size:13px!important}
+body .mobile-selected78{font-size:10px;margin:4px 8px}
+body .mobile-calendar78{margin-top:0;border:0}
+body .mobile-weekday78{background:transparent;color:#70816e;padding:7px 0;font-weight:500;border-bottom:1px solid #d9dfd2}
+body .mobile-day78{min-height:0;padding:3px 1px 5px;border-right:0;border-bottom:1px solid #d9dfd2;background:transparent}
+body .mobile-day78.off78{background:#faeeeb}
+body .mobile-day78.selected78{background:#e7eddf;box-shadow:none}
+body .mobile-calendar78 .mobile-date78{width:29px!important;margin:0 auto 5px!important;height:25px!important;line-height:25px!important;border-radius:50%;font-size:13px!important}
+body .mobile-day78.today78 .mobile-date78{background:#244f3c;color:#fff}
+body .mobile-slots79{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(3,18px);grid-auto-rows:18px;gap:2px}
+body .mobile-slots79 .mobile-entry78{margin:0!important;padding:0!important;height:18px!important;line-height:18px!important;font-size:10px!important;letter-spacing:-.4px;border-radius:2px;color:#fff}
+body .mobile-slots79 .mobile-jobs79{background:#44745d}
+body .mobile-slots79 .mobile-reports79{background:#487c97}
+body .mobile-slots79 .mobile-leaves79{background:#b47364}
+body .mobile-slots79 .mobile-current79{background:#708466}
+body .mobile-slots79 .mobile-legacy79{background:#868777}
+body .mobile-holiday78{height:14px;line-height:14px;font-size:9px;margin-top:2px}
+body .mobile-footer78{background:#f5f4ed;gap:0;box-shadow:none;padding:6px 2px calc(6px + env(safe-area-inset-bottom,0px));border-top:1px solid #cfd8c6}
+body .mobile-footer78 button{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:transparent!important;color:#2f674c;border:0;border-radius:0;height:54px!important;padding:2px!important;font-size:11px!important}
+body .mobile-footer78 button svg{width:25px;height:25px}
+body .mobile-footer78 button:disabled{color:#a0a99a!important;background:transparent!important}
+body:has(.schedule-workspace) #toast{bottom:calc(80px + env(safe-area-inset-bottom,0px));z-index:90}
+}
+@media(max-width:700px){
+body:has(.schedule-workspace) .header-actions{width:100%;flex-wrap:wrap;justify-content:flex-start!important}
+body:has(.schedule-workspace) #account-actions{display:contents!important}
+}

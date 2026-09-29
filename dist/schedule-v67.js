@@ -16,8 +16,8 @@ scheduleDraw56=function(){
  scheduleDecorate60();root.querySelectorAll('.schedule-calendar-material').forEach(el=>el.remove());
 };
 
-scheduleDayRecord56=function(day,section='jobs',materialId=''){
- const entries=scheduleData56.entries||[],jobs=entries.filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),reports=(scheduleData56.reports||[]).filter(r=>r.day===day).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at))||String(a.id).localeCompare(b.id)),materials=entries.filter(e=>e.kind==='material'&&e.day===day&&(!materialId||e.id===materialId)),legacy=materialId?[]:scheduleMaterial56().filter(e=>e.day===day);
+scheduleDayRecord56=function(day,section='jobs',materialId='',materialSource='all'){
+ const entries=scheduleData56.entries||[],jobs=entries.filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),reports=(scheduleData56.reports||[]).filter(r=>r.day===day).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at))||String(a.id).localeCompare(b.id)),materials=entries.filter(e=>materialSource!=='legacy'&&e.kind==='material'&&e.day===day&&(!materialId||e.id===materialId)),legacy=materialId||materialSource==='current'?[]:scheduleMaterial56().filter(e=>e.day===day);
  let body='',title='';
  if(section==='jobs'){
   title='工作紀錄';const known=(scheduleData56.people||[]).map(p=>p.name),names=[...new Set([...known,...jobs.flatMap(scheduleAssignees56)])].filter(n=>jobs.some(e=>scheduleAssignees56(e).includes(n)));
