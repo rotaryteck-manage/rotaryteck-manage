@@ -1,0 +1,21 @@
+/* Work rows keep their stripe from name through content. */
+.schedule-daily-job67 .work-title71{background:transparent!important;color:inherit!important;border:0!important;box-shadow:none!important;border-radius:0;padding:0 4px;font-weight:600}
+.leave-toolbar72{width:100%;display:flex;justify-content:flex-end;margin-top:8px}.leave-people72{display:flex;flex-wrap:wrap;gap:10px 22px;border:1px solid #cad8c9;border-radius:6px;padding:15px}.leave-people72 label{display:inline-flex;align-items:center;gap:6px}.leave-people72 input[type=checkbox]{width:18px;min-height:18px;margin:0}.leave-slot72{height:31px;display:block}.schedule-calendar-day67 .leave-link72{background:#fff4d9;border-color:#e8d49f;color:#71571e}.leave-records72 article{display:flex;gap:10px;align-items:center;padding:12px;border-bottom:1px solid #cad8c9}.leave-records72 article:nth-child(odd){background:#f0f6ed}.leave-records72 article>div{flex:1;min-width:0}.leave-records72 span{margin-left:14px}.leave-records72 small{display:block;margin-top:6px}.leave-records72 button{min-width:52px;height:30px;padding:3px 7px}
+/* All cells, including the sticky name cell, share the complete row colour. */
+#warehouse-dialog .editable-bom tr[data-ready72=no][data-stripe72="0"]{--row72:#fff}
+#warehouse-dialog .editable-bom tr[data-ready72=no][data-stripe72="1"]{--row72:#f0f6ed}
+#warehouse-dialog .editable-bom tr[data-ready72=yes][data-stripe72="0"]{--row72:#fff0f2}
+#warehouse-dialog .editable-bom tr[data-ready72=yes][data-stripe72="1"]{--row72:#f9dfe3}
+#warehouse-dialog .editable-bom tr[data-ready72] td{background:var(--row72)!important}
+#warehouse-dialog .editable-bom{min-width:1150px;width:100%;table-layout:fixed}
+#warehouse-dialog .editable-bom th:first-child,#warehouse-dialog .editable-bom td:first-child{width:170px}
+#warehouse-dialog .editable-bom th:nth-child(2){width:130px}
+#warehouse-dialog .editable-bom th:nth-child(n+3){width:72px}
+#warehouse-dialog .editable-bom th:nth-child(10){width:48px}
+#warehouse-dialog .editable-bom th[data-date-heading72]{width:92px}
+#warehouse-dialog .warehouse-date-cell72{font-size:12px;white-space:nowrap;padding:6px 3px}
+#warehouse-dialog button.warehouse-date72{font-size:12px;min-width:0;width:100%;min-height:30px;height:auto;padding:4px 2px;background:transparent;border-color:transparent;color:inherit;white-space:nowrap}
+#warehouse-dialog button.warehouse-date72:hover{border-color:#a1b69b;background:#ffffff70}
+@media(max-width:600px){.leave-records72 article{flex-wrap:wrap}.leave-records72 article>div{flex-basis:100%}}
+#warehouse-dialog .editable-bom th{white-space:normal;overflow-wrap:anywhere;line-height:1.45;padding:9px 6px}
+.schedule-daily-job67 .schedule-delete70{background:transparent!important}

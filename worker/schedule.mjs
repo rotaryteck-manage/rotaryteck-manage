@@ -16,7 +16,8 @@ async function scheduleApiCore71(request,env,employee){
    const reports=await env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all();
    const people=await env.DB.prepare("SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id WHERE e.status='active' ORDER BY COALESCE(x.position,e.id),e.id").all();
    const weeklyNotes=await env.DB.prepare('SELECT week_start,body,updated_at,author_name FROM schedule_weekly_notes WHERE week_start BETWEEN ? AND ? ORDER BY week_start').bind(from,to).all();
-   return scheduleJSON({entries:rows.results,weeklyNotes:weeklyNotes.results,people:people.results,options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':''}))});
+   await scheduleLeaveTable72(env);const leaves=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id').bind(to+'T23:59:59',from+'T00:00').all();
+   return scheduleJSON({leaves:leaves.results.map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results,weeklyNotes:weeklyNotes.results,people:people.results,options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':''}))});
   }
   if(request.headers.get('origin')!==url.origin)return scheduleJSON({error:'來源驗證失敗'},403);
   if(method!=='POST'&&method!=='DELETE')return scheduleJSON({error:'不支援的操作'},405);
@@ -24,6 +25,7 @@ async function scheduleApiCore71(request,env,employee){
   if(!request.headers.get('content-type')?.includes('application/json'))return scheduleJSON({error:'格式不正確'},415);
   const input=await request.json();if(JSON.stringify(input).length>300000)return scheduleJSON({error:'資料過大'},413);
   const now=new Date().toISOString(),kind=input.kind;
+  if(kind==='leave')return scheduleLeave72(request,env,employee,input);
   if(['copy_week','reset_week','text_delete'].includes(kind))return scheduleExtra71(request,env,employee,input);
   if(kind==='options'){
    if(method!=='POST'||employee.role!=='supervisor'||!scheduleAllowed(employee,'schedule.weekly'))return scheduleJSON({error:'只有主管可以設定工作選項'},403);
@@ -199,7 +201,7 @@ async function scheduleExtra71(request,env,employee,input){
 async function scheduleAudited71(request,env,employee,handler){
  if(request.method==='GET')return handler(request,env,employee);
  let input={};try{const copy=request.clone();if(request.headers.get('content-type')?.includes('application/json'))input=await copy.json();else{const f=await copy.formData();for(const key of ['id','day','title','category','quantity','projectName','authorId','body','entryId'])input[key]=String(f.get(key)||'');input.kind='daily'}}catch{return handler(request,env,employee)}
- if(['copy_week','reset_week','text_delete','options'].includes(input.kind))return handler(request,env,employee);
+ if(['copy_week','reset_week','text_delete','options','leave'].includes(input.kind))return handler(request,env,employee);
  await scheduleTables71(env);
  const ids=[input.id,...(input.entries||[]).map(e=>e.id),...(input.deletions||[]).map(e=>e.id)].filter(Boolean),before=[];
  for(const id of ids){const old=await env.DB.prepare('SELECT * FROM schedule_entries WHERE id=?').bind(id).first();if(old)before.push(old)}
@@ -220,3 +222,30 @@ export async function scheduleApi(request,env,employee){try{return await schedul
 export async function scheduleMaterialUpload(request,env,employee){try{return await scheduleAudited71(request,env,employee,scheduleMaterialUploadCore71)}catch(e){return scheduleJSON({error:e.message||"操作失敗"},400)}}
 
 export async function schedulePhotoUpload(request,env,employee){try{return await scheduleAudited71(request,env,employee,schedulePhotoUploadCore71)}catch(e){return scheduleJSON({error:e.message||"操作失敗"},400)}}
+
+// Local wall times are entered and displayed in Asia/Taipei; end is exclusive.
+async function scheduleLeaveTable72(env){await env.DB.prepare('CREATE TABLE IF NOT EXISTS schedule_leave72 (id TEXT PRIMARY KEY,start_at TEXT NOT NULL,end_at TEXT NOT NULL,people TEXT NOT NULL,reason TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,author_name TEXT NOT NULL,updated_at TEXT NOT NULL)').run();}
+function leaveTime72(value){return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)&&scheduleDate(value.slice(0,10))&&Number(value.slice(11,13))<24&&Number(value.slice(14))<60;}
+async function scheduleLeave72(request,env,employee,input){
+ if(!['supervisor','warehouse'].includes(employee.role)||!scheduleAllowed(employee,'schedule.daily'))return scheduleJSON({error:'只有具有每日排程權限的主管、倉管可以登記請假'},403);
+ if(!scheduleText(input.id,80)||!Number.isInteger(input.revision)||input.revision<0)return scheduleJSON({error:'請假資料不正確'},400);
+ await scheduleLeaveTable72(env);await scheduleTables71(env);
+ const old=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE id=?').bind(input.id).first();
+ if(request.method==='DELETE'&&!old)return scheduleJSON({error:'找不到請假紀錄'},404);
+ let people;
+ if(request.method==='POST'){
+  if(!leaveTime72(input.start)||!leaveTime72(input.end)||input.end<=input.start||Date.parse(input.end+'+08:00')-Date.parse(input.start+'+08:00')>366*86400000||!['事假','病假','公假','其他'].includes(input.reason)||!Array.isArray(input.people)||!input.people.length||input.people.length>100||new Set(input.people).size!==input.people.length)return scheduleJSON({error:'請選擇人員、原因及正確的起訖時間（最長一年）'},400);
+  const rows=await env.DB.prepare("SELECT id,name FROM employees WHERE status='active'").all(),active=new Map(rows.results.map(x=>[String(x.id),x]));
+  if(!input.people.every(id=>typeof id==='string'&&active.has(id)))return scheduleJSON({error:'人員名單已更新，請重新開啟表單'},409);
+  people=input.people.map(id=>({id,name:active.get(id).name}));
+  if(old&&input.revision===0&&old.start_at===input.start&&old.end_at===input.end&&old.reason===input.reason&&old.people===JSON.stringify(people))return scheduleJSON({saved:true,already:true});
+ }
+ if((old?.revision||0)!==input.revision)return scheduleJSON({error:'請假紀錄已由他人修改，請重新載入'},409);
+ const now=new Date().toISOString(),deleting=request.method==='DELETE';
+ const stmt=deleting?env.DB.prepare('DELETE FROM schedule_leave72 WHERE id=? AND revision=?').bind(input.id,input.revision):old?env.DB.prepare('UPDATE schedule_leave72 SET start_at=?,end_at=?,people=?,reason=?,revision=revision+1,author_name=?,updated_at=? WHERE id=? AND revision=?').bind(input.start,input.end,JSON.stringify(people),input.reason,employee.name,now,input.id,input.revision):env.DB.prepare('INSERT OR IGNORE INTO schedule_leave72(id,start_at,end_at,people,reason,revision,author_name,updated_at) VALUES(?,?,?,?,?,1,?,?)').bind(input.id,input.start,input.end,JSON.stringify(people),input.reason,employee.name,now);
+ const target=deleting?{start:old.start_at,end:old.end_at,people:JSON.parse(old.people),reason:old.reason}:{...input,people};
+ const body=(deleting?'刪除':old?'修改':'新增')+'請假｜'+target.people.map(x=>x.name).join('、')+'｜'+target.start.replace('T',' ')+' 至 '+target.end.replace('T',' ')+'｜'+target.reason;
+ const results=await env.DB.batch([stmt,env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(crypto.randomUUID(),'daily',target.start.slice(0,10),employee.name,body,now)]);
+ if(!results[0].meta?.changes)return scheduleJSON({error:'資料已變更或完成登記，請重新載入'},409);
+ return scheduleJSON({saved:true,deleted:deleting});
+}
