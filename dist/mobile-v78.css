@@ -79,11 +79,35 @@ body .mobile-slots79{
     gap:2px;
 }
 body .mobile-slots79 .mobile-entry78{margin:0!important;padding:0!important;height:18px!important;line-height:18px!important;font-size:10px!important;letter-spacing:-.4px;border-radius:2px;color:#fff}
-body .mobile-slots79 .mobile-jobs79{background:#44745d}
-body .mobile-slots79 .mobile-reports79{background:#487c97}
-body .mobile-slots79 .mobile-leaves79{background:#b47364}
-body .mobile-slots79 .mobile-current79{background:#708466}
-body .mobile-slots79 .mobile-legacy79{background:#868777}
+body .mobile-slots79 .mobile-jobs79{
+    background:#fff0ef;
+    color:#793b3d;
+    border:1px solid #efc7c3;
+}
+
+body .mobile-slots79 .mobile-reports79{
+    background:#fff0ef;
+    color:#793b3d;
+    border:1px solid #efc7c3;
+}
+
+body .mobile-slots79 .mobile-leaves79{
+    background:#fff4d9;
+    color:#71571e;
+    border:1px solid #e8d49f;
+}
+
+body .mobile-slots79 .mobile-current79{
+    background:#eaf5ec;
+    color:#335d48;
+    border:1px solid #c6ddcc;
+}
+
+body .mobile-slots79 .mobile-legacy79{
+    background:#eaf5ec;
+    color:#335d48;
+    border:1px solid #c6ddcc;
+}
 body .mobile-holiday78{height:14px;line-height:14px;font-size:9px;margin-top:2px}
 body .mobile-footer78{background:#f5f4ed;gap:0;box-shadow:none;padding:6px 2px calc(6px + env(safe-area-inset-bottom,0px));border-top:1px solid #cfd8c6}
 body .mobile-footer78 button{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:transparent!important;color:#2f674c;border:0;border-radius:0;height:54px!important;padding:2px!important;font-size:11px!important}
