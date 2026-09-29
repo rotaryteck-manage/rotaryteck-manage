@@ -14,7 +14,14 @@ body .schedule-period-controls strong{font-size:16px}
 body .schedule-workspace:has(.mobile-calendar78) .schedule-action-controls{display:none!important}
 body .schedule-workspace .schedule-action-controls>[data-schedule-new],body .schedule-workspace .schedule-action-controls>[data-schedule-material],body .schedule-workspace .schedule-action-controls>[data-leave-new72],body .schedule-workspace .schedule-action-controls>[data-schedule-report]{display:none!important}
 body .schedule-workspace:has(.mobile-calendar78) .schedule-calendar67{display:none!important}
-body .mobile-calendar78{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:0;width:100%;margin-top:12px;border-top:1px solid #d5ddcf}
+body .mobile-calendar78{display:grid;grid-template-columns:
+minmax(0,1fr)
+minmax(0,1fr)
+minmax(0,1fr)
+minmax(0,1fr)
+minmax(0,1fr)
+minmax(0,.65fr)
+minmax(0,.65fr);gap:0;width:100%;margin-top:12px;border-top:1px solid #d5ddcf}
 body .mobile-weekday78{text-align:center;font-size:12px;padding:8px 0;background:#e8eedf}
 body .mobile-day78{min-width:0;min-height:190px;padding:2px 1px 6px;border-right:1px solid #e0e5dc;border-bottom:1px solid #d5ddcf;box-sizing:border-box;background:#fbfcf8}
 body .mobile-day78.off78{background:#fff0ee}body .mobile-day78.adjacent78 .mobile-date78{color:#8a958b}
@@ -58,7 +65,8 @@ body .schedule-tabs button{border:0;border-radius:6px;height:33px!important;back
 body .mobile-selected78{font-size:10px;margin:4px 8px}
 body .mobile-calendar78{margin-top:0;border:0}
 body .mobile-weekday78{background:transparent;color:#70816e;padding:7px 0;font-weight:500;border-bottom:1px solid #d9dfd2}
-body .mobile-day78{min-height:0;padding:3px 1px 5px;border-right:0;border-bottom:1px solid #d9dfd2;background:transparent}
+body .mobile-day78{min-height:0;padding:3px 1px 5px;border-right:1px solid #e0e5dc;border-bottom:1px solid #d9dfd2;background:transparent}
+body .mobile-day78:nth-of-type(7n){border-right:0}
 body .mobile-day78.off78{background:#faeeeb}
 body .mobile-day78.selected78{background:#e7eddf;box-shadow:none}
 body .mobile-calendar78 .mobile-date78{width:29px!important;margin:0 auto 5px!important;height:25px!important;line-height:25px!important;border-radius:50%;font-size:13px!important}
