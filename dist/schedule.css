@@ -35,3 +35,17 @@
 
 /* v69: visible people selection above dates; each work item keeps its own assignment. */
 .schedule-people-top69{padding:10px 14px;margin:0 0 12px;border:1px solid var(--ui-border);border-radius:7px;background:var(--ui-rowAlt)}.schedule-people-row69+.schedule-people-row69{margin-top:10px;padding-top:10px;border-top:1px solid var(--ui-border)}.schedule-people-heading69{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 7px}.schedule-people-heading69 strong{font-size:.95rem}.schedule-people-top69 .schedule-people63>span{display:none}.schedule-people-top69 .schedule-choice60{display:flex;flex-wrap:wrap;gap:2px 15px;max-height:none!important;height:auto!important;min-height:0!important;padding:0!important;border:0!important;background:transparent!important;overflow:visible!important}.schedule-people-top69 .schedule-choice60 label,.schedule-people-top69 .schedule-all69{display:inline-flex;align-items:center;gap:5px;min-height:28px;margin:0;padding:2px 4px;white-space:nowrap;cursor:pointer}.schedule-people-top69 input[type=checkbox]{width:16px!important;height:16px!important;min-height:0!important;max-height:none!important;margin:0!important;accent-color:#2d634a}.schedule-record-toolbar69{display:flex;justify-content:flex-end;margin:0 0 7px}.schedule-record-toolbar69 button{min-height:29px;padding:3px 9px;font-size:.8rem}.schedule-daily-list67>.schedule-daily-job67{margin:0}.schedule-daily-list67>.schedule-daily-job67 strong{margin-right:4px}
+
+/* v70: persistent roster, inline assignees, nearby actions and adjacent dates. */
+.schedule-people-top69{position:sticky;top:0;z-index:5;max-height:30vh;overflow:auto;box-shadow:0 3px 7px #173a2b18}
+.schedule-task60 h3{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;font-size:1.05rem}
+.schedule-task-assignees70{font-size:.95rem;font-weight:500;overflow-wrap:anywhere}
+.schedule-add-near70{margin-left:8px;min-height:40px}
+.schedule-daily-job67{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.schedule-delete70{flex:none;min-height:32px;padding:3px 10px;font-size:.875rem;color:#a33232}
+.schedule-plan-group64{column-gap:5px;flex-wrap:wrap}
+.schedule-plan-group64 .schedule-plan-jobs65{flex:1 1 80px}
+.schedule-bar-delete70{font-size:.875rem;min-height:28px;padding:2px 5px;line-height:1;border:1px solid currentColor;color:inherit;background:transparent}
+.schedule-calendar-day67.schedule-adjacent70{background:var(--ui-rowAlt);border-style:dashed}
+.schedule-adjacent70>header{font-weight:600}
+@media(max-width:650px){.schedule-people-top69{max-height:28vh}.schedule-add-near70{margin-top:6px}}
