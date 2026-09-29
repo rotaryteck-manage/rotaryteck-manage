@@ -36,3 +36,18 @@ test('date fields survive normal stock writes and are restricted to supervisor e
  const restored=structuredClone(before);restored.projects[0].archivedParts=[{part:restored.projects[0].parts.pop()}];assert.equal(workflowChangeAllowed(before,restored,{role:'warehouse'}),true);restored.projects[0].archivedParts[0].part.receivedDate72='2026-10-01';assert.equal(workflowChangeAllowed(before,restored,{role:'warehouse'}),false);
 });
 test('calendar excludes midnight end date and spans month boundaries',()=>{const js=fs.readFileSync(new URL('../dist/enhancements-v72.js',import.meta.url),'utf8'),c={scheduleShift56:(day,n)=>new Date(Date.parse(day+'T00:00Z')+n*86400000).toISOString().slice(0,10)};vm.runInNewContext(js.slice(js.indexOf('function leaveOnDay72'),js.indexOf('function leaveDialog72')),c);const e={start_at:'2026-09-30T13:00',end_at:'2026-10-02T00:00'};assert.equal(c.leaveOnDay72(e,'2026-09-30'),true);assert.equal(c.leaveOnDay72(e,'2026-10-01'),true);assert.equal(c.leaveOnDay72(e,'2026-10-02'),false)});
+test('other leave reason is required, persisted, idempotent, audited and cleared when category changes',async()=>{
+ const {db,send,get,leave}=fixture();
+ for(const reasonNote of ['', '   ', 'a'.repeat(201)])assert.equal((await send({...leave,reason:'其他',reasonNote})).status,400);
+ const other={...leave,reason:'其他',reasonNote:'  家庭安排  '};
+ assert.equal((await send(other)).status,200);
+ assert.equal((await(await send(other)).json()).already,true);
+ assert.equal((await(await get()).json()).leaves[0].reason_note,'家庭安排');
+ assert.equal((await send({...other,reasonNote:'不同原因'})).status,409);
+ assert.match(db.prepare('SELECT body FROM schedule_text71').get().body,/其他：家庭安排/);
+ assert.equal((await send({...other,revision:1,reason:'病假'})).status,200);
+ assert.equal((await(await get()).json()).leaves[0].reason_note,'');
+ assert.equal((await send({...other,revision:2})).status,200);
+ assert.equal((await send({kind:'leave',id:leave.id,revision:3},undefined,'DELETE')).status,200);
+ assert.ok(db.prepare('SELECT body FROM schedule_text71').all().some(r=>r.body.includes('刪除請假')&&r.body.includes('家庭安排')));
+});
