@@ -1,0 +1,12 @@
+.schedule-plan-bar .schedule-bar-edit,.schedule-plan-bar .schedule-bar-delete70{box-sizing:border-box;flex:0 0 54px;width:54px;min-width:54px;height:32px;min-height:32px;padding:4px 8px;font-size:13px;line-height:20px;border:1px solid currentColor;border-radius:5px;align-self:center;margin:0}
+.schedule-day-material67.schedule-material-receipt67{background:#eaf6ec;color:#28543b}
+.schedule-day-material67.schedule-material-outgoing67{background:#e9f2ff;color:#244f81}
+.schedule-day-material67.schedule-material-delivery67{background:#f3edfa;color:#603c7f}
+.work-title71{display:inline-block;padding:3px 7px;border-radius:4px;font-weight:600}.work-content71{line-height:1.7}.schedule-daily-job67>span{line-height:1.9}
+.paste-target71{font-size:13px;padding:5px 9px;margin-top:6px}.paste-target71.selected{outline:2px solid #34745a}
+.paste-preview71{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.paste-preview71>div{display:flex;flex-direction:column;gap:4px}.paste-preview71 img{width:100px;height:80px;object-fit:contain;border:1px solid #ddd}.paste-preview71 button{font-size:12px;padding:3px}
+.busy71{padding:20px 30px;border:1px solid #b9ccbd;border-radius:10px}.busy71::backdrop,.photo-zoom71::backdrop{background:#152b26b3}
+img[data-zoom-url]{cursor:zoom-in}.photo-zoom71{width:min(1100px,94vw);max-width:94vw;height:90vh;max-height:90vh;padding:12px;border:0;border-radius:10px}.zoom-tools71{display:flex;gap:8px;justify-content:flex-end;height:46px}.zoom-scroll71{overflow:auto;height:calc(100% - 55px);margin-top:8px}.zoom-scroll71 img{display:block;width:100%;height:auto}.legacy-photo71{max-width:240px;max-height:160px;object-fit:contain}
+#current-role[role=button]{cursor:pointer}#current-role:focus-visible{outline:3px solid #dfa92d}.schedule-tabs{flex-wrap:wrap}.schedule-tabs>button{min-width:112px}
+@media(max-width:600px){.schedule-plan-bar .schedule-bar-edit,.schedule-plan-bar .schedule-bar-delete70{width:48px;min-width:48px;flex-basis:48px}.schedule-tabs>button{min-width:96px}.photo-zoom71{padding:8px}}
+.schedule-plan-group64 .schedule-bar-edit,.schedule-plan-group64 .schedule-bar-delete70{display:inline-flex;align-items:center;justify-content:center;flex:0 0 52px!important;width:52px!important;min-width:52px!important;height:28px!important;min-height:28px!important;padding:2px 5px!important;margin:0!important;font-size:.78rem!important;line-height:1!important;border-radius:4px!important;white-space:nowrap}

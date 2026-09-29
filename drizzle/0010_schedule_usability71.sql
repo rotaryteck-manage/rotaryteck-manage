@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS schedule_copies71 (week TEXT PRIMARY KEY,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS schedule_text71 (id TEXT PRIMARY KEY,kind TEXT NOT NULL,day TEXT NOT NULL,actor TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS schedule_hidden_text71 (id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS schedule_text_refs71 (id TEXT PRIMARY KEY);
+CREATE INDEX IF NOT EXISTS schedule_text71_period ON schedule_text71(kind,day);
