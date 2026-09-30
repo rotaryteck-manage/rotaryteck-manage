@@ -93,12 +93,17 @@
   color:#234e3c;
 }
 
-/* 工作紀錄內：取消工作項目的標籤底色 */
-.schedule-person-summary80 .schedule-work-label71{
-  background:transparent;
-  border:0;
-  border-radius:0;
-  padding:0;
-  color:#173f35;
-  box-shadow:none;
+/* 工作紀錄：案件名稱全部改為純文字 */
+.schedule-person-summary80 .schedule-work-label71,
+.schedule-person-summary80 mark,
+.schedule-person-summary80 strong span,
+.schedule-person-summary80 .schedule-label63{
+  background:transparent !important;
+  background-color:transparent !important;
+  border:0 !important;
+  border-radius:0 !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  outline:0 !important;
+  color:#173f35 !important;
 }
