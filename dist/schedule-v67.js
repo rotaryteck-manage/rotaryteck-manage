@@ -101,10 +101,6 @@ scheduleReportDialog56=function(day){
     throw Error('請先上傳工作照片');
    }
 
-   if(pendingPhotos.length>10){
-    throw Error('工作照片一次最多10張');
-   }
-
    const form=new FormData();
    form.append('mode','create');
    form.append('id',crypto.randomUUID());
@@ -136,14 +132,18 @@ scheduleReportDialog56=function(day){
  const dialog=$('#modal');
  const input=dialog.querySelector('[name=photo]');
  const hint=dialog.querySelector('#schedule-paste-hint');
+ const preview=dialog.querySelector('#schedule-upload-preview80');
 
  const renderPreview=()=>{
-  const preview=dialog.querySelector('#schedule-upload-preview80');
   if(!preview)return;
 
   preview.innerHTML='';
 
-  for(const file of pendingPhotos){
+  pendingPhotos.forEach((file,index)=>{
+   const item=document.createElement('div');
+   item.className='schedule-upload-item80';
+   item.style.position='relative';
+
    const img=document.createElement('img');
    img.className='schedule-upload-thumb80';
 
@@ -152,12 +152,34 @@ scheduleReportDialog56=function(day){
    img.alt='待上傳照片';
    img.onload=()=>URL.revokeObjectURL(url);
 
-   preview.appendChild(img);
-  }
+   const remove=document.createElement('button');
+   remove.type='button';
+   remove.className='schedule-upload-remove80';
+   remove.textContent='×';
+   remove.setAttribute('aria-label','刪除照片');
 
-  hint.textContent=pendingPhotos.length
-   ?'目前共 '+pendingPhotos.length+' / 10 張照片'
-   :'';
+   remove.onclick=e=>{
+    e.preventDefault();
+    e.stopPropagation();
+
+    pendingPhotos.splice(index,1);
+    renderPreview();
+   };
+
+   item.append(img,remove);
+   preview.appendChild(item);
+  });
+
+  if(pendingPhotos.length>=10){
+   hint.textContent='已達 10 張照片上限，如需更換請先刪除照片';
+   input.disabled=true;
+  }else if(pendingPhotos.length){
+   hint.textContent='目前共 '+pendingPhotos.length+' / 10 張照片';
+   input.disabled=false;
+  }else{
+   hint.textContent='';
+   input.disabled=false;
+  }
  };
 
  const addPhotos=files=>{
@@ -170,14 +192,18 @@ scheduleReportDialog56=function(day){
   const remaining=10-pendingPhotos.length;
 
   if(remaining<=0){
-   alert('工作照片最多10張');
+   alert('已達10張照片上限，請先刪除照片再新增');
    return;
   }
 
   pendingPhotos.push(...incoming.slice(0,remaining));
 
   if(incoming.length>remaining){
-   alert('工作照片最多10張，超過的照片未加入');
+   alert(
+    '最多只能上傳10張照片，本次加入 '
+    +remaining+
+    ' 張，其餘照片未加入'
+   );
   }
 
   renderPreview();
@@ -188,19 +214,36 @@ scheduleReportDialog56=function(day){
  };
 
  input.onchange=()=>{
-  addPhotos(input.files);
+  const files=[...input.files];
 
-  // 清空檔案欄位，讓下一次「選擇照片」可以繼續追加
+  addPhotos(files);
+
+  // 必須清空原生 file input。
+  // 真正照片全部由 pendingPhotos 保存，
+  // 因此下一次選檔不會覆蓋上一批。
   input.value='';
  };
 
+ // 已滿10張時，阻止再次開啟檔案選擇器
+ input.addEventListener('click',e=>{
+  if(pendingPhotos.length<10)return;
+
+  e.preventDefault();
+  alert('已達10張照片上限，請先刪除照片再新增');
+ });
+
  dialog.onpaste=e=>{
-  const files=[...(e.clipboardData?.files||[])].filter(
+  const files=[];
+
+  const clipboardFiles=[...(e.clipboardData?.files||[])].filter(
    file=>file.type.startsWith('image/')
   );
 
+  files.push(...clipboardFiles);
+
   if(!files.length){
    const items=[...(e.clipboardData?.items||[])];
+
    for(const item of items){
     if(!item.type.startsWith('image/'))continue;
 
@@ -220,8 +263,16 @@ scheduleReportDialog56=function(day){
   if(!files.length)return;
 
   e.preventDefault();
+
+  if(pendingPhotos.length>=10){
+   alert('已達10張照片上限，請先刪除照片再新增');
+   return;
+  }
+
   addPhotos(files);
  };
+
+ renderPreview();
 };
 
 scheduleMaterialDialog61=function(entry){
