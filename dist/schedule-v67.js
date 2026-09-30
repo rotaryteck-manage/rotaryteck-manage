@@ -13,6 +13,7 @@ scheduleDraw56=function(){
  root.querySelectorAll('[data-day-material-id]').forEach(b=>b.onclick=()=>scheduleDayRecord56(b.dataset.dayMaterialDate,'materials',b.dataset.dayMaterialId));
  root.querySelectorAll('[data-day-materials]').forEach(b=>b.onclick=()=>scheduleDayRecord56(b.dataset.dayMaterials,'materials'));
  scheduleDecorate60();root.querySelectorAll('.schedule-calendar-material').forEach(el=>el.remove());
+ const today67=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});root.querySelectorAll('.schedule-calendar-day67').forEach(cell=>{const day=cell.querySelector('[data-day-jobs]')?.dataset.dayJobs;if(day===today67)cell.classList.add('schedule-today67');else cell.classList.remove('schedule-today67');});
 };
 
 scheduleDayRecord56=function(day,section='jobs',materialId='',materialSource='all'){
