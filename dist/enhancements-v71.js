@@ -53,7 +53,11 @@ async function zoomPhoto71(img){
  const d=document.createElement('dialog');d.className='photo-zoom71';d.innerHTML='<div class="zoom-tools71"><button type="button" data-minus>縮小</button><button type="button" data-plus>放大</button><button type="button" data-close aria-label="關閉放大照片">×</button></div><div class="zoom-scroll71"><p>正在讀取照片…</p></div>';document.body.append(d);d.showModal();let objectURL='',scale=1;d.querySelector('[data-close]').onclick=()=>d.close();d.addEventListener('close',()=>{if(objectURL)URL.revokeObjectURL(objectURL);d.remove()},{once:true});
  try{const r=await apiFetch(img.dataset.zoomUrl);if(!r.ok)throw Error('照片讀取失敗');objectURL=URL.createObjectURL(await r.blob());if(!d.open){URL.revokeObjectURL(objectURL);return}const photo=document.createElement('img');photo.src=objectURL;photo.alt=img.alt;const scroll=d.querySelector('.zoom-scroll71');scroll.replaceChildren(photo);const resize=()=>{photo.style.width=(scale*100)+'%';photo.style.maxWidth='none'};d.querySelector('[data-plus]').onclick=()=>{scale=Math.min(5,scale+.25);resize()};d.querySelector('[data-minus]').onclick=()=>{scale=Math.max(.25,scale-.25);resize()}}catch(e){if(d.open)d.querySelector('.zoom-scroll71').textContent=e.message}
 }
-document.addEventListener('click',e=>{const img=e.target.closest('img[data-zoom-url]');if(img)zoomPhoto71(img)});
+document.addEventListener('click',e=>{
+ const img=e.target.closest('img[data-zoom-url]');
+ if(!img||img.hasAttribute('data-schedule-photo'))return;
+ zoomPhoto71(img);
+});
 
 async function switchAccount71(){
  if(cloudBusy||failedCandidate||imageUploading||scheduleBusy71){toast('請先完成目前的儲存或上傳，再切換帳號');return}
