@@ -65,7 +65,47 @@ async function scheduleApiCore71(request,env,employee){
   }
   if(kind==='material'){
    if(!scheduleAllowed(employee,'schedule.material.'+(method==='DELETE'?'delete':input.revision?'edit':'create')))return scheduleJSON({error:'沒有每日物料登錄權限'},403);
-   if(method==='DELETE'){const old=await env.DB.prepare("SELECT revision,receipt_photo_key,item_photo_key FROM schedule_entries WHERE id=? AND kind='material'").bind(input.id).first();if(!old)return scheduleJSON({error:'找不到物料紀錄'},404);if(old.revision!==input.revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);await env.DB.prepare("DELETE FROM schedule_entries WHERE id=? AND kind='material' AND revision=?").bind(input.id,input.revision).run();for(const key of [old.receipt_photo_key,old.item_photo_key])if(key)await env.UPLOADS?.delete(key);return scheduleJSON({deleted:true})}
+   if(method==='DELETE'){
+ const old=await env.DB.prepare(
+  "SELECT revision,receipt_photo_key,item_photo_key FROM schedule_entries WHERE id=? AND kind='material'"
+ ).bind(input.id).first();
+
+ if(!old){
+  return scheduleJSON({error:'找不到物料紀錄'},404);
+ }
+
+ if(old.revision!==input.revision){
+  return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
+ }
+
+ const extraPhotos=await env.DB.prepare(
+  "SELECT photo_key FROM schedule_material_photos WHERE material_id=?"
+ ).bind(input.id).all();
+
+ const deleted=await env.DB.prepare(
+  "DELETE FROM schedule_entries WHERE id=? AND kind='material' AND revision=?"
+ ).bind(input.id,input.revision).run();
+
+ if(deleted.meta?.changes!==1){
+  return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
+ }
+
+ await env.DB.prepare(
+  "DELETE FROM schedule_material_photos WHERE material_id=?"
+ ).bind(input.id).run();
+
+ const photoKeys=[
+  old.receipt_photo_key,
+  old.item_photo_key,
+  ...(extraPhotos.results||[]).map(photo=>photo.photo_key)
+ ].filter(Boolean);
+
+ await Promise.allSettled(
+  photoKeys.map(key=>env.UPLOADS?.delete(key))
+ );
+
+ return scheduleJSON({deleted:true});
+}
    if(!scheduleText(input.id,80)||!scheduleDate(input.day)||!scheduleText(input.title,160)||!['收料','出貨','送貨'].includes(input.category)||!Number.isSafeInteger(input.quantity)||input.quantity<1||input.quantity>1000000||typeof input.note!=='string'||input.note.length>1000||!Number.isInteger(input.revision)||input.revision<0)return scheduleJSON({error:'請填寫物料日期、品項、數量與類型'},400);
    const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(input.id).first();if(old&&old.kind!==kind)return scheduleJSON({error:'紀錄類型不符'},400);if((old?.revision||0)!==input.revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
    if(old)await env.DB.prepare("UPDATE schedule_entries SET day=?,end_day=?,title=?,category=?,quantity=?,note=?,updated_at=?,revision=revision+1 WHERE id=? AND kind='material' AND revision=?").bind(input.day,input.day,input.title.trim(),input.category,input.quantity,input.note.trim(),now,input.id,input.revision).run();

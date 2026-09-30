@@ -17,7 +17,8 @@ function enhanceImageInputs71(){
  for(const input of document.querySelectorAll('input[type=file]'))if(
  /image\//.test(input.accept)&&
  !input.dataset.paste71&&
- input.name!=='photo-report80'
+ input.name!=='photo-report80'&&
+input.name!=='material-photo80'
 ){input.dataset.paste71='1';const hint=document.createElement('button');hint.type='button';hint.className='paste-target71';hint.textContent='點此後按 Ctrl＋V 貼上照片';hint.onclick=()=>{imageTarget71=input;document.querySelectorAll('.paste-target71').forEach(b=>b.classList.remove('selected'));hint.classList.add('selected');hint.focus()};input.after(hint);input.addEventListener('focus',()=>imageTarget71=input);input.addEventListener('click',()=>imageTarget71=input);input.addEventListener('change',()=>previewImages71(input))}
 }
 document.addEventListener('paste',event=>{
