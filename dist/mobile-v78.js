@@ -21,7 +21,7 @@ function mobileRows78(day){
    });
   });
 
- if(scheduleMaterial56().some(e=>e.day===day))rows.push({title:'既有料件紀錄',section:'legacy'});
+ if(scheduleMaterial56().some(e=>e.day===day))rows.push({title:'庫房紀錄',section:'legacy'});
 
  return rows;
 }
