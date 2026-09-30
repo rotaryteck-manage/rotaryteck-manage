@@ -18,7 +18,7 @@ if(jobs||reports)rows.push({title:'工作紀錄',section:'jobs'});
   }[e.category]||'receipt');
 
   rows.push({
-   title:e.category+'紀錄',
+   title:(e.project_name||'')+(e.title||''),
    section:'material',
    materialId:e.id,
    materialType
