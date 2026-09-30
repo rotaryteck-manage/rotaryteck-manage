@@ -16,10 +16,11 @@ async function scheduleApiCore71(request,env,employee){
    const from=url.searchParams.get('from'),to=url.searchParams.get('to');if(!scheduleDate(from)||!scheduleDate(to)||to<from||Date.parse(to)-Date.parse(from)>370*86400000)return scheduleJSON({error:'日期範圍不正確'},400);
    const rows=await env.DB.prepare('SELECT id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,sort_index,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE day<=? AND end_day>=? ORDER BY day,id').bind(to,from).all();
    const reports=await env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all();
+   const reportPhotoCounts=await env.DB.prepare('SELECT report_id,COUNT(*) AS extra_count FROM schedule_report_photos GROUP BY report_id').all(),reportPhotoCountMap=new Map(reportPhotoCounts.results.map(x=>[x.report_id,Number(x.extra_count)||0]));
    const people=await env.DB.prepare("SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id WHERE e.status='active' ORDER BY COALESCE(x.position,e.id),e.id").all();
    const weeklyNotes=await env.DB.prepare('SELECT week_start,body,updated_at,author_name FROM schedule_weekly_notes WHERE week_start BETWEEN ? AND ? ORDER BY week_start').bind(from,to).all();
    await scheduleLeaveTable72(env);const leaves=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id').bind(to+'T23:59:59',from+'T00:00').all();
-   return scheduleJSON({leaves:(scheduleAllowed(employee,'schedule.leave.view')?leaves.results:[]).map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results,weeklyNotes:weeklyNotes.results,people:people.results,options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':''}))});
+   return scheduleJSON({leaves:(scheduleAllowed(employee,'schedule.leave.view')?leaves.results:[]).map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results,weeklyNotes:weeklyNotes.results,people:people.results,options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':'',photo_count:(r.photo_key?1:0)+(reportPhotoCountMap.get(r.id)||0)}))});
   }
   if(request.headers.get('origin')!==url.origin)return scheduleJSON({error:'來源驗證失敗'},403);
   if(method!=='POST'&&method!=='DELETE')return scheduleJSON({error:'不支援的操作'},405);
@@ -100,27 +101,98 @@ async function scheduleApiCore71(request,env,employee){
  }catch(e){return scheduleJSON({error:e.message||'排程操作失敗'},400);}
 }
 export async function schedulePhotoApi(request,env,employee){
- try{const url=new URL(request.url);if(url.searchParams.get('export')==='1'?!scheduleAllowed(employee,'records.export'):!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看權限'},403);const id=url.searchParams.get('id');if(!id)return scheduleJSON({error:'缺少回報編號'},400);const row=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(id).first();if(!row?.photo_key)return scheduleJSON({error:'找不到照片'},404);
-  const file=await env.UPLOADS?.get(row.photo_key);if(!file)return scheduleJSON({error:'找不到照片'},404);return new Response(file.body,{headers:{'Content-Type':file.httpMetadata?.contentType||'image/jpeg','Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'}});
- }catch(e){return scheduleJSON({error:e.message},400);}
+ try{
+  const url=new URL(request.url);
+  if(url.searchParams.get('export')==='1'?!scheduleAllowed(employee,'records.export'):!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看權限'},403);
+
+  const id=url.searchParams.get('id');
+  const index=Number(url.searchParams.get('index')||0);
+  if(!id||!Number.isInteger(index)||index<0||index>9)return scheduleJSON({error:'照片編號不正確'},400);
+
+  const row=await env.DB.prepare('SELECT photo_key FROM schedule_reports WHERE id=?').bind(id).first();
+  if(!row)return scheduleJSON({error:'找不到回報'},404);
+
+  let key='';
+  if(index===0){
+   key=row.photo_key||'';
+  }else{
+   const extra=await env.DB.prepare('SELECT photo_key FROM schedule_report_photos WHERE report_id=? ORDER BY sort_index,id LIMIT 1 OFFSET ?').bind(id,index-1).first();
+   key=extra?.photo_key||'';
+  }
+
+  if(!key)return scheduleJSON({error:'找不到照片'},404);
+
+  const file=await env.UPLOADS?.get(key);
+  if(!file)return scheduleJSON({error:'找不到照片'},404);
+
+  return new Response(file.body,{headers:{
+   'Content-Type':file.httpMetadata?.contentType||'image/jpeg',
+   'Cache-Control':'private, max-age=300',
+   'X-Content-Type-Options':'nosniff'
+  }});
+ }catch(e){
+  return scheduleJSON({error:e.message||'照片讀取失敗'},400);
+ }
 }
 async function schedulePhotoUploadCore71(request,env,employee){
  try{if(!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看權限'},403);if(request.headers.get('origin')!==new URL(request.url).origin)return scheduleJSON({error:'來源驗證失敗'},403);
-  if(Number(request.headers.get('content-length')||0)>1000000)return scheduleJSON({error:'照片不可超過 800 KB'},413);
-  const form=await request.formData(),id=String(form.get('id')||''),photo=form.get('photo');
-  if(!(photo instanceof File)||!['image/jpeg','image/png','image/webp'].includes(photo.type)||photo.size>schedulePhotoLimit67||photo.size===0||!env.UPLOADS)return scheduleJSON({error:'請選擇小於 800 KB 的 JPG、PNG 或 WebP'},400);
-  if(form.get('mode')==='create'){
-   if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);
-   const day=String(form.get('day')||''),body=String(form.get('body')||'').trim(),entryId=String(form.get('entryId')||'');
-   if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(body,3000)||!scheduleText(entryId,80))return scheduleJSON({error:'請填寫日期、工作與回報內容'},400);
-   const entry=await env.DB.prepare("SELECT kind,day,end_day,assignee FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
-   if(entry?.kind!=='daily'||day<entry.day||day>entry.end_day||!Array.isArray(people)||!people.includes(employee.name))return scheduleJSON({error:'只能回報當天安排給自己的工作'},403);
-   const key='schedule/'+id+'/'+crypto.randomUUID();await env.UPLOADS.put(key,photo.stream(),{httpMetadata:{contentType:photo.type}});
-   try{await env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,key,String(photo.name).slice(0,200),String(employee.id),employee.name,new Date().toISOString()).run()}catch(e){await env.UPLOADS.delete(key);throw e}
-   return scheduleJSON({saved:true});
+  if(Number(request.headers.get('content-length')||0)>9000000)return scheduleJSON({error:'一次最多上傳 10 張照片，每張不可超過 800 KB'},413);
+  const form=await request.formData(),id=String(form.get('id')||''),photos=form.getAll('photo');
+if(!photos.length||photos.length>10||!env.UPLOADS||photos.some(photo=>!(photo instanceof File)||!['image/jpeg','image/png','image/webp'].includes(photo.type)||photo.size>schedulePhotoLimit67||photo.size===0))return scheduleJSON({error:'請選擇 1～10 張照片，每張須為小於 800 KB 的 JPG、PNG 或 WebP'},400);
+if(form.get('mode')==='create'){
+  if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);
+  const day=String(form.get('day')||''),body=String(form.get('body')||'').trim(),entryId=String(form.get('entryId')||'');
+  if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(body,3000)||!scheduleText(entryId,80))return scheduleJSON({error:'請填寫日期、工作與回報內容'},400);
+  const entry=await env.DB.prepare("SELECT kind,day,end_day,assignee FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
+  if(entry?.kind!=='daily'||day<entry.day||day>entry.end_day||!Array.isArray(people)||!people.includes(employee.name))return scheduleJSON({error:'只能回報當天安排給自己的工作'},403);
+
+  const stored=[];
+  try{
+    for(let i=0;i<photos.length;i++){
+      const photo=photos[i],key='schedule/'+id+'/'+crypto.randomUUID();
+      await env.UPLOADS.put(key,photo.stream(),{httpMetadata:{contentType:photo.type}});
+      stored.push({id:crypto.randomUUID(),key,name:String(photo.name).slice(0,200),sortIndex:i});
+    }
+
+    const first=stored[0];
+    const now=new Date().toISOString();
+    const statements=[
+      env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,first.key,first.name,String(employee.id),employee.name,now),
+      ...stored.slice(1).map(p=>env.DB.prepare('INSERT INTO schedule_report_photos(id,report_id,photo_key,photo_name,sort_index,created_at) VALUES (?,?,?,?,?,?)').bind(p.id,id,p.key,p.name,p.sortIndex,now))
+    ];
+    await env.DB.batch(statements);
+    return scheduleJSON({saved:true,photoCount:stored.length});
+  }catch(e){
+    await Promise.allSettled(stored.map(p=>env.UPLOADS.delete(p.key)));
+    throw e;
   }
-  const row=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(id).first();if(!row||!scheduleAllowed(employee,'schedule.report.editAll')&&!(row.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.editOwn')))return scheduleJSON({error:'只能修改自己的回報'},403);
-  const key='schedule/'+id+'/'+crypto.randomUUID();await env.UPLOADS.put(key,photo.stream(),{httpMetadata:{contentType:photo.type}});await env.DB.prepare('UPDATE schedule_reports SET photo_key=?,photo_name=? WHERE id=?').bind(key,String(photo.name).slice(0,200),id).run();if(row.photo_key)await env.UPLOADS.delete(row.photo_key);return scheduleJSON({saved:true});
+}
+ const row=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(id).first();
+if(!row||!scheduleAllowed(employee,'schedule.report.editAll')&&!(row.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.editOwn')))return scheduleJSON({error:'只能修改自己的回報'},403);
+
+const oldExtra=await env.DB.prepare('SELECT photo_key FROM schedule_report_photos WHERE report_id=?').bind(id).all();
+const stored=[];
+try{
+  for(let i=0;i<photos.length;i++){
+    const photo=photos[i],key='schedule/'+id+'/'+crypto.randomUUID();
+    await env.UPLOADS.put(key,photo.stream(),{httpMetadata:{contentType:photo.type}});
+    stored.push({id:crypto.randomUUID(),key,name:String(photo.name).slice(0,200),sortIndex:i});
+  }
+
+  const first=stored[0],now=new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare('UPDATE schedule_reports SET photo_key=?,photo_name=? WHERE id=?').bind(first.key,first.name,id),
+    env.DB.prepare('DELETE FROM schedule_report_photos WHERE report_id=?').bind(id),
+    ...stored.slice(1).map(p=>env.DB.prepare('INSERT INTO schedule_report_photos(id,report_id,photo_key,photo_name,sort_index,created_at) VALUES (?,?,?,?,?,?)').bind(p.id,id,p.key,p.name,p.sortIndex,now))
+  ]);
+
+  const oldKeys=[row.photo_key,...oldExtra.results.map(p=>p.photo_key)].filter(Boolean);
+  await Promise.allSettled(oldKeys.map(key=>env.UPLOADS.delete(key)));
+  return scheduleJSON({saved:true,photoCount:stored.length});
+}catch(e){
+  await Promise.allSettled(stored.map(p=>env.UPLOADS.delete(p.key)));
+  throw e;
+}
  }catch(e){return scheduleJSON({error:e.message||'照片上傳失敗'},400);}
 }
 export async function scheduleMaterialPhotoApi(request,env,employee){

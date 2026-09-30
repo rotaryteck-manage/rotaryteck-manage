@@ -52,7 +52,32 @@ function scheduleEntryDialog56(entry){const weekly=scheduleTab56==='weekly',day=
  modal(entry?'修改安排':'新增安排','<div class="form-grid">'+field('開始日期','day',day,'type="date" required')+field('結束日期','endDay',end,'type="date" required')+field('工作項目','title',entry?.title||'','required maxlength="160"')+picker+'<label class="field">色塊<input type="color" name="color" value="'+scheduleEsc56(entry?.color||localStorage.getItem('schedule-color56')||'#4e8069')+'"></label><label class="field">類型<select name="kind"><option value="'+(weekly?'weekly':'daily')+'">工作安排</option><option value="special" '+(entry?.kind==='special'?'selected':'')+'>國定假日／特殊日期</option></select></label></div><label class="field">工作內容<textarea name="note" maxlength="1000">'+scheduleEsc56(entry?.note||'')+'</textarea></label>','儲存安排',async fd=>{const kind=String(fd.get('kind')),names=fd.getAll('assignees').map(String);if(kind==='weekly'&&!names.length)throw Error('請選擇至少一位負責人');const payload={id:entry?.id||crypto.randomUUID(),revision:entry?.revision||0,kind,day:String(fd.get('day')),endDay:String(fd.get('endDay')),title:String(fd.get('title')).trim(),assignee:kind==='weekly'?JSON.stringify(names):String(fd.get('assignee')||'').trim(),color:String(fd.get('color')),note:String(fd.get('note')).trim(),category:''};await scheduleSend56(payload);localStorage.setItem('schedule-color56',payload.color);$('#modal').close();scheduleRender56()});
  if(entry){const b=document.createElement('button');b.type='button';b.className='danger-button';b.textContent='刪除安排';b.onclick=async()=>{if(!await confirmAction('確定刪除這項安排？既有工作回報仍會保留。'))return;try{await scheduleSend56({kind:entry.kind,id:entry.id,revision:entry.revision},'DELETE');$('#modal').close();scheduleRender56()}catch(e){$('#form-error').textContent=e.message}};$('#form-error').before(b)}
 }
-function schedulePhotoLoad56(root){root.querySelectorAll('[data-schedule-photo]').forEach(async img=>{try{const response=await apiFetch('/api/schedule-photo?id='+encodeURIComponent(img.dataset.schedulePhoto));if(response.ok){const url=URL.createObjectURL(await response.blob());img.src=url;img.onload=()=>URL.revokeObjectURL(url)}}catch{}})}
+function schedulePhotoLoad56(root){
+ root.querySelectorAll('[data-schedule-photo]').forEach(async img=>{
+  try{
+   const id=img.dataset.schedulePhoto;
+   const index=Number(img.dataset.photoIndex||0);
+   const response=await apiFetch('/api/schedule-photo?id='+encodeURIComponent(id)+'&index='+encodeURIComponent(index));
+   if(!response.ok)throw Error('照片載入失敗');
+   const blob=await response.blob();
+   const url=URL.createObjectURL(blob);
+   img.src=url;
+   img.dataset.zoomUrl=url;
+   img.onclick=()=>{
+ const overlay=document.createElement('div');
+ overlay.className='schedule-photo-zoom80';
+ overlay.innerHTML='<button type="button" class="schedule-photo-zoom-close80" aria-label="關閉">×</button><img src="'+img.dataset.zoomUrl+'" alt="工作照片">';
+ document.body.appendChild(overlay);
+
+ const close=()=>overlay.remove();
+ overlay.querySelector('.schedule-photo-zoom-close80').onclick=close;
+ overlay.onclick=e=>{if(e.target===overlay)close();};
+};
+  }catch(e){
+   img.alt='照片載入失敗';
+  }
+ });
+}
 function scheduleDayRecord56(day){const reports=(scheduleData56.reports||[]).filter(r=>r.day===day),jobs=(scheduleData56.entries||[]).filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),material=scheduleMaterial56().filter(m=>m.day===day),manual=(scheduleData56.entries||[]).filter(e=>e.kind==='material'&&e.day===day);
  const lines='<h3>排程工作</h3>'+(jobs.map(e=>'<p>'+scheduleEsc56(scheduleLabel63(e))+' · '+scheduleEsc56(scheduleAssignees56(e).join('、'))+'</p>').join('')||'<p class="muted">當日沒有排程工作</p>')+'<h3>工作回報</h3>'+(reports.map(r=>'<div class="schedule-report"><p>'+scheduleEsc56(r.body)+'</p>'+(r.photo_key?'<img data-schedule-photo="'+scheduleEsc56(r.id)+'" alt="回報照片">':'')+'<small>'+scheduleEsc56(r.author_name)+' · '+scheduleEsc56(r.created_at.replace('T',' ').slice(0,16))+'</small>'+(canReport75(r,'delete')?'<button type="button" data-schedule-delete-report="'+scheduleEsc56(r.id)+'">刪除回報</button>':'')+'</div>').join('')||'<p class="muted">當日尚無回報</p>')+(manual.length?'<h3>當日料件／出送貨</h3>'+manual.map(e=>'<p>'+scheduleEsc56(e.category)+' · '+scheduleEsc56(e.title)+' × '+scheduleEsc56(e.quantity)+(e.note?' · '+scheduleEsc56(e.note):'')+(scheduleCan56('material')?'<button type="button" data-edit-material="'+scheduleEsc56(e.id)+'">編輯</button>':'')+'</p>').join(''):'')+(material.length?'<h3>收／領料紀錄</h3>'+material.map(m=>'<p>'+scheduleEsc56(m.kind)+' · '+scheduleEsc56(m.project)+' · '+scheduleEsc56(m.name)+' × '+scheduleEsc56(m.qty)+'</p>').join(''):'')+(canDo('schedule.report')?'<button type="button" class="primary" id="schedule-add-report">新增回報</button>':'');
  modal('當日工作紀錄 · '+day,'<div class="schedule-records">'+lines+'</div>',null);$('#schedule-add-report')?.addEventListener('click',()=>scheduleReportDialog56(day));document.querySelectorAll('[data-edit-material]').forEach(b=>b.onclick=()=>scheduleMaterialDialog61(manual.find(e=>e.id===b.dataset.editMaterial)));document.querySelectorAll('[data-schedule-delete-report]').forEach(b=>b.onclick=async()=>{if(!await confirmAction('確定刪除這筆工作回報？'))return;try{await scheduleSend56({kind:'report',id:b.dataset.scheduleDeleteReport},'DELETE');$('#modal').close();scheduleRender56()}catch(e){toast(e.message)}});schedulePhotoLoad56($('#modal'));

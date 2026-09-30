@@ -105,3 +105,87 @@
   outline:0 !important;
 }
 
+/* 工作回報－多照片縮圖 */
+.schedule-report-photos80{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:8px;
+  margin:8px 0;
+  max-width:620px;
+}
+
+.schedule-report-photo80{
+  display:block;
+  width:100%;
+  aspect-ratio:4/3;
+  object-fit:cover;
+  border-radius:6px;
+  cursor:pointer;
+  background:#eef2ed;
+}
+
+/* 手機 */
+@media (max-width:700px){
+  .schedule-report-photos80{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:6px;
+    max-width:none;
+  }
+}
+
+/* 工作回報－照片放大預覽 */
+.schedule-photo-zoom80{
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  box-sizing:border-box;
+  background:rgba(0,0,0,.82);
+}
+
+.schedule-photo-zoom80 > img{
+  display:block;
+  max-width:95vw;
+  max-height:90vh;
+  width:auto;
+  height:auto;
+  object-fit:contain;
+  border-radius:8px;
+}
+
+.schedule-photo-zoom-close80{
+  position:fixed;
+  top:18px;
+  right:22px;
+  z-index:100000;
+  width:42px;
+  height:42px;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:rgba(255,255,255,.92);
+  color:#173f35;
+  font-size:30px;
+  line-height:42px;
+  text-align:center;
+  cursor:pointer;
+}
+
+@media (max-width:700px){
+  .schedule-photo-zoom80{
+    padding:12px;
+  }
+
+  .schedule-photo-zoom80 > img{
+    max-width:96vw;
+    max-height:88vh;
+  }
+
+  .schedule-photo-zoom-close80{
+    top:12px;
+    right:12px;
+  }
+}

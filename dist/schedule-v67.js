@@ -42,7 +42,7 @@ body='<div class="schedule-daily-list67">'+
      '<div class="schedule-bubble67">'+
       (job?'<strong>'+scheduleEsc56(scheduleLabel63(job))+'</strong>':'')+
       '<p>'+scheduleEsc56(r.body)+'</p>'+
-      (r.photo_key?'<img data-schedule-photo="'+scheduleEsc56(r.id)+'" alt="'+scheduleEsc56(r.author_name)+' 的工作照片">':'')+
+      (r.photo_count>0?'<div class="schedule-report-photos80">'+Array.from({length:Math.min(Number(r.photo_count)||1,10)},(_,i)=>'<img class="schedule-report-photo80" data-schedule-photo="'+scheduleEsc56(r.id)+'" data-photo-index="'+i+'" alt="'+scheduleEsc56(r.author_name)+' 的工作照片 '+(i+1)+'">').join('')+'</div>':'')+
       '<small>'+scheduleEsc56(String(r.created_at||'').replace('T',' ').slice(0,16))+'</small>'+
       (canReport75(r,'delete')?'<button type="button" data-schedule-delete-report="'+scheduleEsc56(r.id)+'">刪除回報</button>':'')+
      '</div>'+
@@ -69,12 +69,26 @@ function scheduleAssigned67(day){return(scheduleData56.entries||[]).filter(e=>e.
 scheduleReportDialog56=function(day){
  day=day||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});let pasted=null;
  const choices=chosen=>{const jobs=scheduleAssigned67(chosen);return jobs.length?jobs.map(e=>'<option value="'+scheduleEsc56(e.id)+'">'+scheduleEsc56(scheduleLabel63(e))+'</option>').join(''):'<option value="">當日沒有指派給你的工作</option>'};
- modal('新增工作回報','<p class="muted">回報人：'+scheduleEsc56(currentUser.name)+'</p><label class="field">紀錄日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label><label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label><label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label><label class="field">工作照片（必填，可選照片或貼上圖片）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label><small id="schedule-paste-hint"></small>','儲存回報',async fd=>{
-  const date=String(fd.get('day')),entryId=String(fd.get('entryId')||''),photo=pasted||fd.get('photo');
-  if(!scheduleAssigned67(date).some(e=>e.id===entryId))throw Error('請選擇當天安排給自己的工作');
-  if(!photo?.size)throw Error('請先上傳工作照片');
-  const compressed=await compressReceiptImage(photo);
-  const form=new FormData();form.append('mode','create');form.append('id',crypto.randomUUID());form.append('day',date);form.append('entryId',entryId);form.append('body',String(fd.get('body')||'').trim());form.append('photo',compressed);
+ modal('新增工作回報','<p class="muted">回報人：'+scheduleEsc56(currentUser.name)+'</p><label class="field">紀錄日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label><label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label><label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label><label class="field">工作照片（必填，最多10張，可選照片或貼上圖片）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><small id="schedule-paste-hint"></small>','儲存回報',async fd=>{
+ const date=String(fd.get('day')),entryId=String(fd.get('entryId')||'');
+if(!scheduleAssigned67(date).some(e=>e.id===entryId))throw Error('請選擇當天安排給自己的工作');
+
+const selected=[...fd.getAll('photo')].filter(file=>file instanceof File&&file.size);
+const photos=pasted?[pasted,...selected]:selected;
+if(!photos.length)throw Error('請先上傳工作照片');
+if(photos.length>10)throw Error('工作照片一次最多10張');
+
+const form=new FormData();
+form.append('mode','create');
+form.append('id',crypto.randomUUID());
+form.append('day',date);
+form.append('entryId',entryId);
+form.append('body',String(fd.get('body')||'').trim());
+
+for(const photo of photos){
+ const compressed=await compressReceiptImage(photo);
+ form.append('photo',compressed,photo.name||'photo.jpg');
+}
   const response=await apiFetch('/api/schedule-photo-upload',{method:'POST',body:form}),data=await response.json();if(!response.ok)throw Error(data.error||'照片上傳失敗，回報尚未儲存');$('#modal').close();scheduleRender56();
  });
  const dialog=$('#modal'),input=dialog.querySelector('[name=photo]');dialog.querySelector('[name=day]').onchange=e=>{dialog.querySelector('[name=entryId]').innerHTML=choices(e.target.value)};
@@ -84,8 +98,8 @@ scheduleReportDialog56=function(day){
 
 scheduleMaterialDialog61=function(entry){
  const day=entry?.day||scheduleAnchor56,photos=(entry?.receipt_photo_key||entry?.item_photo_key)?'<p class="muted">既有照片會保留；選新照片會替換原有的共用照片。點案件名稱可查看已存照片。</p>':'',projects=[...new Set((state.projects||[]).map(p=>p.name).filter(Boolean))];
- modal(entry?'編輯料件':'新增料件',(canDo('schedule.material.author')?'<label class="field">登記人<select name="authorId">'+schedulePeopleOptions71(entry)+'</select></label>':'<p class="muted">登記人：'+scheduleEsc56(entry?.author_name||currentUser.name)+'</p>')+'<div class="form-grid"><label class="field">日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label><label class="field">類型<select name="category"><option value="收料" '+(entry?.category==='收料'?'selected':'')+'>收料</option><option value="出貨" '+(entry?.category==='出貨'?'selected':'')+'>出貨</option><option value="送貨" '+(entry?.category==='送貨'?'selected':'')+'>送貨</option></select></label><label class="field">案件名稱<input name="projectName" list="schedule-projects68" maxlength="160" value="'+scheduleEsc56(entry?.project_name||'')+'" required><datalist id="schedule-projects68">'+projects.map(name=>'<option value="'+scheduleEsc56(name)+'"></option>').join('')+'</datalist></label><label class="field">料件名稱<input name="title" maxlength="160" value="'+scheduleEsc56(entry?.title||'')+'" required></label><label class="field">數量<input name="quantity" type="number" min="1" max="1000000" step="1" value="'+scheduleEsc56(entry?.quantity||1)+'" required></label><label class="field">照片（選填，收據或料件共用）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label></div>'+photos,'儲存料件',async fd=>{
-  const form=new FormData();for(const key of ['day','category','projectName','title','quantity','authorId'])form.append(key,String(fd.get(key)||''));form.append('id',entry?.id||crypto.randomUUID());form.append('revision',String(entry?.revision||0));form.append('note',entry?.note||'');
+ modal(entry?'編輯料件':'新增料件',(canDo('schedule.material.author')?'<label class="field">登記人<select name="authorId">'+schedulePeopleOptions71(entry)+'</select></label>':'<p class="muted">登記人：'+scheduleEsc56(entry?.author_name||currentUser.name)+'</p>')+'<div class="form-grid"><label class="field">日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label><label class="field">類型<select name="category"><option value="收料" '+(entry?.category==='收料'?'selected':'')+'>收料</option><option value="出貨" '+(entry?.category==='出貨'?'selected':'')+'>出貨</option><option value="送貨" '+(entry?.category==='送貨'?'selected':'')+'>送貨</option></select></label><label class="field">案件名稱<input name="projectName" list="schedule-projects68" maxlength="160" value="'+scheduleEsc56(entry?.project_name||'')+'" required><datalist id="schedule-projects68">'+projects.map(name=>'<option value="'+scheduleEsc56(name)+'"></option>').join('')+'</datalist></label><label class="field">料件名稱<input name="title" maxlength="160" value="'+scheduleEsc56(entry?.title||'')+'" required></label><label class="field">數量<input name="quantity" type="number" min="1" max="1000000" step="1" value="'+scheduleEsc56(entry?.quantity||1)+'" required></label><label class="field">照片（選填，收據或料件共用）</label></div>'+photos,'儲存料件',async fd=>{
+  const form=new FormData();for(const key of ['day','category','projectName','title','quantity','authorId'])form.append(key,String(fd.get(key)||''));form.append('id',entry?.id||crypto.randomUUID());form.append('revision',String(entry?.revision||0));form.append('note',entry?.note||'');<input name="photo" type="file" accept="image/jpeg,image/png,image/webp">
   const file=fd.get('photo');if(!file?.size&&!entry?.receipt_photo_key&&!entry?.item_photo_key&&!await confirmAction('尚未上傳照片，確定直接儲存嗎？',{confirmText:'確認儲存',cancelText:'返回補照片'}))return;if(file?.size)form.append('photo',await compressReceiptImage(file));
   const response=await apiFetch('/api/schedule-material-upload',{method:'POST',body:form}),data=await response.json();if(!response.ok)throw Error(data.error||'料件儲存失敗');$('#modal').close();scheduleRender56();
  });
