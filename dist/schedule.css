@@ -48,7 +48,7 @@
 .schedule-bar-delete70{font-size:.875rem;min-height:28px;padding:2px 5px;line-height:1;border:1px solid currentColor;color:inherit;background:transparent}
 .schedule-calendar-day67.schedule-adjacent70{background:transparent;border-style:dashed}
 .schedule-calendar-day67.schedule-today67{background:#eef6e8!important;border-color:#8eaa82!important}
-.schedule-calendar-day67.schedule-today67>[data-day-jobs]{border-color:#245b46!important;background:#245b46!important;color:#fff!important;font-weight:700}
+.schedule-calendar-day67.schedule-today67>header{display:inline-block;width:max-content;padding:2px 6px;border:2px solid #245b46;border-radius:4px;color:#245b46!important;font-weight:700}
 .schedule-adjacent70>header{font-weight:600}
 @media(max-width:650px){.schedule-people-top69{max-height:28vh}.schedule-add-near70{margin-top:6px}}
 
