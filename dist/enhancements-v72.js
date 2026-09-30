@@ -26,7 +26,7 @@ scheduleDraw56=function(){
   const day=cell.dataset.day,records=(scheduleData56.leaves||[]).filter(e=>leaveOnDay72(e,day));if(!records.length)return;
   const links=cell.querySelector('.schedule-calendar-links67');
   for(const [slot,selector]of [[1,'[data-day-jobs]'],[2,'[data-day-reports]']]){let el=links.querySelector(selector);if(!el){el=document.createElement('span');el.className='leave-slot72';el.setAttribute('aria-hidden','true');links.prepend(el)}el.style.gridRow=String(slot);}
-  const b=document.createElement('button');b.type='button';b.className='schedule-day-link67 leave-link72';b.textContent='請假紀錄';b.style.gridRow='3';b.onclick=()=>leaveRecords72(day);links.append(b);
+  const b=document.createElement('button');b.type='button';b.className='schedule-day-link67 leave-link72';b.textContent='請假紀錄';b.style.gridRow='2';b.onclick=()=>leaveRecords72(day);links.append(b);
  });
 };
 function warehouseRows72(){
