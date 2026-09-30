@@ -45,7 +45,22 @@ function mobileCalendar78(){
  const cells=[...root.querySelectorAll('.schedule-calendar-day67[data-day]')],today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'}),month=cells.find(c=>!c.classList.contains('schedule-adjacent70'))?.dataset.day.slice(0,7)||scheduleAnchor56.slice(0,7);
  const grid=document.createElement('div');grid.className='mobile-calendar78';grid.setAttribute('aria-label','每日排程月曆');
  grid.innerHTML=['一','二','三','四','五','六','日'].map(s=>'<div class="mobile-weekday78">'+s+'</div>').join('')+cells.map(c=>{const day=c.dataset.day,rows=mobileRows78(day),off=c.classList.contains('schedule-holiday60'),holiday=holidayName60(day);return '<section class="mobile-day78 '+(off?'off78 ':'')+(day.slice(0,7)!==month?'adjacent78 ':'')+(day===today?'today78 ':'')+(day===scheduleAnchor56?'selected78':'')+'" data-mobile-day="'+day+'"><button type="button" class="mobile-date78" aria-label="'+day+' 當日內容" aria-pressed="'+(day===scheduleAnchor56)+'">'+(Number(day.slice(5,7))+'/'+Number(day.slice(8)))+'</button><div class="mobile-slots79">'+rows.map(e=>'<button type="button" class="mobile-entry78 mobile-'+e.section+'79 '+(e.materialType?'mobile-material-'+e.materialType+'79':'')+'" data-mobile-section="'+e.section+'" '+(e.materialId?'data-mobile-material-id="'+e.materialId+'"':'')+' title="'+esc(e.title)+'">'+esc(e.title)+'</button>').join('')+'</div><span class="mobile-holiday78" title="'+esc(holiday)+'">'+esc(holiday)+'</span></section>';}).join('');
- root.append(grid);grid.querySelectorAll('.mobile-day78').forEach(cell=>{cell.querySelector('.mobile-date78').onclick=()=>mobileDay78(cell.dataset.mobileDay);cell.querySelectorAll('[data-mobile-section]').forEach(b=>b.onclick=()=>mobileOpen79(cell.dataset.mobileDay,b.dataset.mobileSection,b.dataset.mobileMaterialId||''));});
+ root.append(grid);grid.querySelectorAll('.mobile-day78').forEach(cell=>{cell.querySelector('.mobile-date78').onclick=()=>mobileDay78(cell.dataset.mobileDay);cell.querySelectorAll('[data-mobile-section]').forEach(b=>b.onclick=()=>mobileOpen79(cell.dataset.mobileDay,b.dataset.mobileSection,b.dataset.mobileMaterialId||''));});requestAnimationFrame(mobileFitMaterialText78);
+}
+function mobileFitMaterialText78(){
+ document.querySelectorAll('.mobile-entry78.mobile-material79').forEach(el=>{
+  el.style.whiteSpace='nowrap';
+  el.style.overflow='hidden';
+  el.style.textOverflow='ellipsis';
+  el.style.fontSize='';
+
+  let size=parseFloat(getComputedStyle(el).fontSize);
+
+  while(el.scrollWidth>el.clientWidth&&size>10){
+   size-=0.5;
+   el.style.fontSize=size+'px';
+  }
+ });
 }
 function mobileTools78(){
  const section=$('.schedule-workspace');if(!section)return;section.querySelectorAll('.mobile-footer78,.mobile-selected78').forEach(x=>x.remove());if(!mobileQuery78.matches)return;
