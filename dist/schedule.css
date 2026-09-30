@@ -93,17 +93,14 @@
   color:#234e3c;
 }
 
-/* 工作紀錄：案件名稱全部改為純文字 */
-.schedule-person-summary80 .schedule-work-label71,
-.schedule-person-summary80 mark,
-.schedule-person-summary80 strong span,
-.schedule-person-summary80 .schedule-label63{
+/* 工作紀錄：案件名稱純文字，手機與電腦共用 */
+.schedule-person-summary80 .work-title71{
   background:transparent !important;
-  background-color:transparent !important;
+  color:#173f35 !important;
   border:0 !important;
   border-radius:0 !important;
   box-shadow:none !important;
   padding:0 !important;
+  margin:0 !important;
   outline:0 !important;
-  color:#173f35 !important;
 }
