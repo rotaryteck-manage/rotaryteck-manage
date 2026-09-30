@@ -1,0 +1,36 @@
+﻿v80 安卓安裝與桌面圖示修正
+
+此包只修正安卓設定，保留你已手動完成的六日寬度、空格及配色。
+
+套用方法（Windows）
+1. 將壓縮包內容解壓縮到目前網站專案根目錄，即有 package.json、worker、dist 的那一層。
+2. 雙擊「套用安卓修正.bat」。電腦需已有 Node.js（與原專案建置環境相同）。
+3. 顯示 Android v80 applied 及 Built authenticated warehouse Worker 後，以原本方式部署到 Cloudflare。
+4. 安卓 Chrome 關閉舊網站分頁，再開啟正式網址，重新選「安裝並建立捷徑」。
+5. 若桌面已有舊 W 捷徑，先確認新圖示正常，再移除舊捷徑。
+
+此包尚未部署；僅下載或解壓缩並不會改變線上網站。
+不要直接部署本次施工環境的整份網站，應在你目前已手動修好的專案套用本包。
+
+修改內容
+- 安卓安裝圖示明确宣告實際 512×512、PNG 格式，附加圖示更新識別。
+- 桌面捷徑的 icon 改用後台已設定的手機主畫面 LOGO。
+- 保留主畫面名称、背景色、動態圖示版本與 iPhone apple-touch-icon 設定。
+- 沿用現有 512×512 圖片，沒有把同一圖片虛報成 192×192。
+- 不修改 index.html、月曆 JS/CSS、權限、資料庫或網站內容。
+- 修改 worker/server.mjs 與 dist/manifest.webmanifest；建置會重新產出 dist/server/index.js。
+- 自動備份原始兩個檔案到 android-v80-backup；重複套用會跳過。若來源結構不同會停止，請不要強行覆蓋。
+
+還原
+將 android-v80-backup/server.mjs 複製回 worker/server.mjs；將備份的 manifest.webmanifest 複製回 dist/manifest.webmanifest，再重新建置及部署。
+
+驗證
+- 建置與 Worker 語法檢查通過。
+- 瀏覽器成功載入修正後清單及真正的 512×512 LOGO。
+- 驗證 iPhone 圖示連結保留、後台換圖版本可更新。
+- 模擬已有手動排版修改：套用後檔案保持不變，備份及重複套用檢查通過。
+- 未用安卓實機完成安裝。桌面無頭 Chromium 沒有重現原本的安裝錯誤，因此不能保證這是唯一原因。
+- 舊 images.test.mjs 在原 v79 與修正後皆因測試替身缺少 DB.batch 失敗，屬原有測試問題，未宣稱全套測試通過。
+
+若部署後仍無法安裝
+請提供安卓版本、Chrome 版本及錯誤截圖；再查手機安裝服務與網路，不要清除公司資料或重建資料庫。
