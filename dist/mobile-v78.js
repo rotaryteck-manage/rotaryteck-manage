@@ -9,18 +9,21 @@ if(jobs||reports)rows.push({title:'工作紀錄',section:'jobs'});
  if(canDo('schedule.leave.view')&&(scheduleData56.leaves||[]).some(e=>leaveOnDay72(e,day)))rows.push({title:'請假紀錄',section:'leaves'});
 
  entries
-  .filter(e=>e.kind==='material'&&e.day===day)
-  .forEach(e=>{
-   const materialType=({收料:'receipt',出貨:'outgoing',送貨:'delivery'}[e.category]||'receipt');
-   rows.push({
-    title:e.project_name||'未指定案件',
-    section:'material',
-    materialId:e.id,
-    materialType
-   });
-  });
+ .filter(e=>e.kind==='material'&&e.day===day)
+ .forEach(e=>{
+  const materialType=({
+   收料:'receipt',
+   出貨:'outgoing',
+   送貨:'delivery'
+  }[e.category]||'receipt');
 
- if(scheduleMaterial56().some(e=>e.day===day))rows.push({title:'庫房紀錄',section:'legacy'});
+  rows.push({
+   title:e.category+'紀錄',
+   section:'material',
+   materialId:e.id,
+   materialType
+  });
+ });
 
  return rows;
 }
