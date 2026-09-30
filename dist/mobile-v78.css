@@ -192,3 +192,16 @@ body .mobile-day78 .mobile-slots79{
   padding:0 !important;
   gap:2px !important;
 }
+
+/* 手機月曆日期統一顯示月/日 */
+body .mobile-day78 .mobile-date78{
+  width:100% !important;
+  min-width:0 !important;
+  padding:0 2px !important;
+  font-size:12px !important;
+  line-height:18px !important;
+  white-space:nowrap !important;
+  overflow:visible !important;
+  text-overflow:clip !important;
+  text-align:center !important;
+}
