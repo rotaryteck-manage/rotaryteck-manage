@@ -189,3 +189,29 @@
     right:12px;
   }
 }
+
+/* 工作回報－上傳前照片預覽 */
+.schedule-upload-preview80{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:8px;
+  margin-top:8px;
+  max-width:620px;
+}
+
+.schedule-upload-thumb80{
+  display:block;
+  width:100%;
+  aspect-ratio:4/3;
+  object-fit:cover;
+  border-radius:6px;
+  background:#eef2ed;
+}
+
+@media (max-width:700px){
+  .schedule-upload-preview80{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:6px;
+    max-width:none;
+  }
+}

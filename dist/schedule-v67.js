@@ -67,14 +67,14 @@ body='<div class="schedule-daily-list67">'+
 
 function scheduleAssigned67(day){return(scheduleData56.entries||[]).filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day&&scheduleAssignees56(e).includes(currentUser.name)).sort((a,b)=>(a.sort_index||0)-(b.sort_index||0)||String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id))}
 scheduleReportDialog56=function(day){
- day=day||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});let pasted=null;
+ day=day||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});let pasted=[];
  const choices=chosen=>{const jobs=scheduleAssigned67(chosen);return jobs.length?jobs.map(e=>'<option value="'+scheduleEsc56(e.id)+'">'+scheduleEsc56(scheduleLabel63(e))+'</option>').join(''):'<option value="">當日沒有指派給你的工作</option>'};
- modal('新增工作回報','<p class="muted">回報人：'+scheduleEsc56(currentUser.name)+'</p><label class="field">紀錄日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label><label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label><label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label><label class="field">工作照片（必填，最多10張，可選照片或貼上圖片）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><small id="schedule-paste-hint"></small>','儲存回報',async fd=>{
+ modal('新增工作回報','<p class="muted">回報人：'+scheduleEsc56(currentUser.name)+'</p><label class="field">紀錄日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label><label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label><label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label><label class="field">工作照片（必填，最多10張，可選照片或貼上圖片）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><small id="schedule-paste-hint"></small><div id="schedule-upload-preview80" class="schedule-upload-preview80"></div>','儲存回報',async fd=>{
  const date=String(fd.get('day')),entryId=String(fd.get('entryId')||'');
 if(!scheduleAssigned67(date).some(e=>e.id===entryId))throw Error('請選擇當天安排給自己的工作');
 
 const selected=[...fd.getAll('photo')].filter(file=>file instanceof File&&file.size);
-const photos=pasted?[pasted,...selected]:selected;
+const photos=[...pasted,...selected];
 if(!photos.length)throw Error('請先上傳工作照片');
 if(photos.length>10)throw Error('工作照片一次最多10張');
 
@@ -91,9 +91,73 @@ for(const photo of photos){
 }
   const response=await apiFetch('/api/schedule-photo-upload',{method:'POST',body:form}),data=await response.json();if(!response.ok)throw Error(data.error||'照片上傳失敗，回報尚未儲存');$('#modal').close();scheduleRender56();
  });
- const dialog=$('#modal'),input=dialog.querySelector('[name=photo]');dialog.querySelector('[name=day]').onchange=e=>{dialog.querySelector('[name=entryId]').innerHTML=choices(e.target.value)};
- input.onchange=()=>{pasted=null;dialog.querySelector('#schedule-paste-hint').textContent=''};
+ const dialog=$('#modal'),input=dialog.querySelector('[name=photo]');
+const renderPreview=()=>{
+ const preview=dialog.querySelector('#schedule-upload-preview80');
+ if(!preview)return;
 
+ preview.innerHTML='';
+ const files=[...pasted,...input.files];
+
+ for(const file of files){
+  const img=document.createElement('img');
+  img.className='schedule-upload-thumb80';
+
+  const url=URL.createObjectURL(file);
+  img.src=url;
+  img.alt='待上傳照片';
+  img.onload=()=>URL.revokeObjectURL(url);
+
+  preview.appendChild(img);
+ }
+
+ dialog.querySelector('#schedule-paste-hint').textContent=
+  files.length?'目前共 '+files.length+' / 10 張照片':'';
+}; dialog.querySelector('[name=day]').onchange=e=>{dialog.querySelector('[name=entryId]').innerHTML=choices(e.target.value)};
+ input.onchange=()=>{
+ if(pasted.length+[...input.files].length>10){
+  input.value='';
+  alert('工作照片最多10張');
+ }
+ renderPreview();
+};
+ dialog.onpaste=e=>{
+  const items=[...(e.clipboardData?.items||[])];
+  const images=items.filter(item=>item.type.startsWith('image/'));
+  if(!images.length)return;
+
+  e.preventDefault();
+
+  const selectedCount=[...input.files].length;
+  const remaining=10-pasted.length-selectedCount;
+
+  if(remaining<=0){
+   alert('工作照片最多10張');
+   return;
+  }
+
+  const adding=images.slice(0,remaining);
+
+  for(const item of adding){
+   const blob=item.getAsFile();
+   if(!blob)continue;
+
+   pasted.push(
+    new File(
+     [blob],
+     '貼上圖片'+(pasted.length+1)+'.png',
+     {type:blob.type}
+    )
+   );
+  }
+renderPreview();
+  dialog.querySelector('#schedule-paste-hint').textContent=
+   '目前共 '+(pasted.length+selectedCount)+' 張照片';
+
+  if(images.length>remaining){
+   alert('工作照片最多10張，超過的照片未加入');
+  }
+ };
 };
 
 scheduleMaterialDialog61=function(entry){
