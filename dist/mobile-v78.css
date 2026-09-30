@@ -176,3 +176,19 @@ body .mobile-slots79{
 }
 
 }
+
+/* 手機月曆：紀錄項目全部由上往下緊密排列 */
+body .mobile-day78 .mobile-slots79{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) !important;
+  grid-template-rows:none !important;
+  grid-auto-rows:18px !important;
+  grid-auto-flow:row !important;
+  align-content:start !important;
+  flex:none !important;
+  height:auto !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  gap:2px !important;
+}
