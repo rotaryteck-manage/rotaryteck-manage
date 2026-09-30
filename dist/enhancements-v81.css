@@ -1,0 +1,12 @@
+.schedule-person-group81{border:1px solid #c7d8c7;border-radius:8px;background:#f2f6ee;padding:12px;margin:12px 0}
+#modal .schedule-person-group81 .schedule-task60{border:0;border-radius:0;background:transparent;margin:0;padding:8px 0}
+#modal .schedule-person-group81 .schedule-task60+.schedule-task60{border-top:1px solid #d6dfd2}
+#modal .schedule-people-row69[hidden],#modal h3[hidden]{display:none!important}
+.schedule-record-person81{border:1px solid #c7d8c7;border-radius:8px;margin:8px 0;padding:10px 14px;background:#f2f6ee}
+.person-name81{display:block;margin-bottom:4px}
+#modal .schedule-record-person81 .schedule-daily-job67{background:transparent;margin:0;padding:4px 0}
+#modal .mobile-photo-input81{display:none}
+.mobile-photo-actions81{display:flex;gap:8px;margin:8px 0}
+.mobile-photo-actions81 button{flex:1}
+
+#modal label:has(.mobile-photo-input81) .paste-target71{display:none}
