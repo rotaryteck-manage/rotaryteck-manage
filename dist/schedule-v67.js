@@ -276,9 +276,10 @@ scheduleReportDialog56=function(day){
 };
 
 scheduleMaterialDialog61=function(entry){
- const day=entry?.day||scheduleAnchor56,
- photos=(entry?.receipt_photo_key||entry?.item_photo_key)?'<p class="muted">既有照片會保留；選新照片會替換原有的共用照片。點案件名稱可查看已存照片。</p>':'',
- projects=[...new Set((state.projects||[]).map(p=>p.name).filter(Boolean))];
+ const day=entry?.day||scheduleAnchor56;
+ const projects=[...new Set((state.projects||[]).map(p=>p.name).filter(Boolean))];
+ const hasOldPhoto=!!(entry?.item_photo_key||entry?.receipt_photo_key);
+ let pendingPhotos=[];
 
  modal(
   entry?'編輯料件':'新增料件',
@@ -297,8 +298,15 @@ scheduleMaterialDialog61=function(entry){
   +'<datalist id="schedule-projects68">'+projects.map(name=>'<option value="'+scheduleEsc56(name)+'"></option>').join('')+'</datalist></label>'
   +'<label class="field">料件名稱<input name="title" maxlength="160" value="'+scheduleEsc56(entry?.title||'')+'" required></label>'
   +'<label class="field">數量<input name="quantity" type="number" min="1" max="1000000" step="1" value="'+scheduleEsc56(entry?.quantity||1)+'" required></label>'
-  +'<label class="field">照片（選填，收據或料件共用）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label>'
-  +'</div>'+photos,
+  +'<label class="field">照片（選填，最多10張，可重複選照片或 Ctrl+V 貼上）'
+  +'<input name="material-photo80" type="file" accept="image/jpeg,image/png,image/webp" multiple>'
+  +'</label>'
+  +'</div>'
+  +(hasOldPhoto
+   ?'<p class="muted">已有照片。若不選新照片會保留原照片；選擇新照片後會整組替換。</p>'
+   :'')
+  +'<small id="schedule-material-photo-hint80"></small>'
+  +'<div id="schedule-material-preview80" class="schedule-upload-preview80"></div>',
   '儲存料件',
   async fd=>{
    const form=new FormData();
@@ -311,20 +319,16 @@ scheduleMaterialDialog61=function(entry){
    form.append('revision',String(entry?.revision||0));
    form.append('note',entry?.note||'');
 
-   const file=fd.get('photo');
-
-   if(
-    !file?.size &&
-    !entry?.receipt_photo_key &&
-    !entry?.item_photo_key &&
-    !await confirmAction(
+   if(!pendingPhotos.length&&!hasOldPhoto){
+    if(!await confirmAction(
      '尚未上傳照片，確定直接儲存嗎？',
      {confirmText:'確認儲存',cancelText:'返回補照片'}
-    )
-   )return;
+    ))return;
+   }
 
-   if(file?.size){
-    form.append('photo',await compressReceiptImage(file));
+   for(const photo of pendingPhotos){
+    const compressed=await compressReceiptImage(photo);
+    form.append('photo',compressed,photo.name||'photo.jpg');
    }
 
    const response=await apiFetch('/api/schedule-material-upload',{
@@ -334,12 +338,148 @@ scheduleMaterialDialog61=function(entry){
 
    const data=await response.json();
 
-   if(!response.ok)throw Error(data.error||'料件儲存失敗');
+   if(!response.ok){
+    throw Error(data.error||'料件儲存失敗');
+   }
 
    $('#modal').close();
    scheduleRender56();
   }
  );
+
+ const dialog=$('#modal');
+ const input=dialog.querySelector('[name="material-photo80"]');
+ const hint=dialog.querySelector('#schedule-material-photo-hint80');
+ const preview=dialog.querySelector('#schedule-material-preview80');
+
+ const renderPreview=()=>{
+  preview.innerHTML='';
+
+  pendingPhotos.forEach((file,index)=>{
+   const item=document.createElement('div');
+   item.className='schedule-upload-item80';
+
+   const img=document.createElement('img');
+   img.className='schedule-upload-thumb80';
+
+   const url=URL.createObjectURL(file);
+   img.src=url;
+   img.alt='待上傳料件照片';
+   img.onload=()=>URL.revokeObjectURL(url);
+
+   const remove=document.createElement('button');
+   remove.type='button';
+   remove.className='schedule-upload-remove80';
+   remove.textContent='×';
+   remove.setAttribute('aria-label','刪除照片');
+
+   remove.onclick=e=>{
+    e.preventDefault();
+    e.stopPropagation();
+
+    pendingPhotos.splice(index,1);
+    renderPreview();
+   };
+
+   item.append(img,remove);
+   preview.appendChild(item);
+  });
+
+  if(pendingPhotos.length>=10){
+   hint.textContent='已達 10 張照片上限，如需更換請先刪除照片';
+   input.disabled=true;
+  }else if(pendingPhotos.length){
+   hint.textContent='目前共 '+pendingPhotos.length+' / 10 張照片';
+   input.disabled=false;
+  }else{
+   hint.textContent=hasOldPhoto
+    ?'目前保留既有照片'
+    :'';
+   input.disabled=false;
+  }
+ };
+
+ const addPhotos=files=>{
+  const incoming=[...files].filter(
+   file=>file instanceof File&&
+   file.size&&
+   file.type.startsWith('image/')
+  );
+
+  if(!incoming.length)return;
+
+  const remaining=10-pendingPhotos.length;
+
+  if(remaining<=0){
+   alert('已達10張照片上限，請先刪除照片再新增');
+   return;
+  }
+
+  pendingPhotos.push(...incoming.slice(0,remaining));
+
+  if(incoming.length>remaining){
+   alert(
+    '最多只能上傳10張照片，本次加入 '
+    +remaining+
+    ' 張，其餘照片未加入'
+   );
+  }
+
+  renderPreview();
+ };
+
+ input.onchange=()=>{
+  addPhotos([...input.files]);
+  input.value='';
+ };
+
+ input.addEventListener('click',e=>{
+  if(pendingPhotos.length<10)return;
+
+  e.preventDefault();
+  alert('已達10張照片上限，請先刪除照片再新增');
+ });
+
+ dialog.onpaste=e=>{
+  const files=[];
+  const clipboardFiles=[...(e.clipboardData?.files||[])].filter(
+   file=>file.type.startsWith('image/')
+  );
+
+  files.push(...clipboardFiles);
+
+  if(!files.length){
+   const items=[...(e.clipboardData?.items||[])];
+
+   for(const item of items){
+    if(!item.type.startsWith('image/'))continue;
+
+    const blob=item.getAsFile();
+    if(!blob)continue;
+
+    files.push(
+     new File(
+      [blob],
+      '貼上圖片'+(pendingPhotos.length+files.length+1)+'.png',
+      {type:blob.type}
+     )
+    );
+   }
+  }
+
+  if(!files.length)return;
+
+  e.preventDefault();
+
+  if(pendingPhotos.length>=10){
+   alert('已達10張照片上限，請先刪除照片再新增');
+   return;
+  }
+
+  addPhotos(files);
+ };
+
+ renderPreview();
 
  if(entry&&scheduleAction75('material','delete')){
   const remove=document.createElement('button');
