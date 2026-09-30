@@ -92,3 +92,13 @@
   margin:0 0 12px;
   color:#234e3c;
 }
+
+/* 工作紀錄內：取消工作項目的標籤底色 */
+.schedule-person-summary80 .schedule-work-label71{
+  background:transparent;
+  border:0;
+  border-radius:0;
+  padding:0;
+  color:#173f35;
+  box-shadow:none;
+}
