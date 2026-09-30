@@ -103,6 +103,24 @@ body .mobile-slots79 .mobile-current79{
     border:1px solid #c6ddcc;
 }
 
+body .mobile-slots79 .mobile-material-receipt79{
+    background:#eaf6ec;
+    color:#28543b;
+    border:1px solid #c6ddcc;
+}
+
+body .mobile-slots79 .mobile-material-outgoing79{
+    background:#e9f2ff;
+    color:#244f81;
+    border:1px solid #c7d9ee;
+}
+
+body .mobile-slots79 .mobile-material-delivery79{
+    background:#f3edfa;
+    color:#603c7f;
+    border:1px solid #d9cae7;
+}
+
 body .mobile-slots79 .mobile-legacy79{
     background:#eaf5ec;
     color:#335d48;
