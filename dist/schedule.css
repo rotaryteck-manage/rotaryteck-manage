@@ -49,3 +49,46 @@
 .schedule-calendar-day67.schedule-adjacent70{background:var(--ui-rowAlt);border-style:dashed}
 .schedule-adjacent70>header{font-weight:600}
 @media(max-width:650px){.schedule-people-top69{max-height:28vh}.schedule-add-near70{margin-top:6px}}
+
+/* v80 工作紀錄：人員工作摘要 */
+.schedule-person-summary80{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  width:100%;
+  box-sizing:border-box;
+  padding:10px 14px;
+  min-height:42px;
+  border-bottom:1px solid #d7e2d5;
+  color:#173f35;
+  font-size:16px;
+  line-height:1.45;
+}
+
+.schedule-person-summary80 strong{
+  flex:0 0 auto;
+  font-weight:700;
+}
+
+.schedule-person-summary80 span{
+  min-width:0;
+}
+
+.schedule-person-white80{
+  background:#ffffff;
+}
+
+.schedule-person-green80{
+  background:#f1f6ee;
+}
+
+.schedule-report-section80{
+  margin-top:18px;
+  padding-top:14px;
+  border-top:1px solid #d7e2d5;
+}
+
+.schedule-report-section80 h3{
+  margin:0 0 12px;
+  color:#234e3c;
+}
