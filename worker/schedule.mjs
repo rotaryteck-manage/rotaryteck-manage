@@ -197,38 +197,303 @@ try{
 }
 export async function scheduleMaterialPhotoApi(request,env,employee){
  try{
-  const url=new URL(request.url),exporting=url.searchParams.get('export')==='1';if(request.method!=='GET'||!scheduleAllowed(employee,exporting?'records.export':'schedule.view'))return scheduleJSON({error:'沒有查看照片的權限'},403);
-  const kind=url.searchParams.get('type');if(!['receipt','item'].includes(kind))return scheduleJSON({error:'照片類型不正確'},400);
-  const row=await env.DB.prepare('SELECT receipt_photo_key,item_photo_key FROM schedule_entries WHERE id=? AND kind=\'material\'').bind(url.searchParams.get('id')).first(),key=kind==='receipt'?row?.receipt_photo_key:row?.item_photo_key;
-  if(!key)return scheduleJSON({error:'找不到照片'},404);const file=await env.UPLOADS?.get(key);if(!file)return scheduleJSON({error:'找不到照片'},404);
-  return new Response(file.body,{headers:{'Content-Type':file.httpMetadata?.contentType||'image/jpeg','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
- }catch(e){return scheduleJSON({error:e.message||'照片讀取失敗'},400)}
-}
-async function scheduleMaterialUploadCore71(request,env,employee){
- const stored=[];try{
-  if(request.method!=='POST'||!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有每日料件登錄權限'},403);
-  if(request.headers.get('origin')!==new URL(request.url).origin)return scheduleJSON({error:'來源驗證失敗'},403);
-  if(Number(request.headers.get('content-length')||0)>1900000)return scheduleJSON({error:'照片不可超過 800 KB'},413);
-  const form=await request.formData(),id=String(form.get('id')||''),day=String(form.get('day')||''),title=String(form.get('title')||'').trim(),projectName=String(form.get('projectName')||'').trim(),category=String(form.get('category')||''),quantity=Number(form.get('quantity')),revision=Number(form.get('revision')),note=String(form.get('note')||'');
-  if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(title,160)||!scheduleText(projectName,160)||!['收料','出貨','送貨'].includes(category)||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000000||!Number.isInteger(revision)||revision<0||note.length>1000)return scheduleJSON({error:'請檢查案件名稱、料件日期、類型、名稱和數量'},400);
-  const old=await env.DB.prepare("SELECT kind,revision,author_id,author_name,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE id=?").bind(id).first();if(old&&old.kind!=='material')return scheduleJSON({error:'紀錄類型不符'},400);if(!scheduleAllowed(employee,'schedule.material.'+(old?'edit':'create')))return scheduleJSON({error:'沒有料件操作權限'},403);if((old?.revision||0)!==revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
-  let authorId=old?.author_id||String(employee.id),authorName=old?.author_name||employee.name;
-  const requested=String(form.get('authorId')||'');
-  if(requested&&requested!==authorId){if(!scheduleAllowed(employee,'schedule.material.author'))return scheduleJSON({error:'沒有修改登記人的權限'},403);const person=await env.DB.prepare("SELECT id,name FROM employees WHERE id=? AND status='active'").bind(requested).first();if(!person)return scheduleJSON({error:'登記人已停用或不存在'},400);authorId=String(person.id);authorName=person.name;}
-  const photos={};for(const [type,field] of [['receipt','receiptPhoto'],['item','photo']]){
-   const file=form.get(field)||form.get(type==='item'?'itemPhoto':'receiptPhoto');if(!file||typeof file==='string'||!file.size)continue;
-   if(!(file instanceof File)||!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>schedulePhotoLimit67||!env.UPLOADS)return scheduleJSON({error:'請選擇小於 800 KB 的 JPG、PNG 或 WebP'},400);
-   photos[type]=file;
+  const url=new URL(request.url);
+  const exporting=url.searchParams.get('export')==='1';
+
+  if(
+   request.method!=='GET'||
+   !scheduleAllowed(employee,exporting?'records.export':'schedule.view')
+  ){
+   return scheduleJSON({error:'沒有查看照片的權限'},403);
   }
-  const keys={receipt:old?.receipt_photo_key||'',item:old?.item_photo_key||''},names={receipt:old?.receipt_photo_name||'',item:old?.item_photo_name||''};
-  for(const type of ['receipt','item'])if(photos[type]){const key='schedule-material/'+id+'/'+type+'/'+crypto.randomUUID();await env.UPLOADS.put(key,photos[type].stream(),{httpMetadata:{contentType:photos[type].type}});stored.push(key);keys[type]=key;names[type]=String(photos[type].name).slice(0,200)}
-  const now=new Date().toISOString();
-  if(old){const result=await env.DB.prepare("UPDATE schedule_entries SET author_id=?,author_name=?,day=?,end_day=?,title=?,project_name=?,category=?,quantity=?,note=?,receipt_photo_key=?,receipt_photo_name=?,item_photo_key=?,item_photo_name=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND kind='material'").bind(authorId,authorName,day,day,title,projectName,category,quantity,note,keys.receipt,names.receipt,keys.item,names.item,now,id,revision).run();if(result.meta?.changes!==1)throw Error('紀錄已由他人修改，請重新載入')}
-  else await env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name) VALUES (?,'material',?,?,?,'','#4e8069',?,?,?,'',?,?,?,?,?,1,?,?,?,?)").bind(id,day,day,title,note,category,quantity,projectName,authorId,authorName,now,now,keys.receipt,names.receipt,keys.item,names.item).run();
-  for(const type of ['receipt','item'])if(photos[type]&&old?.[type+'_photo_key'])try{await env.UPLOADS.delete(old[type+'_photo_key'])}catch{}return scheduleJSON({saved:true});
- }catch(e){for(const key of stored)try{await env.UPLOADS?.delete(key)}catch{}return scheduleJSON({error:e.message||'料件照片上傳失敗'},400)}
+
+  const kind=url.searchParams.get('type');
+  const id=String(url.searchParams.get('id')||'');
+  const index=Math.max(0,Number(url.searchParams.get('index')||0));
+
+  if(!['receipt','item'].includes(kind)){
+   return scheduleJSON({error:'照片類型不正確'},400);
+  }
+
+  let key='';
+
+  if(kind==='receipt'){
+   const row=await env.DB.prepare(
+    "SELECT receipt_photo_key FROM schedule_entries WHERE id=? AND kind='material'"
+   ).bind(id).first();
+
+   key=row?.receipt_photo_key||'';
+  }else if(index===0){
+   const row=await env.DB.prepare(
+    "SELECT item_photo_key FROM schedule_entries WHERE id=? AND kind='material'"
+   ).bind(id).first();
+
+   key=row?.item_photo_key||'';
+  }else{
+   const result=await env.DB.prepare(
+    "SELECT photo_key FROM schedule_material_photos WHERE material_id=? ORDER BY sort_index,id LIMIT 1 OFFSET ?"
+   ).bind(id,index-1).first();
+
+   key=result?.photo_key||'';
+  }
+
+  if(!key){
+   return scheduleJSON({error:'找不到照片'},404);
+  }
+
+  const file=await env.UPLOADS?.get(key);
+
+  if(!file){
+   return scheduleJSON({error:'找不到照片'},404);
+  }
+
+  return new Response(file.body,{
+   headers:{
+    'Content-Type':file.httpMetadata?.contentType||'image/jpeg',
+    'Cache-Control':'private, no-store',
+    'X-Content-Type-Options':'nosniff'
+   }
+  });
+ }catch(e){
+  return scheduleJSON({error:e.message||'照片讀取失敗'},400);
+ }
 }
 
+async function scheduleMaterialUploadCore71(request,env,employee){
+ const stored=[];
+
+ try{
+  if(
+   request.method!=='POST'||
+   !scheduleAllowed(employee,'schedule.view')
+  ){
+   return scheduleJSON({error:'沒有每日料件登錄權限'},403);
+  }
+
+  if(request.headers.get('origin')!==new URL(request.url).origin){
+   return scheduleJSON({error:'來源驗證失敗'},403);
+  }
+
+  if(Number(request.headers.get('content-length')||0)>9000000){
+   return scheduleJSON({
+    error:'一次最多10張照片，每張照片不可超過800 KB'
+   },413);
+  }
+
+  const form=await request.formData();
+  const id=String(form.get('id')||'');
+  const day=String(form.get('day')||'');
+  const title=String(form.get('title')||'').trim();
+  const projectName=String(form.get('projectName')||'').trim();
+  const category=String(form.get('category')||'');
+  const quantity=Number(form.get('quantity'));
+  const revision=Number(form.get('revision'));
+  const note=String(form.get('note')||'');
+
+  if(
+   !scheduleText(id,80)||
+   !scheduleDate(day)||
+   !scheduleText(title,160)||
+   !scheduleText(projectName,160)||
+   !['收料','出貨','送貨'].includes(category)||
+   !Number.isSafeInteger(quantity)||
+   quantity<1||
+   quantity>1000000||
+   !Number.isInteger(revision)||
+   revision<0||
+   note.length>1000
+  ){
+   return scheduleJSON({
+    error:'請檢查案件名稱、料件日期、類型、名稱和數量'
+   },400);
+  }
+
+  const old=await env.DB.prepare(
+   "SELECT kind,revision,author_id,author_name,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE id=?"
+  ).bind(id).first();
+
+  if(old&&old.kind!=='material'){
+   return scheduleJSON({error:'紀錄類型不符'},400);
+  }
+
+  if(!scheduleAllowed(employee,'schedule.material.'+(old?'edit':'create'))){
+   return scheduleJSON({error:'沒有料件操作權限'},403);
+  }
+
+  if((old?.revision||0)!==revision){
+   return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
+  }
+
+  let authorId=old?.author_id||String(employee.id);
+  let authorName=old?.author_name||employee.name;
+
+  const requested=String(form.get('authorId')||'');
+
+  if(requested&&requested!==authorId){
+   if(!scheduleAllowed(employee,'schedule.material.author')){
+    return scheduleJSON({error:'沒有修改登記人的權限'},403);
+   }
+
+   const person=await env.DB.prepare(
+    "SELECT id,name FROM employees WHERE id=? AND status='active'"
+   ).bind(requested).first();
+
+   if(!person){
+    return scheduleJSON({error:'登記人已停用或不存在'},400);
+   }
+
+   authorId=String(person.id);
+   authorName=person.name;
+  }
+
+  const incoming=[
+   ...form.getAll('photo')
+  ].filter(file=>file instanceof File&&file.size);
+
+  if(incoming.length>10){
+   return scheduleJSON({error:'料件照片一次最多10張'},400);
+  }
+
+  for(const file of incoming){
+   if(
+    !['image/jpeg','image/png','image/webp'].includes(file.type)||
+    file.size>schedulePhotoLimit67||
+    !env.UPLOADS
+   ){
+    return scheduleJSON({
+     error:'每張照片需為小於800 KB的 JPG、PNG 或 WebP'
+    },400);
+   }
+  }
+
+  const oldExtra=old
+   ?await env.DB.prepare(
+     "SELECT photo_key FROM schedule_material_photos WHERE material_id=?"
+    ).bind(id).all()
+   :{results:[]};
+
+  let itemKey=old?.item_photo_key||'';
+  let itemName=old?.item_photo_name||'';
+
+  const newPhotos=[];
+
+  if(incoming.length){
+   for(let i=0;i<incoming.length;i++){
+    const photo=incoming[i];
+    const key='schedule-material/'+id+'/item/'+crypto.randomUUID();
+
+    await env.UPLOADS.put(
+     key,
+     photo.stream(),
+     {httpMetadata:{contentType:photo.type}}
+    );
+
+    stored.push(key);
+
+    newPhotos.push({
+     id:crypto.randomUUID(),
+     key,
+     name:String(photo.name||'photo.jpg').slice(0,200),
+     sortIndex:i
+    });
+   }
+
+   itemKey=newPhotos[0].key;
+   itemName=newPhotos[0].name;
+  }
+
+  const now=new Date().toISOString();
+
+  if(old){
+   const result=await env.DB.prepare(
+    "UPDATE schedule_entries SET author_id=?,author_name=?,day=?,end_day=?,title=?,project_name=?,category=?,quantity=?,note=?,item_photo_key=?,item_photo_name=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND kind='material'"
+   ).bind(
+    authorId,
+    authorName,
+    day,
+    day,
+    title,
+    projectName,
+    category,
+    quantity,
+    note,
+    itemKey,
+    itemName,
+    now,
+    id,
+    revision
+   ).run();
+
+   if(result.meta?.changes!==1){
+    throw Error('紀錄已由他人修改，請重新載入');
+   }
+  }else{
+   await env.DB.prepare(
+    "INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name) VALUES (?,'material',?,?,?,'','#4e8069',?,?,?,'',?,?,?,?,?,1,'','',?,?)"
+   ).bind(
+    id,
+    day,
+    day,
+    title,
+    note,
+    category,
+    quantity,
+    projectName,
+    authorId,
+    authorName,
+    now,
+    now,
+    itemKey,
+    itemName
+   ).run();
+  }
+
+  if(incoming.length){
+   const statements=[
+    env.DB.prepare(
+     "DELETE FROM schedule_material_photos WHERE material_id=?"
+    ).bind(id),
+    ...newPhotos.slice(1).map(photo=>
+     env.DB.prepare(
+      "INSERT INTO schedule_material_photos(id,material_id,photo_key,photo_name,sort_index,created_at) VALUES (?,?,?,?,?,?)"
+     ).bind(
+      photo.id,
+      id,
+      photo.key,
+      photo.name,
+      photo.sortIndex,
+      now
+     )
+    )
+   ];
+
+   await env.DB.batch(statements);
+
+   const oldKeys=[
+    old?.item_photo_key,
+    ...(oldExtra.results||[]).map(photo=>photo.photo_key)
+   ].filter(Boolean);
+
+   await Promise.allSettled(
+    oldKeys.map(key=>env.UPLOADS.delete(key))
+   );
+  }
+
+  return scheduleJSON({
+   saved:true,
+   photoCount:incoming.length||undefined
+  });
+
+ }catch(e){
+  await Promise.allSettled(
+   stored.map(key=>env.UPLOADS?.delete(key))
+  );
+
+  return scheduleJSON({
+   error:e.message||'料件照片上傳失敗'
+  },400);
+ }
+}
 const scheduleReadable71=x=>{try{const a=JSON.parse(x);return Array.isArray(a)?a.join('、'):String(x||'')}catch{return String(x||'')}};
 const scheduleShift71=(day,n)=>new Date(Date.parse(day+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
 async function scheduleTables71(env){
