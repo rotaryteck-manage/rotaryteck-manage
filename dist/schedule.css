@@ -104,3 +104,21 @@
   margin:0 !important;
   outline:0 !important;
 }
+
+/* 電腦版每日月曆：所有紀錄自然往上排列，不保留空槽 */
+.schedule-calendar67 .schedule-calendar-links67{
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:flex-start !important;
+  align-items:stretch !important;
+  gap:3px !important;
+  height:auto !important;
+  min-height:0 !important;
+}
+
+.schedule-calendar67 .schedule-calendar-links67 > *{
+  position:static !important;
+  grid-row:auto !important;
+  order:initial !important;
+  margin:0 !important;
+}
