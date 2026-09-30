@@ -63,15 +63,38 @@ function schedulePhotoLoad56(root){
    const url=URL.createObjectURL(blob);
    img.src=url;
    img.dataset.zoomUrl=url;
-   img.onclick=()=>{
- const overlay=document.createElement('div');
+img.onclick=e=>{
+ e.preventDefault();
+ e.stopPropagation();
+
+ const overlay=document.createElement('dialog');
  overlay.className='schedule-photo-zoom80';
- overlay.innerHTML='<button type="button" class="schedule-photo-zoom-close80" aria-label="關閉">×</button><img src="'+img.dataset.zoomUrl+'" alt="工作照片">';
+ overlay.innerHTML=
+  '<button type="button" class="schedule-photo-zoom-close80" aria-label="關閉">×</button>'+
+  '<img src="'+img.dataset.zoomUrl+'" alt="工作照片">';
+
  document.body.appendChild(overlay);
 
- const close=()=>overlay.remove();
+ const close=()=>{
+  if(overlay.open)overlay.close();
+ };
+
  overlay.querySelector('.schedule-photo-zoom-close80').onclick=close;
- overlay.onclick=e=>{if(e.target===overlay)close();};
+
+ overlay.addEventListener('click',event=>{
+  if(event.target===overlay)close();
+ });
+
+ overlay.addEventListener('cancel',event=>{
+  event.preventDefault();
+  close();
+ });
+
+ overlay.addEventListener('close',()=>{
+  overlay.remove();
+ },{once:true});
+
+ overlay.showModal();
 };
   }catch(e){
    img.alt='照片載入失敗';
