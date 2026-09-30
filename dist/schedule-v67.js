@@ -67,100 +67,162 @@ body='<div class="schedule-daily-list67">'+
 
 function scheduleAssigned67(day){return(scheduleData56.entries||[]).filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day&&scheduleAssignees56(e).includes(currentUser.name)).sort((a,b)=>(a.sort_index||0)-(b.sort_index||0)||String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id))}
 scheduleReportDialog56=function(day){
- day=day||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});let pasted=[];
- const choices=chosen=>{const jobs=scheduleAssigned67(chosen);return jobs.length?jobs.map(e=>'<option value="'+scheduleEsc56(e.id)+'">'+scheduleEsc56(scheduleLabel63(e))+'</option>').join(''):'<option value="">當日沒有指派給你的工作</option>'};
- modal('新增工作回報','<p class="muted">回報人：'+scheduleEsc56(currentUser.name)+'</p><label class="field">紀錄日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label><label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label><label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label><label class="field">工作照片（必填，最多10張，可選照片或貼上圖片）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><small id="schedule-paste-hint"></small><div id="schedule-upload-preview80" class="schedule-upload-preview80"></div>','儲存回報',async fd=>{
- const date=String(fd.get('day')),entryId=String(fd.get('entryId')||'');
-if(!scheduleAssigned67(date).some(e=>e.id===entryId))throw Error('請選擇當天安排給自己的工作');
+ day=day||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});
+ let pendingPhotos=[];
 
-const selected=[...fd.getAll('photo')].filter(file=>file instanceof File&&file.size);
-const photos=[...pasted,...selected];
-if(!photos.length)throw Error('請先上傳工作照片');
-if(photos.length>10)throw Error('工作照片一次最多10張');
+ const choices=chosen=>{
+  const jobs=scheduleAssigned67(chosen);
+  return jobs.length
+   ?jobs.map(e=>'<option value="'+scheduleEsc56(e.id)+'">'+scheduleEsc56(scheduleLabel63(e))+'</option>').join('')
+   :'<option value="">當日沒有指派給你的工作</option>';
+ };
 
-const form=new FormData();
-form.append('mode','create');
-form.append('id',crypto.randomUUID());
-form.append('day',date);
-form.append('entryId',entryId);
-form.append('body',String(fd.get('body')||'').trim());
+ modal(
+  '新增工作回報',
+  '<p class="muted">回報人：'+scheduleEsc56(currentUser.name)+'</p>'
+  +'<label class="field">紀錄日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label>'
+  +'<label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label>'
+  +'<label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label>'
+  +'<label class="field">工作照片（必填，最多10張，可重複選照片或 Ctrl+V 貼上）'
+  +'<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple>'
+  +'</label>'
+  +'<small id="schedule-paste-hint"></small>'
+  +'<div id="schedule-upload-preview80" class="schedule-upload-preview80"></div>',
+  '儲存回報',
+  async fd=>{
+   const date=String(fd.get('day'));
+   const entryId=String(fd.get('entryId')||'');
 
-for(const photo of photos){
- const compressed=await compressReceiptImage(photo);
- form.append('photo',compressed,photo.name||'photo.jpg');
-}
-  const response=await apiFetch('/api/schedule-photo-upload',{method:'POST',body:form}),data=await response.json();if(!response.ok)throw Error(data.error||'照片上傳失敗，回報尚未儲存');$('#modal').close();scheduleRender56();
- });
- const dialog=$('#modal'),input=dialog.querySelector('[name=photo]');
-const renderPreview=()=>{
- const preview=dialog.querySelector('#schedule-upload-preview80');
- if(!preview)return;
+   if(!scheduleAssigned67(date).some(e=>e.id===entryId)){
+    throw Error('請選擇當天安排給自己的工作');
+   }
 
- preview.innerHTML='';
- const files=[...pasted,...input.files];
+   if(!pendingPhotos.length){
+    throw Error('請先上傳工作照片');
+   }
 
- for(const file of files){
-  const img=document.createElement('img');
-  img.className='schedule-upload-thumb80';
+   if(pendingPhotos.length>10){
+    throw Error('工作照片一次最多10張');
+   }
 
-  const url=URL.createObjectURL(file);
-  img.src=url;
-  img.alt='待上傳照片';
-  img.onload=()=>URL.revokeObjectURL(url);
+   const form=new FormData();
+   form.append('mode','create');
+   form.append('id',crypto.randomUUID());
+   form.append('day',date);
+   form.append('entryId',entryId);
+   form.append('body',String(fd.get('body')||'').trim());
 
-  preview.appendChild(img);
- }
+   for(const photo of pendingPhotos){
+    const compressed=await compressReceiptImage(photo);
+    form.append('photo',compressed,photo.name||'photo.jpg');
+   }
 
- dialog.querySelector('#schedule-paste-hint').textContent=
-  files.length?'目前共 '+files.length+' / 10 張照片':'';
-}; dialog.querySelector('[name=day]').onchange=e=>{dialog.querySelector('[name=entryId]').innerHTML=choices(e.target.value)};
- input.onchange=()=>{
- if(pasted.length+[...input.files].length>10){
-  input.value='';
-  alert('工作照片最多10張');
- }
- renderPreview();
-};
- dialog.onpaste=e=>{
-  const items=[...(e.clipboardData?.items||[])];
-  const images=items.filter(item=>item.type.startsWith('image/'));
-  if(!images.length)return;
+   const response=await apiFetch('/api/schedule-photo-upload',{
+    method:'POST',
+    body:form
+   });
 
-  e.preventDefault();
+   const data=await response.json();
 
-  const selectedCount=[...input.files].length;
-  const remaining=10-pasted.length-selectedCount;
+   if(!response.ok){
+    throw Error(data.error||'照片上傳失敗，回報尚未儲存');
+   }
+
+   $('#modal').close();
+   scheduleRender56();
+  }
+ );
+
+ const dialog=$('#modal');
+ const input=dialog.querySelector('[name=photo]');
+ const hint=dialog.querySelector('#schedule-paste-hint');
+
+ const renderPreview=()=>{
+  const preview=dialog.querySelector('#schedule-upload-preview80');
+  if(!preview)return;
+
+  preview.innerHTML='';
+
+  for(const file of pendingPhotos){
+   const img=document.createElement('img');
+   img.className='schedule-upload-thumb80';
+
+   const url=URL.createObjectURL(file);
+   img.src=url;
+   img.alt='待上傳照片';
+   img.onload=()=>URL.revokeObjectURL(url);
+
+   preview.appendChild(img);
+  }
+
+  hint.textContent=pendingPhotos.length
+   ?'目前共 '+pendingPhotos.length+' / 10 張照片'
+   :'';
+ };
+
+ const addPhotos=files=>{
+  const incoming=[...files].filter(
+   file=>file instanceof File&&file.size&&file.type.startsWith('image/')
+  );
+
+  if(!incoming.length)return;
+
+  const remaining=10-pendingPhotos.length;
 
   if(remaining<=0){
    alert('工作照片最多10張');
    return;
   }
 
-  const adding=images.slice(0,remaining);
+  pendingPhotos.push(...incoming.slice(0,remaining));
 
-  for(const item of adding){
-   const blob=item.getAsFile();
-   if(!blob)continue;
-
-   pasted.push(
-    new File(
-     [blob],
-     '貼上圖片'+(pasted.length+1)+'.png',
-     {type:blob.type}
-    )
-   );
-  }
-renderPreview();
-  dialog.querySelector('#schedule-paste-hint').textContent=
-   '目前共 '+(pasted.length+selectedCount)+' 張照片';
-
-  if(images.length>remaining){
+  if(incoming.length>remaining){
    alert('工作照片最多10張，超過的照片未加入');
   }
+
+  renderPreview();
+ };
+
+ dialog.querySelector('[name=day]').onchange=e=>{
+  dialog.querySelector('[name=entryId]').innerHTML=choices(e.target.value);
+ };
+
+ input.onchange=()=>{
+  addPhotos(input.files);
+
+  // 清空檔案欄位，讓下一次「選擇照片」可以繼續追加
+  input.value='';
+ };
+
+ dialog.onpaste=e=>{
+  const files=[...(e.clipboardData?.files||[])].filter(
+   file=>file.type.startsWith('image/')
+  );
+
+  if(!files.length){
+   const items=[...(e.clipboardData?.items||[])];
+   for(const item of items){
+    if(!item.type.startsWith('image/'))continue;
+
+    const blob=item.getAsFile();
+    if(!blob)continue;
+
+    files.push(
+     new File(
+      [blob],
+      '貼上圖片'+(pendingPhotos.length+files.length+1)+'.png',
+      {type:blob.type}
+     )
+    );
+   }
+  }
+
+  if(!files.length)return;
+
+  e.preventDefault();
+  addPhotos(files);
  };
 };
-
-scheduleMaterialDialog61=function(entry){
  const day=entry?.day||scheduleAnchor56,
  photos=(entry?.receipt_photo_key||entry?.item_photo_key)?'<p class="muted">既有照片會保留；選新照片會替換原有的共用照片。點案件名稱可查看已存照片。</p>':'',
  projects=[...new Set((state.projects||[]).map(p=>p.name).filter(Boolean))];
