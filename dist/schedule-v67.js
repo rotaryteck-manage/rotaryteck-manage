@@ -84,7 +84,7 @@ scheduleReportDialog56=function(day){
   +'<label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label>'
   +'<label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label>'
   +'<label class="field">工作照片（必填，最多10張，可重複選照片或 Ctrl+V 貼上）'
-  +'<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple>'
+  +'<input name="photo-report80" type="file" accept="image/jpeg,image/png,image/webp" multiple>'
   +'</label>'
   +'<small id="schedule-paste-hint"></small>'
   +'<div id="schedule-upload-preview80" class="schedule-upload-preview80"></div>',
@@ -130,7 +130,7 @@ scheduleReportDialog56=function(day){
  );
 
  const dialog=$('#modal');
- const input=dialog.querySelector('[name=photo]');
+ const input=dialog.querySelector('[name=photo-report80]');
  const hint=dialog.querySelector('#schedule-paste-hint');
  const preview=dialog.querySelector('#schedule-upload-preview80');
 
