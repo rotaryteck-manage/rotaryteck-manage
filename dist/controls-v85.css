@@ -1,0 +1,13 @@
+/* Shared form and action tokens. Calendar density and existing section colors remain scoped. */
+:root{--control-height85:36px;--control-radius85:7px;--control-gap85:8px}
+.admin-actions,.form-actions,.plating-actions,.wire-tools,.modal-foot{gap:var(--control-gap85);align-items:center;flex-wrap:wrap}
+.admin-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid #dce5da}
+.admin-row>div:first-child{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+#app .admin-card button:not(.project-row):not(.wire-thumb):not(.plating-open),#modal button:not(.schedule-day-link67):not(.mobile-date78):not(.mobile-entry78){min-height:var(--control-height85);padding:7px 12px;line-height:20px;border-radius:var(--control-radius85);font-size:14px;box-sizing:border-box;width:auto}
+#modal #close-modal,#modal .schedule-report-photo80+button,#modal [data-remove-photo],#modal .schedule-upload-remove80{min-width:28px;min-height:28px;padding:3px 6px;font-size:14px}
+.field textarea{box-sizing:border-box;width:100%;min-height:96px;padding:10px 12px;border:1px solid #c9d7c6;border-radius:7px;background:#fff;color:inherit;font:inherit;resize:vertical}
+.field input[type=checkbox],.field input[type=radio],#modal .field input[type=checkbox],#modal .field input[type=radio]{width:18px!important;min-width:18px;max-width:18px;height:18px;padding:0;margin:0;flex:0 0 18px;accent-color:#4e8069}
+.notification-person81,.schedule-choice60 label{display:flex;align-items:center;gap:8px}
+.notification-person-devices82 h3{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+#notification-log-list81 .admin-row small{display:block;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:700px),(pointer:coarse){#modal .field input:not([type=checkbox]):not([type=radio]),#modal .field select,#modal textarea{font-size:16px!important}#modal .modal-foot button{min-height:44px}.admin-row>button{flex:0 0 auto}.notification-person-devices82 h3 button{min-height:40px}}

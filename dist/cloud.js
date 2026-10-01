@@ -17,8 +17,8 @@ async function sendRecordSave(snapshot,request){
 async function saveCloud(candidate){
  if(!cloudReady||cloudBusy||failedCandidate)throw Error('雲端尚未就緒，請先處理儲存狀態。');
  normalizeLogIds(candidate);const snapshot=JSON.parse(JSON.stringify(candidate)),changes=diffRecords(confirmed,snapshot,recordVersions);
- if(!changes.length){oldToast('資料沒有變更');return;}
- await sendRecordSave(snapshot,{storageVersion:2,requestId:crypto.randomUUID(),changes});
+ if(!changes.length){oldToast('資料沒有變更');return true;}
+ return await sendRecordSave(snapshot,{storageVersion:2,requestId:crypto.randomUUID(),changes});
 }
 async function retryRecordSave(){
  if(!pendingSave||cloudBusy)return;const saved=pendingSave;

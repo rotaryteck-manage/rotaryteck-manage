@@ -1,4 +1,5 @@
 // Shared storage codec; the build also produces a browser copy.
+const recordAuxiliary85=['materialLog','materialLogOrder'];
 const recordCollections=['projects','cases','platingProjects','deletedProjects','wireTypes','wireReels','wireCuts'];
 function recordKey(kind,id){return JSON.stringify([kind,id]);}
 function normalizeLogIds(s){const seen=new Set();for(const l of s.logs||[]){if(typeof l.id!=='string'||!l.id||seen.has(l.id))l.id=crypto.randomUUID();seen.add(l.id);}return s;}
@@ -8,7 +9,7 @@ function splitState(s){
  for(const [name,value]of Object.entries(s)){
   if(recordCollections.includes(name)){
    if(!Array.isArray(value))throw Error('案件清單格式不正確');const ids=[];
-   for(const item of value){const id=name==='deletedProjects'?item.project?.id:item.id;if(typeof id!=='string'||!id||ids.includes(id))throw Error('案件編號缺少或重複');ids.push(id);out[recordKey(name,id)]=item;}
+   for(const item of value){const id=name==='deletedProjects'?item.project?.id:item.id;if(typeof id!=='string'||!id||ids.includes(id))throw Error('案件編號缺少或重複');ids.push(id);let stored=item;if((name==='projects'||name==='deletedProjects')&&Array.isArray((name==='projects'?item:item.project).materialLogs)){const project=name==='projects'?item:item.project,logs=project.materialLogs,copy={...project,materialLogs:[],_materialLogStorage85:true};stored=name==='projects'?copy:{...item,project:copy};const order=[];for(const [index,entry]of logs.entries()){const logId=entry.id||('legacy-'+index);if(order.includes(logId))throw Error('收領料紀錄編號重複');order.push(logId);out[recordKey('materialLog',JSON.stringify([id,logId]))]=entry;}for(let end=order.length,bucket=0;end>0||bucket===0;end-=1000,bucket++)out[recordKey('materialLogOrder',JSON.stringify([id,bucket]))]=order.slice(Math.max(0,end-1000),end);}out[recordKey(name,id)]=stored;}
    out[recordKey('order',name)]=name==='wireCuts'?[]:ids;
   }else if(name==='logs'){
    const ids=new Set();for(const entry of [...value].reverse()){if(typeof entry.id!=='string'||!entry.id||ids.has(entry.id))throw Error('操作紀錄編號缺少或重複');ids.add(entry.id);out[recordKey('log',entry.id)]=entry;}
@@ -16,16 +17,20 @@ function splitState(s){
  }return out;
 }
 function joinRecords(records){
- const out=Object.create(null),collections=Object.create(null),orders=Object.create(null),logs=[];
+ const out=Object.create(null),collections=Object.create(null),orders=Object.create(null),logs=[],material=new Map(),materialOrder=new Map();
  for(const [key,value]of Object.entries(records)){
   const [kind,id]=JSON.parse(key);if(value===undefined)continue;
-  if(kind==='root'){if(['__proto__','constructor','prototype',...recordCollections,'logs'].includes(id))throw Error('設定名稱不正確');out[id]=value;}
+  if(kind==='materialLog'){const [projectId,logId]=JSON.parse(id);if(!material.has(projectId))material.set(projectId,new Map());material.get(projectId).set(logId,value);}
+  else if(kind==='materialLogOrder'){const [projectId,bucket]=JSON.parse(id);if(typeof projectId!=='string'||!Number.isInteger(bucket)||bucket<0||!Array.isArray(value)||value.length>1000)throw Error('收領料排序格式不正確');if(!materialOrder.has(projectId))materialOrder.set(projectId,new Map());materialOrder.get(projectId).set(bucket,value);}
+  else if(kind==='root'){if(['__proto__','constructor','prototype',...recordCollections,'logs'].includes(id))throw Error('設定名稱不正確');out[id]=value;}
   else if(kind==='order')orders[id]=value;
   else if(kind==='log')logs.push(value);
   else if(recordCollections.includes(kind)){collections[kind]??=new Map();collections[kind].set(id,value);}
   else throw Error('資料類型不正確');
  }
  for(const name of recordCollections){const entries=collections[name]||new Map(),order=orders[name];if(name==='wireCuts'&&order!==undefined){if(!Array.isArray(order))throw Error('裁線清單格式不正確');out[name]=[...entries.values()].sort((a,b)=>b.time.localeCompare(a.time)||b.id.localeCompare(a.id));continue;}if(order===undefined){if(entries.size)throw Error('缺少案件排序');continue;}if(!Array.isArray(order)||order.length!==entries.size||new Set(order).size!==order.length||order.some(id=>!entries.has(id)))throw Error('案件排序與資料不一致');out[name]=order.map(id=>entries.get(id));}
+ const projectIds85=new Set([...out.projects||[],...(out.deletedProjects||[]).map(x=>x.project)].map(p=>p.id));for(const id of new Set([...material.keys(),...materialOrder.keys()]))if(!projectIds85.has(id))throw Error('收領料紀錄缺少所屬案件');
+ for(const project of [...out.projects||[],...(out.deletedProjects||[]).map(x=>x.project)])if(project._materialLogStorage85){const chunks=materialOrder.get(project.id),order=chunks?[...chunks.entries()].sort((a,b)=>b[0]-a[0]).flatMap(([_,ids])=>ids):null,entries=material.get(project.id)||new Map();if(!Array.isArray(order)||order.length!==entries.size||new Set(order).size!==order.length||order.some(id=>!entries.has(id)))throw Error('收領料排序與資料不一致');project.materialLogs=order.map(id=>entries.get(id));delete project._materialLogStorage85;}
  out.logs=logs.reverse();out.projects??=[];return out;
 }
 function diffRecords(before,after,versions={}){

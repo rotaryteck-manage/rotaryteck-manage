@@ -6,6 +6,7 @@ function mobileRows78(day){
  const reports=(scheduleData56.reports||[]).some(e=>e.day===day);
 
 if(jobs||reports)rows.push({title:'工作紀錄',section:'jobs'});
+ if(typeof scheduleMaterial56==='function'&&scheduleMaterial56().some(e=>e.day===day))rows.push({title:'收／領料紀錄',section:'legacy'});
  if(canDo('schedule.leave.view')&&(scheduleData56.leaves||[]).some(e=>leaveOnDay72(e,day)))rows.push({title:'請假紀錄',section:'leaves'});
 
  entries
@@ -37,8 +38,8 @@ function mobileOpen79(day,section,materialId=''){
 function mobileSelect78(day){scheduleAnchor56=day;document.querySelectorAll('.mobile-day78').forEach(c=>{const selected=c.dataset.mobileDay===day;c.classList.toggle('selected78',selected);c.querySelector('.mobile-date78').setAttribute('aria-pressed',String(selected));});const label=$('.mobile-selected78');if(label)label.textContent='已選 '+day;}
 function mobileDay78(day){
  mobileSelect78(day);const rows=mobileRows78(day),special=(scheduleData56.entries||[]).filter(e=>e.kind==='special'&&e.day<=day&&(e.end_day||e.day)>=day);
- modal(day+' · 當日內容','<div class="mobile-detail78">'+special.map(e=>'<p>'+esc(e.title)+'</p>').join('')+rows.map(e=>'<button type="button" data-mobile-section="'+e.section+'">'+e.title+'</button>').join('')+(!rows.length?'<p>當日沒有紀錄，可關閉後使用下方按鈕新增。</p>':'')+'</div>',null);
- $('#modal').querySelectorAll('[data-mobile-section]').forEach(b=>b.onclick=()=>mobileOpen79(day,b.dataset.mobileSection));
+ modal(day+' · 當日內容','<div class="mobile-detail78">'+special.map(e=>'<p>'+esc(e.title)+'</p>').join('')+rows.map(e=>'<button type="button" data-mobile-section="'+e.section+'" '+(e.materialId?'data-mobile-material-id="'+esc(e.materialId)+'"':'')+'>'+esc(e.title)+'</button>').join('')+(!rows.length?'<p>當日沒有紀錄，可關閉後使用下方按鈕新增。</p>':'')+'</div>',null);
+ $('#modal').querySelectorAll('[data-mobile-section]').forEach(b=>b.onclick=()=>mobileOpen79(day,b.dataset.mobileSection,b.dataset.mobileMaterialId||''));
 }
 function mobileCalendar78(){
  const root=$('#schedule-content56');if(!root||scheduleTab56!=='daily')return;root.querySelector('.mobile-calendar78')?.remove();if(!mobileQuery78.matches)return;

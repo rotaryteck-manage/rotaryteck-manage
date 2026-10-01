@@ -145,7 +145,7 @@ function clearPreviews76(){for(const [input,entry]of previewURLs76)if(!input.isC
 document.addEventListener('change',e=>{
  const input=e.target;if(!input.matches('input[type=file]'))return;const files=[...input.files].filter(f=>f.type.startsWith('image/'));
  const old=previewURLs76.get(input);old?.urls.forEach(URL.revokeObjectURL);old?.box.remove();previewURLs76.delete(input);if(!files.length)return;
- const box=document.createElement('div');box.className='photo-preview76';box.setAttribute('aria-label','待上傳照片預覽');const urls=[];
+ if(input.dataset.paste71)return;if(input.closest('#modal')?.querySelector('#schedule-upload-preview80,#schedule-material-preview80')||input.name==='photo'&&document.querySelector('#report-photo-input80,#material-photo-input80'))return;const box=document.createElement('div');box.className='photo-preview76';box.setAttribute('aria-label','待上傳照片預覽');const urls=[];
  for(const file of files.slice(0,12)){const img=document.createElement('img'),url=URL.createObjectURL(file);urls.push(url);img.src=url;img.alt=file.name;img.title='本機預覽，尚未上傳';box.append(img);}
  const note=document.createElement('small');note.textContent='已選 '+files.length+' 張 · 本機預覽，送出後才會上傳';box.append(note);input.after(box);previewURLs76.set(input,{urls,box});
  // A single photo can be prepared while the user fills the rest of the form.

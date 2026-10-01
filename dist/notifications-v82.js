@@ -1,3 +1,4 @@
+async function notificationReady85(){let timer;try{return await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('通知服務啟動逾時，請重新整理後再試')),15000);})]);}finally{clearTimeout(timer);}}
 'use strict';
 
 async function notificationRegisterServiceWorker82(){
@@ -65,7 +66,7 @@ async function notificationCurrentSubscription82(){
 
  try{
   const registration=
-   await navigator.serviceWorker.ready;
+   await notificationReady85();
 
   return await registration.pushManager.getSubscription();
  }catch{
@@ -92,14 +93,14 @@ async function notificationSaveSubscription82(subscription){
    endpoint,
    p256dh,
    auth,
-   deviceLabel:notificationDeviceLabel82()
+   deviceLabel:notificationDeviceLabel82(),previousDeviceId:localStorage.getItem('notification-device85')||''
   })
  });
 
  const data=await response.json();
 
  if(!response.ok)
-  throw Error(data.error||'通知裝置綁定失敗');
+  throw Object.assign(Error(data.error||'通知裝置綁定失敗'),{rebind:data.rebind});
 
  return data;
 }
@@ -132,7 +133,7 @@ async function notificationEnable82(){
 
   const registered=await notificationRegisterServiceWorker82();
   if(!registered)throw Error('無法啟動通知服務');
-  const registration=await navigator.serviceWorker.ready;
+  const registration=await notificationReady85();
 
   const keyResponse=
    await apiFetch('/api/push-public-key');
@@ -154,6 +155,7 @@ async function notificationEnable82(){
   let subscription=
    await registration.pushManager.getSubscription();
 
+  if(subscription?.options?.applicationServerKey){const old=new Uint8Array(subscription.options.applicationServerKey);if(old.length!==applicationServerKey.length||old.some((x,i)=>x!==applicationServerKey[i])){await subscription.unsubscribe();subscription=null;}}
   if(!subscription){
    subscription=
     await registration.pushManager.subscribe({
@@ -162,9 +164,10 @@ async function notificationEnable82(){
     });
   }
 
-  await notificationSaveSubscription82(subscription);
+  let saved;try{saved=await notificationSaveSubscription82(subscription);}catch(error){if(!error.rebind)throw error;await subscription.unsubscribe();subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});saved=await notificationSaveSubscription82(subscription);}
+  localStorage.setItem('notification-device85',saved.id);
 
-  toast('這台裝置已開啟系統通知');
+  toast(saved.enabled?'這台裝置已開啟系統通知':'訂閱已登記，通知目前由後台停用');
 
   notificationUpdateButton82();
 
@@ -199,12 +202,12 @@ async function notificationUpdateButton82(){
   await notificationCurrentSubscription82();
 
  if(Notification.permission==='granted'&&subscription){
-  button.textContent='通知已開啟';
-  button.classList.add('selected');
- }else{
-  button.textContent='開啟通知';
-  button.classList.remove('selected');
- }
+  try{
+   const response=await apiFetch('/api/push-subscription'),data=await response.json();if(!response.ok)throw Error(data.error);
+   const device=(data.items||[]).find(d=>d.id===localStorage.getItem('notification-device85'));
+   button.textContent=!data.personEnabled?'人員通知已停用':device?device.enabled?'通知已開啟':'裝置通知已停用':'重新綁定通知';button.classList.toggle('selected',!!device?.enabled&&data.personEnabled);
+  }catch{button.textContent='確認通知狀態';button.classList.remove('selected');}
+ }else{button.textContent='開啟通知';button.classList.remove('selected');}
 
  button.disabled=false;
 }

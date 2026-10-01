@@ -7,13 +7,14 @@ scheduleDraw56=function(){
  const month=scheduleMonth56(scheduleAnchor56),first=new Date(month+'T00:00:00Z'),count=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate(),offset=(first.getUTCDay()+6)%7,entries=scheduleData56.entries||[],reports=scheduleData56.reports||[];
  root.innerHTML='<div class="schedule-calendar schedule-calendar67">'+['一','二','三','四','五','六','日'].map(x=>'<div class="schedule-calendar-heading">'+x+'</div>').join('')+Array.from({length:Math.ceil((offset+count)/7)*7},(_,i)=>{
   const day=scheduleShift56(month,i-offset),weekday=(new Date(day+'T00:00:00Z').getUTCDay()+6)%7,special=entries.filter(e=>e.kind==='special'&&e.day<=day&&e.end_day>=day),jobs=entries.filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),manual=entries.filter(e=>e.kind==='material'&&e.day===day),legacy=scheduleMaterial56().some(e=>e.day===day),reported=reports.some(r=>r.day===day);
-  return '<div class="schedule-calendar-day schedule-calendar-day67 '+(day.slice(0,7)!==month.slice(0,7)?'schedule-adjacent70 ':'')+(weekday>=5?'weekend':'')+'" data-day="'+day+'"><header>'+(day.slice(0,7)!==month.slice(0,7)?day.slice(5).replace('-','/'):day.slice(8))+'｜'+['一','二','三','四','五','六','日'][weekday]+(special.length?' · '+special.map(e=>scheduleEsc56(e.title)).join('、'):'')+'</header><div class="schedule-calendar-links67">'+(jobs.length||reported?'<button type="button" class="schedule-day-link67" data-day-jobs="'+day+'">工作紀錄</button>':'')+manual.map(e=>'<button type="button" class="schedule-day-link67 schedule-day-material67 schedule-material-'+({收料:"receipt",出貨:"outgoing",送貨:"delivery"}[e.category]||"receipt")+'67" data-day-material-id="'+scheduleEsc56(e.id)+'" data-day-material-date="'+day+'" title="'+scheduleEsc56(e.project_name||'未指定案件')+'">'+scheduleEsc56((e.project_name||'')+(e.title||''))+'</button>').join('')+'</div></div>'
+  return '<div class="schedule-calendar-day schedule-calendar-day67 '+(day.slice(0,7)!==month.slice(0,7)?'schedule-adjacent70 ':'')+(weekday>=5?'weekend':'')+'" data-day="'+day+'"><header>'+(day.slice(0,7)!==month.slice(0,7)?day.slice(5).replace('-','/'):day.slice(8))+'｜'+['一','二','三','四','五','六','日'][weekday]+(special.length?' · '+special.map(e=>scheduleEsc56(e.title)).join('、'):'')+'</header><div class="schedule-calendar-links67">'+(jobs.length||reported?'<button type="button" class="schedule-day-link67" data-day-jobs="'+day+'">工作紀錄</button>':'')+(legacy?'<button type="button" class="schedule-day-link67 schedule-day-material67" data-day-legacy="'+day+'">收／領料紀錄</button>':'')+manual.map(e=>'<button type="button" class="schedule-day-link67 schedule-day-material67 schedule-material-'+({收料:"receipt",出貨:"outgoing",送貨:"delivery"}[e.category]||"receipt")+'67" data-day-material-id="'+scheduleEsc56(e.id)+'" data-day-material-date="'+day+'" title="'+scheduleEsc56(e.project_name||'未指定案件')+'">'+scheduleEsc56((e.project_name||'')+(e.title||''))+'</button>').join('')+'</div></div>'
  }).join('')+'</div>';
+ root.querySelectorAll('[data-day-legacy]').forEach(b=>b.onclick=()=>scheduleDayRecord56(b.dataset.dayLegacy,'materials','','legacy'));
  root.querySelectorAll('[data-day-jobs]').forEach(b=>b.onclick=()=>scheduleDayRecord56(b.dataset.dayJobs,'jobs'));
  root.querySelectorAll('[data-day-material-id]').forEach(b=>b.onclick=()=>scheduleDayRecord56(b.dataset.dayMaterialDate,'materials',b.dataset.dayMaterialId));
  root.querySelectorAll('[data-day-materials]').forEach(b=>b.onclick=()=>scheduleDayRecord56(b.dataset.dayMaterials,'materials'));
  scheduleDecorate60();root.querySelectorAll('.schedule-calendar-material').forEach(el=>el.remove());
- const today67=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});root.querySelectorAll('.schedule-calendar-day67').forEach(cell=>{const day=cell.querySelector('[data-day-jobs]')?.dataset.dayJobs;if(day===today67)cell.classList.add('schedule-today67');else cell.classList.remove('schedule-today67');});
+ const today67=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});root.querySelectorAll('.schedule-calendar-day67').forEach(cell=>{const day=cell.dataset.day;if(day===today67)cell.classList.add('schedule-today67');else cell.classList.remove('schedule-today67');});
 };
 
 scheduleDayRecord56=function(day,section='jobs',materialId='',materialSource='all'){
@@ -37,7 +38,7 @@ body='<div class="schedule-daily-list67">'+
   '<h3>工作回報</h3>'+
   '<div class="schedule-chat67">'+
    (reports.map(r=>{
-    const job=entries.find(e=>e.id===r.entry_id);
+    const job=r.work_title?{title:r.work_title,category:r.work_content}:entries.find(e=>e.id===r.entry_id);
     return '<article class="schedule-message67" data-report-id75="'+scheduleEsc56(r.id)+'">'+
      '<span class="schedule-avatar67">'+scheduleEsc56(r.author_name)+'</span>'+
      '<div class="schedule-bubble67">'+

@@ -41,7 +41,7 @@ notificationRoot.innerHTML=
  renderNotificationRules81();
  $('#notification-devices81').onclick=()=>notificationDevicesDialog82();
  $('#notification-test81').onclick=()=>notificationTestDialog82();
- for(const [label,action] of [['修改排程文字／按鈕',()=>scheduleTextDialog63()],['調整人員名單順序',async()=>{await loadEmployees();const button=$('#employee-sort');if(button)button.click();else toast('員工名單讀取失敗，請重新開啟後台')} ]]){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=action;schedule.append(b)}
+ for(const [label,action] of [['修改排程文字／按鈕',()=>scheduleTextDialog63()],['調整人員名單順序',()=>schedulePeopleSort85() ]]){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=action;schedule.append(b)}
  for(const node of [...top.children])(['export-all','import-data'].includes(node.id)?backup:website).append(node);top.remove();
  const exportButton=document.createElement('button');exportButton.id='export-every-photo';exportButton.textContent=adminText('exportEveryPhotoButton');exportButton.onclick=()=>exportEveryPhoto(exportButton);backup.append(exportButton);
  const keys=orderedAdminKeys([...map.keys()],state.adminSectionOrder),toolbar=document.createElement('div');toolbar.className='admin-tabs-toolbar';const nav=document.createElement('nav');nav.className='admin-tabs';nav.setAttribute('aria-label',adminText('title'));const sort=document.createElement('button');sort.id='admin-sort-toggle';sort.textContent=adminText(adminSorting?'finishSortButton':'sortButton');sort.setAttribute('aria-pressed',String(adminSorting));sort.onclick=()=>{adminSorting=!adminSorting;renderAdmin();};toolbar.append(nav,sort);main.querySelector('h1').after(toolbar);
@@ -56,7 +56,7 @@ notificationRoot.innerHTML=
 };
 async function notificationTestDialog82(){
  try{
-  const response=await apiFetch('/api/employees');
+  const response=await apiFetch('/api/employee-options?notification=1');
   const data=await response.json();
 
   if(!response.ok)
@@ -111,6 +111,7 @@ async function notificationTestDialog82(){
     if(!response.ok)
      throw Error(data.error||'測試通知發送失敗');
 
+    if(data.failed){modal('測試通知結果','<p>成功 '+data.sent+' 台，失敗 '+data.failed+' 台</p>'+ (data.results||[]).filter(r=>!r.ok).map(r=>'<p class="error">狀態 '+esc(String(r.statusCode||'服務設定'))+'：'+esc(r.error||'請查看通知紀錄')+'</p>').join(''),null);return;}
     $('#modal').close();
 
     if(data.failed){
@@ -166,7 +167,7 @@ async function notificationDevicesDialog82(){
 
    return (
     '<div class="notification-person-devices82">'+
-     '<h3>'+esc(person.name)+'</h3>'+
+     '<h3>'+esc(person.name)+' <button type="button" class="small" data-notification-person85="'+esc(String(person.id))+'" data-enabled="'+(person.enabled?'1':'0')+'">'+(person.enabled?'停用此人所有通知':'恢復此人通知')+'</button></h3>'+ (person.enabled?'':'<p class="muted">此人全部通知已停用，包含之後新增的裝置。</p>')+
 
      (
       devices.length
@@ -206,6 +207,7 @@ async function notificationDevicesDialog82(){
     '</div>'
    );
   }).join('');
+box.querySelectorAll('[data-notification-person85]').forEach(button=>{button.onclick=async()=>{try{const response=await apiFetch('/api/push-subscription?admin=1',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({employeeId:Number(button.dataset.notificationPerson85),enabled:button.dataset.enabled!=='1'})}),data=await response.json();if(!response.ok)throw Error(data.error);await notificationDevicesDialog82();}catch(e){toast(e.message)}}});
 box.querySelectorAll('[data-notification-device-toggle82]').forEach(button=>{
  button.onclick=async()=>{
   try{
@@ -403,7 +405,7 @@ async function notificationRuleDialog81(id=''){
      let notificationEmployees81=[];
 
  try{
-  const r=await apiFetch('/api/employees');
+  const r=await apiFetch('/api/employee-options?notification=1');
   const data=await r.json();
 
   if(!r.ok)throw Error(data.error||'無法載入員工名單');
@@ -653,7 +655,7 @@ addAudit(
   message81.value=p.message;
   time81.value=p.time;
 
-  firstWrap81.hidden=!p.firstDays;
+  firstWrap81.hidden=!p.firstDays;first81.disabled=!p.firstDays;first81.value=String(p.firstDays);
 
   if(p.firstDays){
    first81.value=p.firstDays;
@@ -685,7 +687,7 @@ addAudit(
   notificationPreview81();
  }
 
- type81.onchange=notificationApplyPreset81;
+ type81.onchange=()=>{if((title81.value||message81.value)&&!confirm('切換通知類型會套用新的預設內容，確定切換？')){type81.value=type81.dataset.previous||existing81?.type||'work';return;}notificationApplyPreset81();type81.dataset.previous=type81.value;};
  title81.oninput=notificationPreview81;
  message81.oninput=notificationPreview81;
  first81.oninput=notificationPreview81;
@@ -703,7 +705,7 @@ addAudit(
  title81.value=existing81.title||'';
  message81.value=existing81.message||'';
  time81.value=existing81.time||'09:00';
- first81.value=Number(existing81.firstDays)||0;
+ first81.value=first81.disabled?'0':String(Number(existing81.firstDays)||presets81[existing81.type].firstDays);
  repeat81.value=Number(existing81.repeatDays)||0;
  target81.value=existing81.target||'';
 
@@ -738,16 +740,21 @@ addAudit(
 async function collectPhotoPages(url){const items=[],seen=new Set();let cursor='';do{const r=await apiFetch(url+(cursor?'&cursor='+encodeURIComponent(cursor):'')),data=await r.json();if(!r.ok)throw Error(data.error||'照片清單讀取失敗');if(!Array.isArray(data.items))throw Error('照片清單格式不正確');items.push(...data.items);if(!data.truncated)break;if(!data.cursor||seen.has(data.cursor))throw Error('照片清單不完整，請重試');cursor=data.cursor;seen.add(cursor);}while(true);return items.sort((a,b)=>String(a.created).localeCompare(String(b.created))||String(a.id).localeCompare(String(b.id)));}
 let everyPhotoBusy=false;
 async function exportEveryPhoto(button){
- if(!canDo('admin.view')||everyPhotoBusy)return;if(!await authorizeExport())return;
- everyPhotoBusy=true;button.disabled=true;const original=button.textContent,snapshot=structuredClone(state),entries=[],rows=[['管理區','案名','送鍍次數／線捆編號','類別','人員','上傳時間','原始檔名','ZIP位置']];let bytes=0;
- async function append(url,path,item,meta){const r=await apiFetch(url);if(!r.ok)throw Error('照片下載失敗：'+meta[1]);const type=r.headers.get('content-type')||'';if(!type.startsWith('image/'))throw Error('照片格式不正確');const data=new Uint8Array(await r.arrayBuffer());bytes+=data.length;if(bytes>250*1024*1024||entries.length>=60000)throw Error('照片量較大，請改用各管理區的分案匯出');const ext=type.includes('png')?'png':type.includes('webp')?'webp':'jpg',name=path+'.'+ext;entries.push({name,data,date:item.created});rows.push([...meta,item.actor||'未記錄人員',receiptTime(item.created),item.name||'',name]);button.textContent='正在整理 '+entries.length+' 張照片…';}
+ if(!canDo('admin.view')||everyPhotoBusy||!await authorizeExport())return;
+ everyPhotoBusy=true;button.disabled=true;const label=button.textContent,entries=[],manifest=[];let size=0;
  try{
- const warehouse=[...(snapshot.projects||[]).map(p=>({p,deleted:false})),...(snapshot.deletedProjects||[]).map(x=>({p:x.project,deleted:true}))];
- for(const [i,{p,deleted}]of warehouse.entries()){const url='/api/receipts?project='+encodeURIComponent(p.id)+'&export=1',items=await collectPhotoPages(url),folder='庫房管理/'+(deleted?'已刪除案件/':'')+String(i+1).padStart(3,'0')+'_'+safeFileName(p.name);
- for(const [j,item]of items.entries())await append(url+'&id='+encodeURIComponent(item.id),folder+'/收據_'+String(j+1).padStart(3,'0')+'_'+photoStamp(item.created),item,['庫房管理',p.name,'','收據']);}
- for(const [i,p]of (snapshot.platingProjects||[]).entries())for(const s of p.shipments||[]){const url=platingPhotoUrl(p,s)+'&export=1',items=await collectPhotoPages(url),folder='電鍍管理/'+String(i+1).padStart(3,'0')+'_'+safeFileName(p.name)+'/第'+s.number+'次送鍍';for(const [j,item]of items.entries()){const kind=platingPhotoKind(item)==='area'?'表面積':'出貨單';await append(url+'&id='+encodeURIComponent(item.id),folder+'/'+kind+'/'+String(j+1).padStart(3,'0')+'_'+photoStamp(item.created),item,['電鍍管理',p.name,s.number,kind]);}}
- for(const [i,t]of (snapshot.wireTypes||[]).entries())for(const [ri,r]of (snapshot.wireReels||[]).filter(r=>r.wireId===t.id).entries()){for(const [j,item]of r.photos.entries()){const folder='線材管理/'+String(i+1).padStart(3,'0')+'_'+safeFileName(t.name)+'/'+String(ri+1).padStart(3,'0')+'_'+safeFileName(String(ri+1))+'_'+safeFileName(r.color);await append(wirePhotoUrl(r,item.id,true),folder+'/'+String(j+1).padStart(3,'0')+'_'+photoStamp(item.created),item,['線材管理',t.name,String(ri+1),'裁線／線捆照片']);}}
- const logoResponse=await apiFetch('/api/logo?meta=1');if(!logoResponse.ok)throw Error('LOGO 讀取失敗');const logo=await logoResponse.json();if(logo.exists)await append('/api/logo?export=1','網站設定/LOGO',{created:new Date().toISOString(),name:'LOGO'},['網站設定','','','LOGO']);
- if(!entries.length)throw Error('目前沒有可匯出的照片');entries.push({name:'照片總表.csv',data:platingCsv(rows)});entries.push({name:'備份說明.txt',data:new TextEncoder().encode('照片依管理區、案件、送鍍次數與種類分類。照片總表列出原始檔名、上傳人員及時間。庫房包含仍保留照片的已刪除案件。LOGO 日期為匯出時間。此 ZIP 為照片備份，文字資料請另外匯出全部資料。\n匯出時間：'+new Date().toISOString())});downloadBlob(makeZip(entries),'全部照片_'+photoStamp(new Date())+'.zip');toast('全部照片已匯出，共 '+(rows.length-1)+' 張');
- }catch(e){toast(e.message||'匯出失敗，請重試');}finally{everyPhotoBusy=false;button.disabled=false;button.textContent=original;}
+  const items=await collectPhotoPages('/api/backup-photos?list=1');
+  for(const [i,item]of items.entries()){
+   button.textContent='正在整理 '+(i+1)+' / '+items.length+' 張照片…';
+   const response=await apiFetch('/api/backup-photos?key='+encodeURIComponent(item.key));if(!response.ok)throw Error('照片讀取失敗：'+item.name);
+   const data=new Uint8Array(await response.arrayBuffer());size+=data.length;if(size>250*1024*1024)throw Error('照片總量超過250 MB，請使用資料／照片日期範圍匯出');
+   const type=response.headers.get('content-type')||'',ext=type.includes('png')?'png':type.includes('webp')?'webp':type.includes('jpeg')?'jpg':'bin';
+   const area=item.key.startsWith('schedule-material/')?'每日料件':item.key.startsWith('schedule/')?'工作回報':item.key.includes('/plating/')?'電鍍管理':(item.key.includes('/wire/')||item.key.startsWith('wire-photos/'))?'線材管理':item.key.includes('/receipts/')?'庫房管理':'網站設定';
+   const date=new Date(item.created).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),path=area+'/'+date+'/'+String(i+1).padStart(6,'0')+'.'+ext;
+   entries.push({name:path,data,date:item.created});manifest.push({...item,path});
+  }
+  entries.push({name:'物件清單.json',data:new TextEncoder().encode(JSON.stringify({version:85,items:manifest},null,2))});
+  entries.push({name:'照片總表.csv',data:platingCsv([['類型／路徑','原始檔名','登記人','上傳時間','儲存鍵值'],...manifest.map(m=>[m.path,m.name,m.actor,m.created,m.key])])});
+  downloadBlob(makeZip(entries),'全部照片_'+photoStamp(new Date())+'.zip');toast('全部照片已匯出，共 '+items.length+' 個物件');
+ }catch(e){toast(e.message||'匯出失敗');}finally{everyPhotoBusy=false;button.disabled=false;button.textContent=label;}
 }

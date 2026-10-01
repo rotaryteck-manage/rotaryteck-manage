@@ -32,7 +32,7 @@ function scheduleWeeklyRows56(start){const end=scheduleShift56(start,6),entries=
 // Non-overlapping date ranges share a lane; only overlapping ranges stack.
 function scheduleLanes70(items){const lanes=[];return items.map(item=>{let lane=lanes.findIndex(ranges=>ranges.every(other=>item.end<other.start||item.start>other.end));if(lane<0){lane=lanes.length;lanes.push([])}lanes[lane].push(item);return lane})}
 function scheduleLayout63(root){for(const person of root.querySelectorAll('.schedule-plan-person[data-plan-row]')){const bars=[...person.closest('.schedule-plan-grid').querySelectorAll('.schedule-plan-bar[data-plan-row="'+person.dataset.planRow+'"]')],lanes=scheduleLanes70(bars.map(bar=>({start:parseInt(bar.style.gridColumnStart),end:parseInt(bar.style.gridColumnEnd)-1}))),heights=[];bars.forEach((bar,i)=>{heights[lanes[i]]=Math.max(heights[lanes[i]]||0,64,bar.getBoundingClientRect().height)});bars.forEach((bar,i)=>{bar.style.marginTop=(5+heights.slice(0,lanes[i]).reduce((sum,h)=>sum+h+8,0))+'px'});person.style.minHeight=Math.max(64,7+heights.reduce((sum,h)=>sum+h+8,0))+'px'}}
-function scheduleMaterial56(){return(state.projects||[]).flatMap(p=>(p.materialLogs||[]).flatMap((log,logIndex)=>{const day=String(log.time||'').slice(0,10);return[...(log.received||[]).map((item,index)=>({day,kind:'收料',project:p.name,name:item.name,qty:item.qty,actor:log.actor,projectId:p.id,logId:log.id||"legacy:"+logIndex,bucket:'received',index,photo:item.photo})),...(log.issued||[]).map((item,index)=>({day,kind:item.category||'領料',project:p.name,name:item.name,qty:item.qty,actor:log.actor,projectId:p.id,logId:log.id||"legacy:"+logIndex,bucket:'issued',index,photo:item.photo}))]}))}
+function scheduleMaterial56(){return(state.projects||[]).flatMap(p=>(p.materialLogs||[]).flatMap((log,logIndex)=>{const day=taipeiDate(log.time);return[...(log.received||[]).map((item,index)=>({day,kind:'收料',project:p.name,name:item.name,qty:item.qty,actor:log.actor,projectId:p.id,logId:log.id||"legacy:"+logIndex,bucket:'received',index,photo:item.photo})),...(log.issued||[]).map((item,index)=>({day,kind:item.category||'領料',project:p.name,name:item.name,qty:item.qty,actor:log.actor,projectId:p.id,logId:log.id||"legacy:"+logIndex,bucket:'issued',index,photo:item.photo}))]}))}
 function scheduleDraw56(){const root=$('#schedule-content56');if(!root)return;const week=scheduleWeek56(scheduleAnchor56),month=scheduleMonth56(scheduleAnchor56),entries=scheduleData56.entries||[];$('#schedule-period56').textContent=scheduleTab56==='weekly'?week+' 至 '+scheduleShift56(week,6):month.slice(0,7);
  if(scheduleTab56==='weekly'){
   const weeks=[];for(let start=week,i=0;i<27;i++,start=scheduleShift56(start,-7)){const end=scheduleShift56(start,6),jobs=entries.filter(e=>e.kind==='weekly'&&e.day<=end&&e.end_day>=start);if(!jobs.length&&i>0)continue;const days=scheduleWeekDays56(start),rows=scheduleWeeklyRows56(start),specials=days.map(day=>entries.filter(e=>e.kind==='special'&&e.day<=day&&e.end_day>=day).map(e=>e.title));
@@ -57,21 +57,19 @@ function schedulePhotoLoad56(root){
   try{
    const id=img.dataset.schedulePhoto;
    const index=Number(img.dataset.photoIndex||0);
-   const response=await apiFetch('/api/schedule-photo?id='+encodeURIComponent(id)+'&index='+encodeURIComponent(index));
-   if(!response.ok)throw Error('照片載入失敗');
-   const blob=await response.blob();
-   const url=URL.createObjectURL(blob);
+   const url=await cachedPhoto('/api/schedule-photo?id='+encodeURIComponent(id)+'&index='+encodeURIComponent(index));if(!img.isConnected)return;
    img.src=url;
    img.dataset.zoomUrl=url;
-img.onclick=e=>{
+img.onclick=async e=>{
  e.preventDefault();
  e.stopPropagation();
 
+ let zoomUrl;try{zoomUrl=await cachedPhoto('/api/schedule-photo?id='+encodeURIComponent(id)+'&index='+encodeURIComponent(index));}catch{toast('照片讀取失敗，請重試');return;}
  const overlay=document.createElement('dialog');
  overlay.className='schedule-photo-zoom80';
  overlay.innerHTML=
   '<button type="button" class="schedule-photo-zoom-close80" aria-label="關閉">×</button>'+
-  '<img src="'+img.dataset.zoomUrl+'" alt="工作照片">';
+  '<img src="'+zoomUrl+'" alt="工作照片">';
 
  document.body.appendChild(overlay);
 
