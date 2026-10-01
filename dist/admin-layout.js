@@ -198,7 +198,7 @@ async function notificationDevicesDialog82(){
  '移除'+
 '</button>'+
 
-'</div>'+
+'</div>'
        )).join('')
        :'<p class="muted">尚未開啟通知</p>'
      )+
@@ -506,7 +506,7 @@ async function notificationRuleDialog81(id=''){
   '</div>',
 
   existing81?'儲存修改':'建立通知',
-  aasync fd=>{
+  async fd=>{
  const type=String(fd.get('type')||'');
  const name=String(fd.get('name')||'').trim();
  const title=String(fd.get('title')||'').trim();
