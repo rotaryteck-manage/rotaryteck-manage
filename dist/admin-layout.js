@@ -199,7 +199,7 @@ async function notificationDevicesDialog82(){
 '</button>'+
 
 '</div>'+
-       ).join('')
+       )).join('')
        :'<p class="muted">尚未開啟通知</p>'
      )+
 
