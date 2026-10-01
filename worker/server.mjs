@@ -1,3 +1,4 @@
+import webpush from 'web-push';
 import {validateWorkflowState,workflowChangeAllowed} from './workflows.mjs';
 import {canDeleteProject,projectDeletionAllowed,builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
 import {recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
@@ -199,7 +200,83 @@ export async function employeesApi(request,env){
  if(!env.DB)return json({error:'雲端資料庫尚未就緒'},503);
  try{
   const current=await employeeFor(request,env);if(!current||!permitted(current,'admin.employees'))return json({error:'只有主管可以管理員工權限'},403);
-  if(request.method==='GET'){const result=await env.DB.prepare("SELECT e.id,e.email,e.name,e.role,e.status,e.created_at,e.last_login_at,e.account_user_id,COALESCE(x.profile_id,'') AS profileId FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id").all();return json({items:result.results||[],currentEmployeeId:current.id});}
+if(request.method==='GET'){
+ const url=new URL(request.url);
+
+ if(url.searchParams.get('admin')==='1'){
+  if(!permitted(employee,'admin.settings'))
+   return json({error:'沒有系統通知管理權限'},403);
+
+  const result=await env.DB.prepare(
+   `SELECT
+      e.id AS employee_id,
+      e.name AS employee_name,
+      e.status AS employee_status,
+      p.id AS subscription_id,
+      p.device_label,
+      p.user_agent,
+      p.enabled,
+      p.created_at,
+      p.updated_at,
+      p.last_seen_at,
+      p.last_success_at,
+      p.last_error_at,
+      p.failure_count
+    FROM employees e
+    LEFT JOIN push_subscriptions p
+      ON p.employee_id=e.id
+    WHERE e.status='active'
+    ORDER BY e.name,e.id,p.updated_at DESC`
+  ).all();
+
+  const people=[];
+  const peopleMap=new Map();
+
+  for(const row of result.results||[]){
+   let person=peopleMap.get(String(row.employee_id));
+
+   if(!person){
+    person={
+     id:String(row.employee_id),
+     name:row.employee_name,
+     devices:[]
+    };
+
+    peopleMap.set(String(row.employee_id),person);
+    people.push(person);
+   }
+
+   if(row.subscription_id){
+    person.devices.push({
+     id:row.subscription_id,
+     deviceLabel:row.device_label||'未命名裝置',
+     enabled:Boolean(row.enabled),
+     createdAt:row.created_at||'',
+     updatedAt:row.updated_at||'',
+     lastSeenAt:row.last_seen_at||'',
+     lastSuccessAt:row.last_success_at||'',
+     lastErrorAt:row.last_error_at||'',
+     failureCount:Number(row.failure_count)||0
+    });
+   }
+  }
+
+  return json({people});
+ }
+
+ const result=await env.DB.prepare(
+  `SELECT id,device_label,user_agent,enabled,created_at,
+          updated_at,last_seen_at,last_success_at,
+          last_error_at,failure_count
+     FROM push_subscriptions
+    WHERE employee_id=?
+    ORDER BY updated_at DESC`
+ ).bind(employee.id).all();
+
+ return json({
+  items:result.results||[]
+ });
+}
   if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
   const input=await request.json(),roles=['viewer','warehouse','supervisor'],email=String(input.email||'').trim().toLowerCase(),name=String(input.name||'').trim(),role=String(input.role||''),status=String(input.status||'active');
   check(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email),'請填寫有效的員工信箱');check(name&&name.length<=80,'請填寫員工姓名');check(roles.includes(role),'權限層級不正確');check(['active','disabled'].includes(status),'帳號狀態不正確');
@@ -222,6 +299,7 @@ export async function employeesApi(request,env){
   const id=Number(input.id);check(Number.isSafeInteger(id)&&id>0,'員工編號不正確');const target=await env.DB.prepare('SELECT id,account_user_id,email,role,status FROM employees WHERE id=?').bind(id).first();check(target,'找不到員工');
   if((target.role==='supervisor'&&target.status==='active')&&(role!=='supervisor'||status!=='active')){const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM employees WHERE role='supervisor' AND status='active' AND id<>?").bind(id).first();check(Number(count?.total)>0,'至少必須保留一位啟用中的主管');}
   if(request.method==='PUT'){let accountId=target.account_user_id;if(accountId)await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(accountId),'PUT',{email,email_confirm:true,user_metadata:{name}});else{const redirect=new URL('/?invited=1',request.url).toString(),created=await supabaseAdmin(env,'/auth/v1/invite?redirect_to='+encodeURIComponent(redirect),'POST',{email,data:{name}});accountId=created.id;}await env.DB.prepare('UPDATE employees SET account_user_id=?,email=?,name=?,role=?,status=?,updated_at=? WHERE id=?').bind(accountId||null,email,name,role,status,now,id).run();await setEmployeeProfile(env,id,profileId);return json({updated:true});}
+  
   if(request.method==='DELETE'){if(id===current.id)check(false,'不能刪除目前登入的主管帳號');if(target.account_user_id)await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(target.account_user_id),'DELETE');await env.DB.prepare('DELETE FROM employees WHERE id=?').bind(id).run();await env.DB.prepare('DELETE FROM app_employee_settings WHERE employee_id=?').bind(id).run();return json({deleted:true});}
   return json({error:'不支援的操作'},405);
  }catch(e){console.error('employee request failed',e.message);const status=String(e.message).includes('UNIQUE')?409:400;return json({error:status===409?'此信箱已存在':e.message||'員工設定未完成'},status);}
@@ -288,6 +366,469 @@ export async function images(request,env){
   return json({id:newId,created:new Date().toISOString()});
  }catch(e){console.error('image operation failed',e.message);return json({error:e.status===413?e.message:'圖片操作未完成，請重試'},e.status||500);}
 }
+function pushVapidDetails82(env){
+ const publicKey=String(env.VAPID_PUBLIC_KEY||'').trim();
+ const privateKey=String(env.VAPID_PRIVATE_KEY||'').trim();
+ const subject=String(env.VAPID_SUBJECT||'').trim();
+
+ check(publicKey,'缺少 VAPID_PUBLIC_KEY');
+ check(privateKey,'缺少 VAPID_PRIVATE_KEY');
+ check(subject,'缺少 VAPID_SUBJECT');
+
+ return {
+  subject,
+  publicKey,
+  privateKey
+ };
+}
+
+async function sendPush82(env,subscription,options){
+ const title=String(options.title||'擎正科技').slice(0,100);
+ const message=String(options.message||'您有一則新的系統通知。').slice(0,500);
+ const targetUrl=String(options.targetUrl||'/').slice(0,1000);
+
+ const ruleId=String(options.ruleId||'');
+ const employeeId=Number(options.employeeId);
+ const notificationType=String(options.notificationType||'');
+ const dedupeKey=String(
+  options.dedupeKey||
+  ('manual:'+crypto.randomUUID())
+ );
+
+ const oldDelivery=await env.DB.prepare(
+  'SELECT id,status FROM notification_deliveries WHERE dedupe_key=?'
+ ).bind(dedupeKey).first();
+
+ if(oldDelivery){
+  return {
+   ok:oldDelivery.status==='sent',
+   duplicate:true
+  };
+ }
+
+ const deliveryId=crypto.randomUUID();
+ const createdAt=new Date().toISOString();
+
+ await env.DB.prepare(
+  `INSERT INTO notification_deliveries(
+    id,
+    rule_id,
+    employee_id,
+    subscription_id,
+    notification_type,
+    title,
+    message,
+    target_url,
+    status,
+    dedupe_key,
+    created_at
+   ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+ ).bind(
+  deliveryId,
+  ruleId,
+  employeeId,
+  subscription.id,
+  notificationType,
+  title,
+  message,
+  targetUrl,
+  'pending',
+  dedupeKey,
+  createdAt
+ ).run();
+
+ try{
+  const vapidDetails=pushVapidDetails82(env);
+
+  await webpush.sendNotification(
+   {
+    endpoint:subscription.endpoint,
+    keys:{
+     p256dh:subscription.p256dh,
+     auth:subscription.auth
+    }
+   },
+   JSON.stringify({
+    title,
+    body:message,
+    url:targetUrl,
+    tag:notificationType||undefined
+   }),
+   {
+    TTL:3600,
+    vapidDetails
+   }
+  );
+
+  const sentAt=new Date().toISOString();
+
+  await env.DB.batch([
+   env.DB.prepare(
+    `UPDATE notification_deliveries
+        SET status='sent',
+            sent_at=?,
+            error_message=''
+      WHERE id=?`
+   ).bind(
+    sentAt,
+    deliveryId
+   ),
+
+   env.DB.prepare(
+    `UPDATE push_subscriptions
+        SET last_success_at=?,
+            last_error_at='',
+            failure_count=0,
+            updated_at=?
+      WHERE id=?`
+   ).bind(
+    sentAt,
+    sentAt,
+    subscription.id
+   )
+  ]);
+
+  return {
+   ok:true,
+   deliveryId
+  };
+
+ }catch(error){
+  const failedAt=new Date().toISOString();
+  const statusCode=Number(error?.statusCode||0);
+
+  const errorMessage=String(
+   error?.body||
+   error?.message||
+   '推播發送失敗'
+  ).slice(0,1000);
+
+  await env.DB.prepare(
+   `UPDATE notification_deliveries
+       SET status='failed',
+           error_message=?
+     WHERE id=?`
+  ).bind(
+   errorMessage,
+   deliveryId
+  ).run();
+
+  if(statusCode===404||statusCode===410){
+   await env.DB.prepare(
+    'DELETE FROM push_subscriptions WHERE id=?'
+   ).bind(subscription.id).run();
+
+  }else{
+   await env.DB.prepare(
+    `UPDATE push_subscriptions
+        SET last_error_at=?,
+            failure_count=failure_count+1,
+            updated_at=?
+      WHERE id=?`
+   ).bind(
+    failedAt,
+    failedAt,
+    subscription.id
+   ).run();
+  }
+
+  return {
+   ok:false,
+   deliveryId,
+   statusCode,
+   error:errorMessage
+  };
+ }
+}
+export async function pushTestApi82(request,env){
+ if(request.method!=='POST')
+  return json({error:'不支援的操作'},405);
+
+ if(!hasCredentials(request))
+  return json({error:'請先登入'},401);
+
+ try{
+  const employee=await employeeFor(request,env);
+
+  if(!employee)
+   return json({error:'帳號未啟用'},403);
+
+  if(!permitted(employee,'admin.settings'))
+   return json({error:'沒有系統通知管理權限'},403);
+
+  const input=await boundedJSON(request,4096);
+
+  const employeeId=Number(input.employeeId);
+
+  check(
+   Number.isSafeInteger(employeeId)&&employeeId>0,
+   '請選擇測試通知接收人員'
+  );
+
+  const targetEmployee=await env.DB.prepare(
+   `SELECT id,name
+      FROM employees
+     WHERE id=? AND status='active'`
+  ).bind(employeeId).first();
+
+  check(targetEmployee,'找不到這位員工');
+
+  const result=await env.DB.prepare(
+   `SELECT id,endpoint,p256dh,auth,device_label
+      FROM push_subscriptions
+     WHERE employee_id=?
+       AND enabled=1
+     ORDER BY updated_at DESC`
+  ).bind(employeeId).all();
+
+  const subscriptions=result.results||[];
+
+  check(
+   subscriptions.length>0,
+   '這位員工目前沒有已開啟的通知裝置'
+  );
+
+  const results=[];
+
+  for(const subscription of subscriptions){
+   results.push(
+    await sendPush82(
+     env,
+     subscription,
+     {
+      employeeId,
+      notificationType:'test',
+      title:'擎正科技測試通知',
+      message:'通知功能測試成功。',
+      targetUrl:'/',
+      dedupeKey:
+       'test:'+
+       crypto.randomUUID()+
+       ':'+
+       subscription.id
+     }
+    )
+   );
+  }
+
+  const sent=results.filter(x=>x.ok).length;
+  const failed=results.length-sent;
+
+  return json({
+   employeeName:targetEmployee.name,
+   devices:results.length,
+   sent,
+   failed
+  });
+
+ }catch(error){
+  return json({
+   error:error.message||'測試通知發送失敗'
+  },400);
+ }
+}
+export async function pushPublicKeyApi82(request,env){
+ if(request.method!=='GET')
+  return json({error:'不支援的操作'},405);
+
+ if(!hasCredentials(request))
+  return json({error:'請先登入'},401);
+
+ try{
+  const employee=await employeeFor(request,env);
+
+  if(!employee)
+   return json({error:'帳號未啟用'},403);
+
+  const publicKey=String(env.VAPID_PUBLIC_KEY||'').trim();
+
+  if(!publicKey)
+   return json({error:'通知服務尚未完成金鑰設定'},503);
+
+  return json({publicKey});
+
+ }catch(e){
+  return json({
+   error:e.message||'無法讀取通知設定'
+  },500);
+ }
+}
+export async function pushSubscriptionApi82(request,env){
+ if(!hasCredentials(request))
+  return json({error:'請先登入'},401);
+
+ if(!env.DB)
+  return json({error:'雲端資料庫尚未就緒'},503);
+
+ try{
+  const employee=await employeeFor(request,env);
+
+  if(!employee)
+   return json({error:'帳號未啟用'},403);
+
+  if(request.method==='GET'){
+   const result=await env.DB.prepare(
+    `SELECT id,device_label,user_agent,enabled,created_at,
+            updated_at,last_seen_at,last_success_at,
+            last_error_at,failure_count
+       FROM push_subscriptions
+      WHERE employee_id=?
+      ORDER BY updated_at DESC`
+   ).bind(employee.id).all();
+
+   return json({
+    items:result.results||[]
+   });
+  }
+
+  if(request.headers.get('origin')!==new URL(request.url).origin)
+   return json({error:'來源驗證失敗'},403);
+
+  if(request.method==='POST'){
+   const input=await boundedJSON(request,32768);
+
+   const endpoint=String(input.endpoint||'').trim();
+   const p256dh=String(input.p256dh||'').trim();
+   const auth=String(input.auth||'').trim();
+
+   const deviceLabel=String(
+    input.deviceLabel||''
+   ).trim().slice(0,120);
+
+   const userAgent=String(
+    request.headers.get('user-agent')||''
+   ).slice(0,500);
+
+   check(
+    endpoint.startsWith('https://')&&endpoint.length<=4000,
+    '通知訂閱地址不正確'
+   );
+
+   check(
+    p256dh&&p256dh.length<=500,
+    '通知加密金鑰不正確'
+   );
+
+   check(
+    auth&&auth.length<=500,
+    '通知驗證金鑰不正確'
+   );
+
+   const now=new Date().toISOString();
+
+   const old=await env.DB.prepare(
+    'SELECT id FROM push_subscriptions WHERE endpoint=?'
+   ).bind(endpoint).first();
+
+   const id=old?.id||crypto.randomUUID();
+
+   await env.DB.prepare(
+    `INSERT INTO push_subscriptions(
+      id,employee_id,endpoint,p256dh,auth,
+      device_label,user_agent,enabled,
+      created_at,updated_at,last_seen_at
+     )
+     VALUES(?,?,?,?,?,?,?,1,?,?,?)
+     ON CONFLICT(endpoint) DO UPDATE SET
+      employee_id=excluded.employee_id,
+      p256dh=excluded.p256dh,
+      auth=excluded.auth,
+      device_label=excluded.device_label,
+      user_agent=excluded.user_agent,
+      enabled=1,
+      updated_at=excluded.updated_at,
+      last_seen_at=excluded.last_seen_at,
+      failure_count=0`
+   ).bind(
+    id,
+    employee.id,
+    endpoint,
+    p256dh,
+    auth,
+    deviceLabel,
+    userAgent,
+    now,
+    now,
+    now
+   ).run();
+
+   return json({
+    saved:true,
+    id
+   });
+  }
+if(request.method==='PATCH'){
+ const url=new URL(request.url);
+ const input=await boundedJSON(request,4096);
+
+ const id=String(input.id||'');
+ const enabled=input.enabled===true?1:0;
+
+ check(id,'缺少裝置編號');
+
+ if(url.searchParams.get('admin')==='1'){
+  if(!permitted(employee,'admin.settings'))
+   return json({error:'沒有系統通知管理權限'},403);
+
+  await env.DB.prepare(
+   `UPDATE push_subscriptions
+       SET enabled=?,
+           updated_at=?
+     WHERE id=?`
+  ).bind(
+   enabled,
+   new Date().toISOString(),
+   id
+  ).run();
+
+ }else{
+  await env.DB.prepare(
+   `UPDATE push_subscriptions
+       SET enabled=?,
+           updated_at=?
+     WHERE id=? AND employee_id=?`
+  ).bind(
+   enabled,
+   new Date().toISOString(),
+   id,
+   employee.id
+  ).run();
+ }
+
+ return json({saved:true});
+}
+  if(request.method==='DELETE'){
+ const url=new URL(request.url);
+ const input=await boundedJSON(request,4096);
+ const id=String(input.id||'');
+
+ check(id,'缺少裝置編號');
+
+ if(url.searchParams.get('admin')==='1'){
+  if(!permitted(employee,'admin.settings'))
+   return json({error:'沒有系統通知管理權限'},403);
+
+  await env.DB.prepare(
+   'DELETE FROM push_subscriptions WHERE id=?'
+  ).bind(id).run();
+
+ }else{
+  await env.DB.prepare(
+   'DELETE FROM push_subscriptions WHERE id=? AND employee_id=?'
+  ).bind(id,employee.id).run();
+ }
+
+ return json({deleted:true});
+}
+
+  return json({error:'不支援的操作'},405);
+
+ }catch(e){
+  return json({
+   error:e.message||'通知裝置設定失敗'
+  },400);
+ }
+}
 export async function accessApi(request,env){
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
  if(!hasCredentials(request))return json({error:'請先登入'},401);
@@ -297,7 +838,8 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUpload(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUpload(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
+ return pushSubscriptionApi82(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
  if(!permitted(e,'admin.auditDelete'))return false;
@@ -333,7 +875,7 @@ export function stateChangeAllowed(before,after,e){
    if(prev.materialLogs===undefined)delete p.materialLogs;else p.materialLogs=structuredClone(prev.materialLogs);
   }
  }
- if(permitted(e,'admin.settings'))for(const key of ['appearance','siteText','adminText','wireText','platingText','contentDraft','contentPublished','adminOrder','managementOrder','uiOrder','scheduleText','auditSecurity','adminLayout','appIconSettings','adminSectionOrder']){delete a[key];delete b[key];}
+ if(permitted(e,'admin.settings'))for(const key of ['appearance','siteText','adminText','wireText','platingText','contentDraft','contentPublished','adminOrder','managementOrder','uiOrder','scheduleText','auditSecurity','adminLayout','appIconSettings','adminSectionOrder','notificationRules']){delete a[key];delete b[key];}
  if(permitted(e,'warehouse.purge'))a.deletedProjects=(a.deletedProjects||[]).filter(x=>(b.deletedProjects||[]).some(n=>n.project?.id===x.project?.id)||(b.projects||[]).some(n=>n.id===x.project?.id));
  if(permitted(e,'warehouse.restore')){
   for(const p of b.projects||[])if(!(a.projects||[]).some(x=>x.id===p.id)){const deleted=(a.deletedProjects||[]).find(x=>x.project?.id===p.id);if(deleted&&stableJSON(deleted.project)===stableJSON(p)){a.projects.splice(Math.min(deleted.index??a.projects.length,a.projects.length),0,structuredClone(p));a.deletedProjects=a.deletedProjects.filter(x=>x!==deleted);}}
