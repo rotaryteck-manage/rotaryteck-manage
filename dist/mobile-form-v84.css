@@ -1,0 +1,64 @@
+/* Mobile form controls stay readable without changing the calendar's density. */
+@media (max-width: 700px), (pointer: coarse) {
+ #modal[open] {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: calc(var(--mobile-viewport-top84, 0px) + 10px);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: calc(100% - 20px);
+  max-width: 740px;
+  max-height: calc(var(--mobile-viewport-height84, 100dvh) - 20px);
+  overflow: hidden;
+ }
+ #modal #dialog-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: inherit;
+  overflow: hidden;
+ }
+ #modal .modal-head, #modal .modal-foot {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+ }
+ #modal .modal-head h2 { min-width: 0; overflow-wrap: anywhere; }
+ #modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+ }
+ #modal .field { min-width: 0; overflow-wrap: anywhere; }
+ #modal .form-grid { grid-template-columns: minmax(0, 1fr); }
+ #modal input, #modal select, #modal textarea {
+  font-family: inherit;
+  font-size: 16px !important;
+  line-height: 1.5;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+ }
+ #modal .field input, #modal .field select, #modal .field textarea { width: 100%; }
+ #modal textarea {
+  min-height: 112px;
+  resize: vertical;
+  padding: 10px 12px;
+  color: #365039;
+  background: #fff;
+  border: 1px solid #c9d7c6;
+  border-radius: 6px;
+ }
+ #modal .modal-foot { flex-wrap: wrap; }
+ #modal .modal-foot button { min-height: 44px; }
+}

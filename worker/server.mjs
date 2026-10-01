@@ -223,7 +223,7 @@ if(request.method==='GET'){const result=await env.DB.prepare("SELECT e.id,e.emai
   const id=Number(input.id);check(Number.isSafeInteger(id)&&id>0,'員工編號不正確');const target=await env.DB.prepare('SELECT id,account_user_id,email,role,status FROM employees WHERE id=?').bind(id).first();check(target,'找不到員工');
   if((target.role==='supervisor'&&target.status==='active')&&(role!=='supervisor'||status!=='active')){const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM employees WHERE role='supervisor' AND status='active' AND id<>?").bind(id).first();check(Number(count?.total)>0,'至少必須保留一位啟用中的主管');}
   if(request.method==='PUT'){let accountId=target.account_user_id;if(accountId)await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(accountId),'PUT',{email,email_confirm:true,user_metadata:{name}});else{const redirect=new URL('/?invited=1',request.url).toString(),created=await supabaseAdmin(env,'/auth/v1/invite?redirect_to='+encodeURIComponent(redirect),'POST',{email,data:{name}});accountId=created.id;}await env.DB.prepare('UPDATE employees SET account_user_id=?,email=?,name=?,role=?,status=?,updated_at=? WHERE id=?').bind(accountId||null,email,name,role,status,now,id).run();await setEmployeeProfile(env,id,profileId);return json({updated:true});}
-  
+
   if(request.method==='DELETE'){if(id===current.id)check(false,'不能刪除目前登入的主管帳號');if(target.account_user_id)await supabaseAdmin(env,'/auth/v1/admin/users/'+encodeURIComponent(target.account_user_id),'DELETE');await env.DB.prepare('DELETE FROM employees WHERE id=?').bind(id).run();await env.DB.prepare('DELETE FROM app_employee_settings WHERE employee_id=?').bind(id).run();return json({deleted:true});}
   return json({error:'不支援的操作'},405);
  }catch(e){console.error('employee request failed',e.message);const status=String(e.message).includes('UNIQUE')?409:400;return json({error:status===409?'此信箱已存在':e.message||'員工設定未完成'},status);}
@@ -551,6 +551,18 @@ export async function pushTestApi82(request,env){
   },400);
  }
 }
+export async function validatePushPublicKey83(value){
+ const key=String(value||'').trim();
+ if(!/^[A-Za-z0-9_-]{87}$/.test(key))return false;
+ try{
+  const raw=atob(key.replace(/-/g,'+').replace(/_/g,'/')+'=');
+  const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+  if(bytes.length!==65||bytes[0]!==4)return false;
+  await crypto.subtle.importKey('raw',bytes,
+   {name:'ECDSA',namedCurve:'P-256'},false,['verify']);
+  return true;
+ }catch{return false;}
+}
 export async function pushPublicKeyApi82(request,env){
  if(request.method!=='GET')
   return json({error:'不支援的操作'},405);
@@ -568,6 +580,9 @@ export async function pushPublicKeyApi82(request,env){
 
   if(!publicKey)
    return json({error:'通知服務尚未完成金鑰設定'},503);
+
+  if(!await validatePushPublicKey83(publicKey))
+   return json({error:'通知公鑰設定不完整或無效，請主管確認 VAPID_PUBLIC_KEY 後重新部署'},503);
 
   return json({publicKey});
 
