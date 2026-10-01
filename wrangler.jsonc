@@ -5,6 +5,10 @@
   "compatibility_date": "2026-09-21",
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
+  "vars": {
+    "VAPID_PUBLIC_KEY": "BJkPpQIVDy5L10NHyRSWGCgxiJAJIkCDtGqj14m6951GWFnr",
+    "VAPID_SUBJECT": "mailto:ruirui222555@gmail.com"
+  },
   "triggers": {"crons": ["0 * * * *"]},
   "observability": {
     "enabled": true
