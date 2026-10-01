@@ -33,11 +33,11 @@ test('notification enable waits for an active worker and validates key before su
    calls.push('subscribe');assert.equal(options.applicationServerKey.length,65);
    return {toJSON:()=>({endpoint:'https://push.example.test/1',keys:{p256dh:'public',auth:'auth'}})};
   }}};
-  const ctx=vm.createContext({atob,Uint8Array,crypto:webcrypto,console:{error(){}},
+  const ctx=vm.createContext({atob,Uint8Array,setTimeout,clearTimeout,localStorage:{setItem(){},getItem(){return null}},crypto:webcrypto,console:{error(){}},
    navigator:{userAgent:'Android Chrome',serviceWorker:{register:async()=>{calls.push('register');return {}},ready:Promise.resolve(registration)}},
    window:{PushManager:{},Notification:{}},Notification:{permission:'default',requestPermission:()=>{calls.push('permission');return Promise.resolve('granted')}},
    document:{querySelector:()=>null},toast:text=>toasts.push(text),
-   apiFetch:async(url)=>{calls.push(url);return {ok:true,json:async()=>url.endsWith('push-public-key')?{publicKey:key}:{ok:true}}}
+   apiFetch:async(url)=>{calls.push(url);return {ok:true,json:async()=>url.endsWith('push-public-key')?{publicKey:key}:{ok:true,enabled:true,id:'test'}}}
   });
   const source=read('dist/notifications-v82.js');
   vm.runInContext(source.slice(0,source.indexOf('function notificationAddButton82')),ctx);

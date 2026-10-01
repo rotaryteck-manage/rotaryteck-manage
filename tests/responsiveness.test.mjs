@@ -33,7 +33,7 @@ test('all authentication and API requests have finite timeout signals',async()=>
 test('modal submission prevents duplicate requests and unlocks after failure',async()=>{
  const box={textContent:''},button={textContent:'儲存'},form={dataset:{},querySelector:s=>s==='#form-error'?box:button};
  const nodes={'#modal':{open:false,showModal(){this.open=true;},close(){}},'#close-modal':{},'#cancel-modal':{},'#dialog-form':form};
- const ctx={$:s=>nodes[s],FormData:class{},};vm.runInNewContext(app.slice(app.indexOf('function modal('),app.indexOf('async function templateDownload(')),ctx);
+ const ctx={esc:String,$:s=>nodes[s],FormData:class{},};vm.runInNewContext(app.slice(app.indexOf('function modal('),app.indexOf('async function templateDownload(')),ctx);
  let calls=0,reject;ctx.modal('title','body','save',async()=>{calls++;await new Promise((_,r)=>reject=r);});
  const event={preventDefault(){},currentTarget:form};const pending=form.onsubmit(event);await form.onsubmit(event);assert.equal(calls,1);assert.equal(button.disabled,true);
  reject(Error('測試失敗'));await pending;assert.equal(button.disabled,false);assert.equal(box.textContent,'測試失敗');

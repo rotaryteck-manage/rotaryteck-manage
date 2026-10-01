@@ -6,7 +6,7 @@ const source=fs.readFileSync(new URL('../dist/navigation.js',import.meta.url),'u
 function setup(){
  const nodes={};const element=()=>({children:[],dataset:{},setAttribute(){},append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},remove(){this.removed=true;}});
  const ctx={caseSectionExpanded:true,warehouseExpanded:true,currentUser:{role:'supervisor'},siteText:x=>x,config:()=>({pages:[{id:'new',title:'設備管理',blocks:[]}]}),location:{hash:''},captureDraft(){ctx.captured++;},captured:0,render(){for(const name of ['main','.demo','.case-workspace','.warehouse-fold','.audit-fold'])nodes[name]=element();},renderContent(){},routeAdmin(){},cloudReady:true,renderAdmin(){ctx.admin=true;},$:s=>nodes[s],document:{createElement:element,querySelectorAll:()=>[]},history:{replaceState(a,b,hash){ctx.location.hash=hash;}},window:{},isAdmin:()=>true};
- vm.createContext(ctx);vm.runInContext(source,ctx);return{ctx,nodes};
+ ctx.canAdmin75=()=>ctx.currentUser.role==='supervisor';ctx.canDo=cap=>cap==='audit.view'||cap.startsWith('admin.')?ctx.currentUser.role==='supervisor':true;vm.createContext(ctx);vm.runInContext(source,ctx);return{ctx,nodes};
 }
 test('navigation presents only selected section and preserves route after rerender',()=>{
  const {ctx,nodes}=setup();ctx.render();assert.equal(nodes['.case-workspace'].removed,undefined);assert.equal(nodes['.warehouse-fold'].removed,true);

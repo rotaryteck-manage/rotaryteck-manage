@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {stateChangeAllowed} from '../worker/server.mjs';
 const before={projects:[],logs:[{id:'a',actor:'A',action:'新增',detail:'test'},{id:'b',actor:'B',action:'修改',detail:'test'}],wireTypes:[],wireReels:[],wireCuts:[]};
-test('warehouse/supervisor may remove one text log without changing application data',()=>{for(const role of ['warehouse','supervisor'])assert.equal(stateChangeAllowed(before,{...before,logs:[before.logs[1]]},{role,name:'C',permissions:[]}),true);});
+test('warehouse/supervisor may remove one text log without changing application data',()=>{for(const role of ['warehouse','supervisor'])assert.equal(stateChangeAllowed(before,{...before,logs:[before.logs[1]]},{role,name:'C',permissions:['admin.auditDelete']}),true);});
 test('ordinary employee cannot delete a text log',()=>{assert.equal(stateChangeAllowed(before,{...before,logs:[before.logs[1]]},{role:'viewer',name:'C',permissions:[]}),false);});
 test('warehouse text deletion cannot edit retained logs, erase all logs, or modify data in same request',()=>{const e={role:'warehouse',name:'C',permissions:[]};assert.equal(stateChangeAllowed(before,{...before,logs:[{...before.logs[1],detail:'forged'}]},e),false);assert.equal(stateChangeAllowed(before,{...before,logs:[]},e),false);assert.equal(stateChangeAllowed(before,{...before,projects:[{id:'forged'}],logs:[before.logs[1]]},e),false);});
 import {database} from './helpers/d1.mjs';
@@ -16,6 +16,6 @@ test('real API persists warehouse text deletion; rejects viewer and stale replay
  const read=async role=>(await api(req(role),env)).json();const save=(role,data,next)=>api(req(role,{storageVersion:2,requestId:crypto.randomUUID(),changes:diffRecords(data.state,next,data.versions)}),env);
  let data=await read('supervisor'),next=structuredClone(data.state);next.logs=[{id:'a',actor:'A',action:'新增',time:new Date().toISOString(),detail:'文字',project:'wire:w'},{id:'b',actor:'B',action:'修改',time:new Date().toISOString(),detail:'文字',project:'wire:w'}];assert.equal((await save('supervisor',data,next)).status,200);
  data=await read('viewer');next=structuredClone(data.state);next.logs.shift();assert.equal((await save('viewer',data,next)).status,403);
- data=await read('warehouse');next=structuredClone(data.state);next.logs.shift();assert.equal((await save('warehouse',data,next)).status,200);assert.equal((await read('warehouse')).state.logs.length,1);assert.equal((await save('warehouse',data,next)).status,409);
+ db.prepare('INSERT OR REPLACE INTO app_permission_profiles VALUES(?,?,?)').run('warehouse','倉管',JSON.stringify(['admin.view','admin.auditDelete','audit.view','warehouse.view','wire.view']));data=await read('warehouse');next=structuredClone(data.state);next.logs.shift();assert.equal((await save('warehouse',data,next)).status,200);assert.equal((await read('warehouse')).state.logs.length,1);assert.equal((await save('warehouse',data,next)).status,409);
  }finally{globalThis.fetch=original;}
 });

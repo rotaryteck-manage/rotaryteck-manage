@@ -29,5 +29,5 @@ test('password setup remains mandatory after refreshing an invite or recovery li
 });
 test('logout clears unfinished email action markers',()=>{
  const source=fs.readFileSync(new URL('../dist/auth.js',import.meta.url),'utf8');
- assert.match(source,/function logout\(\)\{authWrite\(null\);history\.replaceState\(null,'',location\.pathname\);showLogin/);
+ assert.match(source,/async function logout\(\)[\s\S]*authWrite\(null\);history\.replaceState\(null,'',location\.pathname\);showLogin/);
 });

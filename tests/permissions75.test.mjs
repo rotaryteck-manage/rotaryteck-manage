@@ -1,10 +1,11 @@
+import {migrations85} from './helpers/migrations85.mjs';
 import {builtinProfiles,migratePermissions75,ensurePermissions,employeePermissions} from '../worker/wire-permissions.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi} from './helpers/schedule85.mjs';
 import {validateWorkflowState,workflowChangeAllowed,preparedQuantity} from '../worker/workflows.mjs';
 import {stateChangeAllowed} from '../worker/server.mjs';
 function fixture(){
@@ -16,7 +17,7 @@ function fixture(){
  const send=(body,user=boss,method='POST',origin='https://t.local')=>scheduleApi(new Request('https://t.local/api/schedule',{method,headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)}),{DB},user);
  const get=(from='2026-09-01',to='2026-10-31')=>scheduleApi(new Request('https://t.local/api/schedule?from='+from+'&to='+to),{DB},boss);
  const leave={kind:'leave',id:'l',revision:0,start:'2026-09-30T13:00',end:'2026-10-02T00:00',people:['1','2'],reason:'事假'};
- return{db,DB,boss,send,get,leave};
+ migrations85(db);return{db,DB,boss,send,get,leave};
 }
 test('warehouse dates are independent; role alone never grants dates or unrelated edits',()=>{
  const before={projects:[{id:'p',name:'P',parts:[{id:'i',need:1,sets:1,received:2}],inventory:{i:2}}],logs:[]};
@@ -110,7 +111,7 @@ test('text daily and weekly access are separate and deletion is separately grant
 test('saved profiles migrate once and revoked grants are never added back on login',async()=>{
  const {db,DB}=fixture();
  db.exec('ALTER TABLE app_employee_settings ADD COLUMN profile_id TEXT NOT NULL DEFAULT ""');
- db.exec('CREATE TABLE app_permission_profiles(id TEXT PRIMARY KEY,name TEXT,permissions TEXT)');
+ db.exec('CREATE TABLE IF NOT EXISTS app_permission_profiles(id TEXT PRIMARY KEY,name TEXT,permissions TEXT)');
  db.prepare('INSERT INTO app_permission_profiles VALUES(?,?,?)').run('warehouse','倉管',JSON.stringify(['warehouse.view','warehouse.stock']));
  await ensurePermissions({DB});
  let p=JSON.parse(db.prepare("SELECT permissions FROM app_permission_profiles WHERE id='warehouse'").get().permissions);

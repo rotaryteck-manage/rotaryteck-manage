@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {database} from './helpers/d1.mjs';
-import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from './helpers/schedule85.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 import {validateWorkflowState} from '../worker/workflows.mjs';
 

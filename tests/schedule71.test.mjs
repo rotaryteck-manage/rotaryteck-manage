@@ -1,9 +1,10 @@
+import {migrations85} from './helpers/migrations85.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from './helpers/schedule85.mjs';
 const shift=(day,n)=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
 function fixture(){
  const db=new DatabaseSync(':memory:');
@@ -13,7 +14,7 @@ function fixture(){
  const boss={id:1,name:'主管',role:'supervisor',permissions:['schedule.view','schedule.weekly','schedule.daily']},warehouse={...boss,role:'warehouse',permissions:['schedule.view','schedule.daily']};
  const send=(body,user=boss)=>scheduleApi(new Request('https://test.local/api/schedule',{method:'POST',headers:{origin:'https://test.local','content-type':'application/json'},body:JSON.stringify(body)}),{DB},user);
  const item=(id,kind='daily',revision=0)=>({id,kind,revision,day:'2026-09-29',endDay:'2026-09-29',title:id,category:'["製作"]',sortIndex:1,assignee:'["黃瑞麟"]',note:'',color:'#ffbbbb'});
- return{db,DB,send,item,boss,warehouse};
+ migrations85(db);return{db,DB,send,item,boss,warehouse};
 }
 test('copy is idempotent, reset preserves cross-week portions and reports',async()=>{
  const {db,send,item,warehouse}=fixture();await send({kind:'batch',entries:[{...item('s','weekly'),day:'2026-09-21',endDay:'2026-09-27'}]});

@@ -1,15 +1,16 @@
+import {migrations85} from './helpers/migrations85.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {database} from './helpers/d1.mjs';
-import {scheduleApi as raw_scheduleApi,schedulePhotoUpload as raw_schedulePhotoUpload,scheduleMaterialUpload as raw_scheduleMaterialUpload,scheduleMaterialPhotoApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi,schedulePhotoUpload as raw_schedulePhotoUpload,scheduleMaterialUpload as raw_scheduleMaterialUpload,scheduleMaterialPhotoApi} from './helpers/schedule85.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 
 test('daily report needs an assigned job and an uploaded photo, with no text-only residue',async()=>{
  const {db,DB}=database();db.exec(fs.readFileSync(new URL('../drizzle/0004_schedule.sql',import.meta.url),'utf8'));db.exec(fs.readFileSync(new URL('../drizzle/0008_schedule_material_photos.sql',import.meta.url),'utf8'));db.exec(fs.readFileSync(new URL('../drizzle/0009_schedule_material_project.sql',import.meta.url),'utf8'));
  db.exec("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision) VALUES ('work-1','daily','2026-09-29','2026-09-29','FAA','[\"小明\"]','#4e8069','','[\"組裝\"]',0,'','1','主管','now','now',1)");
- const objects=new Map(),UPLOADS={put:async(key,file)=>{objects.set(key,file)},delete:async key=>{objects.delete(key)}},env={DB,UPLOADS},origin='https://example.test',user={id:2,name:'小明',role:'viewer',permissions:builtinProfiles[2].permissions},other={...user,id:3,name:'小華'};
+ migrations85(db);db.exec("INSERT INTO employees(id,email,name,role,status,created_at,updated_at) VALUES(2,'min@t.test','小明','viewer','active','now','now')");const objects=new Map(),UPLOADS={put:async(key,file)=>{objects.set(key,file)},delete:async key=>{objects.delete(key)}},env={DB,UPLOADS},origin='https://example.test',user={id:2,name:'小明',role:'viewer',permissions:builtinProfiles[2].permissions},other={...user,id:3,name:'小華'};
  const json=body=>scheduleApi(new Request(origin+'/api/schedule',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)}),env,user);
  assert.equal((await json({kind:'report',id:'old-way',entryId:'work-1',day:'2026-09-29',body:'完成'})).status,400);
  const upload=(person,{id='report-1',photo=true,entryId='work-1'}={})=>{const form=new FormData();for(const [key,value]of Object.entries({mode:'create',id,day:'2026-09-29',entryId,body:'完成組裝'}))form.append(key,value);if(photo)form.append('photo',new File(['picture'],'job.png',{type:'image/png'}));return schedulePhotoUpload(new Request(origin+'/api/schedule-photo-upload',{method:'POST',headers:{origin},body:form}),env,person)};
@@ -22,12 +23,12 @@ test('daily report needs an assigned job and an uploaded photo, with no text-onl
  assert.equal((await upload(user,{id:'report-1'})).status,400);assert.equal(objects.size,1);
 });
 
-test('daily calendar has separate work and chat links, even before the first report',()=>{
+test('daily calendar has one combined work/chat entry and compact material links',()=>{
  const source=fs.readFileSync(new URL('../dist/schedule-v67.js',import.meta.url),'utf8'),root={innerHTML:'',querySelectorAll:()=>[]},entries=[{id:'work-1',kind:'daily',day:'2026-09-29',end_day:'2026-09-29',title:'FAA',assignee:'["小明"]',category:'["組裝"]'},...Array.from({length:7},(_,i)=>({id:'material-'+i,kind:'material',day:'2026-09-29',project_name:'案件'+(i+1),title:'內部料件'+i}))];
  const context={scheduleDraw56(){},scheduleDayRecord56(){},scheduleReportDialog56(){},scheduleMaterialDialog61(){},scheduleData56:{entries,reports:[],people:[{name:'小明'}]},scheduleTab56:'daily',scheduleAnchor56:'2026-09-29',scheduleMonth56:()=> '2026-09-01',scheduleShift56:(day,n)=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)},scheduleMaterial56:()=>[],scheduleEsc56:String,scheduleDecorate60(){},$:()=>root};
  vm.runInNewContext(source,context);vm.runInNewContext('scheduleDraw56()',context);
- assert.match(root.innerHTML,/data-day-jobs="2026-09-29">工作紀錄/);assert.match(root.innerHTML,/data-day-reports="2026-09-29">工作回報/);
- assert.equal((root.innerHTML.match(/data-day-material-id=/g)||[]).length,7);assert.match(root.innerHTML,/data-day-material-id="material-0"[^>]*>案件1</);assert.doesNotMatch(root.innerHTML,/內部料件/);
+ assert.match(root.innerHTML,/data-day-jobs="2026-09-29">工作紀錄/);assert.doesNotMatch(root.innerHTML,/data-day-reports=/);
+ assert.equal((root.innerHTML.match(/data-day-material-id=/g)||[]).length,7);assert.match(root.innerHTML,/data-day-material-id="material-0"[^>]*>案件1內部料件0</);assert.match(root.innerHTML,/內部料件/);
  assert.doesNotMatch(root.innerHTML,/FAA/);assert.doesNotMatch(root.innerHTML,/data-day-reports="2026-09-28"/);
 });
 

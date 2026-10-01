@@ -1,9 +1,10 @@
+import {migrations85} from './helpers/migrations85.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi as raw_scheduleApi,scheduleUnique73} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi,scheduleUnique73} from './helpers/schedule85.mjs';
 import {validateWorkflowState,workflowChangeAllowed,preparedQuantity} from '../worker/workflows.mjs';
 import {stateChangeAllowed} from '../worker/server.mjs';
 function fixture(){
@@ -15,7 +16,7 @@ function fixture(){
  const send=(body,user=boss,method='POST',origin='https://t.local')=>scheduleApi(new Request('https://t.local/api/schedule',{method,headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)}),{DB},user);
  const get=(from='2026-09-01',to='2026-10-31')=>scheduleApi(new Request('https://t.local/api/schedule?from='+from+'&to='+to),{DB},boss);
  const leave={kind:'leave',id:'l',revision:0,start:'2026-09-30T13:00',end:'2026-10-02T00:00',people:['1','2'],reason:'事假'};
- return{db,DB,boss,send,get,leave};
+ migrations85(db);return{db,DB,boss,send,get,leave};
 }
 
 function weekly(db,id,people,extra={}){const e={day:'2026-09-21',end:'2026-09-25',title:'FAA',color:'#d4d4d4',note:'',...extra};db.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES(?,'weekly',?,?,?,?,?,?,'[\"製作\"]',0,'','1','主管','now','now',1,0)").run(id,e.day,e.end,e.title,JSON.stringify(people),e.color,e.note);}

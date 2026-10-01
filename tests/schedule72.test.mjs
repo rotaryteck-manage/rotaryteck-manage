@@ -1,9 +1,10 @@
+import {migrations85} from './helpers/migrations85.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {DatabaseSync} from 'node:sqlite';
-import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from './helpers/schedule85.mjs';
 import {validateWorkflowState,workflowChangeAllowed,preparedQuantity} from '../worker/workflows.mjs';
 import {stateChangeAllowed} from '../worker/server.mjs';
 function fixture(){
@@ -15,7 +16,7 @@ function fixture(){
  const send=(body,user=boss,method='POST',origin='https://t.local')=>scheduleApi(new Request('https://t.local/api/schedule',{method,headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)}),{DB},user);
  const get=(from='2026-09-01',to='2026-10-31')=>scheduleApi(new Request('https://t.local/api/schedule?from='+from+'&to='+to),{DB},boss);
  const leave={kind:'leave',id:'l',revision:0,start:'2026-09-30T13:00',end:'2026-10-02T00:00',people:['1','2'],reason:'事假'};
- return{db,DB,boss,send,get,leave};
+ migrations85(db);return{db,DB,boss,send,get,leave};
 }
 test('multi-person cross-month leave persists; retry is idempotent; editing and deletion require revision',async()=>{
  const {db,send,get,leave}=fixture();let r=await send(leave);assert.equal(r.status,200,await r.clone().text());assert.equal((await(await send(leave)).json()).already,true);assert.equal(db.prepare('SELECT count(*) n FROM schedule_leave72').get().n,1);

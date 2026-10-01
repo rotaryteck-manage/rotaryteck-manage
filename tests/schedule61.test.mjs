@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {database} from './helpers/d1.mjs';
-import {scheduleApi as raw_scheduleApi} from '../worker/schedule.mjs';
+import {scheduleApi as raw_scheduleApi} from './helpers/schedule85.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
 
 test('warehouse can schedule daily work and register materials, while only supervisors write weekly notes',async()=>{
