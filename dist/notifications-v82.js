@@ -14,13 +14,19 @@ async function notificationRegisterServiceWorker82(){
 }
 
 function notificationKey82(base64String){
+ base64String=String(base64String||'').trim();
+ if(!/^[A-Za-z0-9_-]{87}$/.test(base64String))
+  throw Error('通知公鑰設定不完整，請主管確認 VAPID_PUBLIC_KEY 後重新部署');
  const padding='='.repeat((4-base64String.length%4)%4);
  const base64=(base64String+padding)
   .replace(/-/g,'+')
   .replace(/_/g,'/');
 
  const raw=atob(base64);
- return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+ const bytes=Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+ if(bytes.length!==65||bytes[0]!==4)
+  throw Error('通知公鑰格式錯誤，請主管確認 VAPID_PUBLIC_KEY 後重新部署');
+ return bytes;
 }
 
 function notificationDeviceLabel82(){
@@ -112,12 +118,6 @@ async function notificationEnable82(){
  }
 
  try{
-  const registration=
-   await notificationRegisterServiceWorker82();
-
-  if(!registration)
-   throw Error('無法啟動通知服務');
-
   let permission=Notification.permission;
 
   if(permission!=='granted'){
@@ -130,6 +130,10 @@ async function notificationEnable82(){
    return;
   }
 
+  const registered=await notificationRegisterServiceWorker82();
+  if(!registered)throw Error('無法啟動通知服務');
+  const registration=await navigator.serviceWorker.ready;
+
   const keyResponse=
    await apiFetch('/api/push-public-key');
 
@@ -139,6 +143,14 @@ async function notificationEnable82(){
   if(!keyResponse.ok)
    throw Error(keyData.error||'無法讀取通知金鑰');
 
+  const applicationServerKey=notificationKey82(keyData.publicKey);
+  try{
+   await crypto.subtle.importKey('raw',applicationServerKey,
+    {name:'ECDSA',namedCurve:'P-256'},false,['verify']);
+  }catch{
+   throw Error('通知公鑰無效，請主管確認 VAPID_PUBLIC_KEY 後重新部署');
+  }
+
   let subscription=
    await registration.pushManager.getSubscription();
 
@@ -146,8 +158,7 @@ async function notificationEnable82(){
    subscription=
     await registration.pushManager.subscribe({
      userVisibleOnly:true,
-     applicationServerKey:
-      notificationKey82(keyData.publicKey)
+     applicationServerKey
     });
   }
 
@@ -159,7 +170,9 @@ async function notificationEnable82(){
 
  }catch(error){
   console.error(error);
-  toast(error.message||'開啟通知失敗');
+  toast(error.name==='InvalidAccessError'
+   ?'通知金鑰設定不正確，請主管確認後重新部署'
+   :(error.message||'開啟通知失敗'));
  }
 }
 

@@ -243,6 +243,9 @@ scheduleReportDialog56=function(day){
   renderPreview();
  };
 
+ // Camera and gallery both append to this same queue; no synthetic FileList needed.
+ input.scheduleAddPhotos83=addPhotos;
+
  dialog.querySelector('[name=day]').onchange=e=>{
   dialog.querySelector('[name=entryId]').innerHTML=choices(e.target.value);
  };
