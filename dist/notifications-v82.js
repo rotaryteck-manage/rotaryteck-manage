@@ -203,6 +203,11 @@ async function notificationUpdateButton82(){
 
  if(Notification.permission==='granted'&&subscription){
   try{
+   const keyResponse=await apiFetch('/api/push-public-key'),keyData=await keyResponse.json();if(!keyResponse.ok)throw Error(keyData.error);
+   const expected=notificationKey82(keyData.publicKey),current=subscription.options?.applicationServerKey?new Uint8Array(subscription.options.applicationServerKey):null;
+   if(current&&(current.length!==expected.length||current.some((value,index)=>value!==expected[index]))){await subscription.unsubscribe();button.textContent='金鑰已更新，請重新開啟通知';button.classList.remove('selected');button.disabled=false;return;}
+  }catch{}
+  try{
    const response=await apiFetch('/api/push-subscription'),data=await response.json();if(!response.ok)throw Error(data.error);
    const device=(data.items||[]).find(d=>d.id===localStorage.getItem('notification-device85'));
    if(!device){try{await subscription.unsubscribe()}catch{}localStorage.removeItem('notification-device85');button.textContent='開啟通知';button.classList.remove('selected');}

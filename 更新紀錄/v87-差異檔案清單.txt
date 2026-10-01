@@ -1,0 +1,25 @@
+v87 差異更新檔案清單
+
+部署與設定
+- build.mjs
+- wrangler.jsonc
+
+前端
+- dist/enhancements-v85.js
+- dist/enhancements-v86.css
+- dist/notifications-v82.js
+
+後端
+- worker/server.mjs
+- dist/server/index.js（標準建置成品）
+
+測試
+- tests/v87.test.mjs
+
+更新紀錄
+- 更新紀錄/UPDATE-v87.txt
+- 更新紀錄/v87-驗收步驟.txt
+- 更新紀錄/v87-測試結果.txt
+- 更新紀錄/v87-差異檔案清單.txt
+
+本包沒有完整v86舊檔、沒有node_modules、沒有資料庫遷移、沒有任何私鑰。

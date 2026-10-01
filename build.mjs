@@ -22,10 +22,10 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v
  '<script src="enhancements-v81.js?v=83" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v81.css?v=81">'+
  '<script src="mobile-form-v84.js?v=84" defer></script>'+
- '<script src="enhancements-v85.js?v=85" defer></script>'+
+ '<script src="enhancements-v85.js?v=87" defer></script>'+
  '<script src="enhancements-v86.js?v=86" defer></script>'+
  '<link rel="stylesheet" href="controls-v85.css?v=85">'+
- '<link rel="stylesheet" href="enhancements-v86.css?v=86">'+
+ '<link rel="stylesheet" href="enhancements-v86.css?v=87">'+
  '<link rel="stylesheet" href="mobile-form-v84.css?v=84">'+
  '</head>'
 );

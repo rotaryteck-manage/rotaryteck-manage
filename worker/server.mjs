@@ -651,8 +651,20 @@ export async function pushSubscriptionApi82(request,env){
  }catch(e){return json({error:e.message||'通知設定失敗'},400);}
 }
 export async function notificationLogApi85(request,env){
- if(request.method!=='GET')return json({error:'不支援的操作'},405);const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
- const rows=await env.DB.prepare('SELECT d.id,d.notification_type,d.title,d.message,d.status,d.created_at,d.sent_at,d.error_message,e.name AS employee_name FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id ORDER BY d.created_at DESC LIMIT 100').all();return json({items:rows.results});
+ const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
+ if(request.method==='GET'){const rows=await env.DB.prepare('SELECT d.id,d.notification_type,d.title,d.message,d.status,d.created_at,d.sent_at,d.error_message,e.name AS employee_name FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id ORDER BY d.created_at DESC LIMIT 100').all();return json({items:rows.results});}
+ if(request.method!=='DELETE')return json({error:'不支援的操作'},405);
+ if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
+ try{
+  const input=await boundedJSON(request,4096);let statement;
+  if(typeof input.id==='string'&&input.id){check(input.id.length<=100,'通知紀錄編號不正確');statement=env.DB.prepare('DELETE FROM notification_deliveries WHERE id=?').bind(input.id);}
+  else if(input.scope==='failed')statement=env.DB.prepare("DELETE FROM notification_deliveries WHERE status='failed'");
+  else if(input.scope==='all')statement=env.DB.prepare('DELETE FROM notification_deliveries');
+  else return json({error:'請選擇要刪除的通知紀錄'},400);
+  const result=await statement.run(),deleted=Number(result.meta?.changes)||0;
+  if(input.id&&!deleted)return json({error:'通知紀錄已不存在，請重新載入'},404);
+  return json({deleted});
+ }catch(error){return json({error:error.message||'通知紀錄刪除失敗'},400);}
 }
 export async function runNotifications85(env,now=Date.now()){
  const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[];if(!rules.some(r=>r.enabled))return;
