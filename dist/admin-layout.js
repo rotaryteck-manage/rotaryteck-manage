@@ -170,7 +170,7 @@ async function notificationDevicesDialog82(){
 
      (
       devices.length
-       ?devices.map(device=>
+       ?devices.map(device=>(
         '<div class="admin-row">'+
          '<div>'+
           '<strong>'+
