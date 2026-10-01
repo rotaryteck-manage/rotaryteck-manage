@@ -1,4 +1,13 @@
 import fs from 'node:fs';
+import {ECDH} from 'node:crypto';
+// Fail the build before a truncated/invalid public key can be deployed again.
+const vapidKey=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8')).vars?.VAPID_PUBLIC_KEY;
+if(vapidKey){
+ const bytes=Buffer.from(vapidKey,'base64url');
+ if(!/^[A-Za-z0-9_-]{87}$/.test(vapidKey)||bytes.length!==65||bytes[0]!==4)
+  throw Error('VAPID_PUBLIC_KEY 不完整，請設定完整的 87 字元公開金鑰');
+ try{ECDH.convertKey(bytes,'prime256v1');}catch{throw Error('VAPID_PUBLIC_KEY 不是有效的 P-256 公開金鑰');}
+}
 const workflows=fs.readFileSync('worker/workflows.mjs','utf8').replace(/^export /gm,'');
 fs.writeFileSync('dist/workflows.js',workflows);
 const codec=fs.readFileSync('worker/state-codec.mjs','utf8').replace(/^export /gm,'');
@@ -6,10 +15,10 @@ fs.writeFileSync('dist/state-codec.js',codec);
 const names=['notifications-v82.js','sw.js','enhancements-v81.js','enhancements-v81.css','mobile-v78.js','mobile-v78.css','enhancements-v76.js','enhancements-v76.css','enhancements-v75.js','enhancements-v73.js','enhancements-v73.css','enhancements-v72.js','enhancements-v72.css','enhancements-v71.js','enhancements-v71.css','manifest.webmanifest','schedule.js','schedule.css','records-export.js','schedule-v60.js','schedule-v63.js','schedule-v67.js','index.html','workflows.js','workflow-ui.js','appearance.js','ui-catalog44.js','release44.css','app.js','style.css','xlsx.full.min.js','favicon.svg','auth.js','cloud.js','admin.js','admin.css','uploads.js','cases.js','audit.js','roles.js','navigation.js','plating.js','state-codec.js','admin-layout.js','plating-ledger.js','wire.js','permissions.js','wire.css','sorting.js','photos.js','controls.css','bulk.js','warehouse-view.js','audit-view.js','warehouse-view.css'];
 const types={webmanifest:'application/manifest+json; charset=utf-8',html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml'};
 const assets=Object.fromEntries(names.map(n=>['/'+n,{body:fs.readFileSync('dist/'+n,'utf8'),type:types[n.split('.').pop()]}]));
-assets['/index.html'].body=assets['/index.html'].body.replace(
+assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v=79','schedule-v67.js?v=83').replace(
  '</head>',
- '<script src="notifications-v82.js?v=82" defer></script>'+
- '<script src="enhancements-v81.js?v=81" defer></script>'+
+ '<script src="notifications-v82.js?v=83" defer></script>'+
+ '<script src="enhancements-v81.js?v=83" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v81.css?v=81">'+
  '</head>'
 );

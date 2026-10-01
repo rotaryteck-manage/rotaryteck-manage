@@ -65,11 +65,15 @@ const reportBefore81=scheduleReportDialog56;
 scheduleReportDialog56=function(...args){
  reportBefore81(...args);
  if(!matchMedia('(pointer:coarse)').matches&&!matchMedia('(max-width:700px)').matches)return;
- const input=document.querySelector('#modal input[name=photo]');if(!input)return;
+ const input=document.querySelector('#modal input[name="photo-report80"]');if(!input)return;
  input.classList.add('mobile-photo-input81');
  const camera=document.createElement('input');camera.type='file';camera.accept='image/*';camera.setAttribute('capture','environment');camera.hidden=true;camera.dataset.paste71='1';
  const bar=document.createElement('div');bar.className='mobile-photo-actions81';
  for(const [text,target]of [['直接拍照',camera],['從相簿選擇',input]]){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=()=>target.click();bar.append(b);}
  input.after(bar,camera);
- camera.onchange=()=>{if(!camera.files?.length)return;const transfer=new DataTransfer();transfer.items.add(camera.files[0]);input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));camera.value='';};
+ camera.onchange=()=>{
+  if(!camera.files?.length)return;
+  input.scheduleAddPhotos83([...camera.files]);
+  camera.value='';
+ };
 };
