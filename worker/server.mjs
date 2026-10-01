@@ -1,6 +1,7 @@
 import {backupData85,backupPhotos85} from './backup85.mjs';
 import {notificationPlan85,notificationRulesValid85} from './notifications85.mjs';
 import webpush from 'web-push';
+import {createECDH} from 'node:crypto';
 import {validateWorkflowState,workflowChangeAllowed,validDate} from './workflows.mjs';
 import {canDeleteProject,projectDeletionAllowed,builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
 import {recordAuxiliary85,recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
@@ -487,35 +488,22 @@ export async function pushTestApi82(request,env){
 
   const input=await boundedJSON(request,4096);
 
-  const employeeId=Number(input.employeeId);
-
-  check(
-   Number.isSafeInteger(employeeId)&&employeeId>0,
-   '請選擇測試通知接收人員'
-  );
-
-  const personState=await env.DB.prepare('SELECT enabled FROM notification_people WHERE employee_id=?').bind(employeeId).first();check(personState?.enabled!==0,'此人員通知已由後台停用');
-  const targetEmployee=await env.DB.prepare(
-   `SELECT id,name
-      FROM employees
-     WHERE id=? AND status='active'`
-  ).bind(employeeId).first();
-
-  check(targetEmployee,'找不到這位員工');
-
-  const result=await env.DB.prepare(
-   `SELECT id,endpoint,p256dh,auth,device_label
-      FROM push_subscriptions
-     WHERE employee_id=?
-       AND enabled=1
-     ORDER BY updated_at DESC`
-  ).bind(employeeId).all();
-
+  const all=input.employeeId==='all',employeeId=all?null:Number(input.employeeId);
+  check(all||Number.isSafeInteger(employeeId)&&employeeId>0,'請選擇測試通知接收人員');
+  let targetEmployee=null,result;
+  if(all){
+   result=await env.DB.prepare(`SELECT s.id,s.employee_id,s.endpoint,s.p256dh,s.auth,s.device_label,e.name AS employee_name FROM push_subscriptions s JOIN employees e ON e.id=s.employee_id LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active' AND s.enabled=1 AND COALESCE(n.enabled,1)=1 ORDER BY e.id,s.updated_at DESC`).all();
+  }else{
+   const personState=await env.DB.prepare('SELECT enabled FROM notification_people WHERE employee_id=?').bind(employeeId).first();check(personState?.enabled!==0,'此人員通知已由後台停用');
+   targetEmployee=await env.DB.prepare(`SELECT id,name FROM employees WHERE id=? AND status='active'`).bind(employeeId).first();
+   check(targetEmployee,'找不到這位員工');
+   result=await env.DB.prepare(`SELECT id,employee_id,endpoint,p256dh,auth,device_label FROM push_subscriptions WHERE employee_id=? AND enabled=1 ORDER BY updated_at DESC`).bind(employeeId).all();
+  }
   const subscriptions=result.results||[];
 
   check(
    subscriptions.length>0,
-   '這位員工目前沒有已開啟的通知裝置'
+   all?'目前全員都沒有已開啟的通知裝置':'這位員工目前沒有已開啟的通知裝置'
   );
 
   const results=[];
@@ -526,7 +514,7 @@ export async function pushTestApi82(request,env){
      env,
      subscription,
      {
-      employeeId,
+      employeeId:all?subscription.employee_id:employeeId,
       notificationType:'test',
       title:'擎正科技測試通知',
       message:'通知功能測試成功。',
@@ -545,7 +533,8 @@ export async function pushTestApi82(request,env){
   const failed=results.length-sent;
 
   return json({
-   employeeName:targetEmployee.name,
+   employeeName:all?'全員':targetEmployee.name,
+   employeeCount:all?new Set(subscriptions.map(x=>x.employee_id)).size:1,
    devices:results.length,
    sent,
    failed,results
@@ -572,6 +561,7 @@ export async function validatePushPublicKey83(value){
 export async function pushPublicKeyApi82(request,env){
  if(request.method!=='GET')
   return json({error:'不支援的操作'},405);
+ if(new URL(request.url).searchParams.get('status')==='1')return pushKeyStatus86(request,env);
 
  if(!hasCredentials(request))
   return json({error:'請先登入'},401);
@@ -597,6 +587,22 @@ export async function pushPublicKeyApi82(request,env){
    error:e.message||'無法讀取通知設定'
   },500);
  }
+}
+export async function pushKeyStatus86(request,env){
+ if(request.method!=='GET')return json({error:'不支援的操作'},405);
+ const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有系統通知管理權限'},403);
+ const publicKey=String(env.VAPID_PUBLIC_KEY||'').trim(),privateKey=String(env.VAPID_PRIVATE_KEY||'').trim(),subject=String(env.VAPID_SUBJECT||'').trim();
+ if(!publicKey)return json({ok:false,status:'missing-public',message:'缺少 VAPID_PUBLIC_KEY'});
+ if(!privateKey)return json({ok:false,status:'missing-private',message:'缺少 VAPID_PRIVATE_KEY'});
+ if(!subject)return json({ok:false,status:'missing-subject',message:'缺少 VAPID_SUBJECT'});
+ if(!await validatePushPublicKey83(publicKey))return json({ok:false,status:'invalid-public',message:'VAPID_PUBLIC_KEY 格式錯誤'});
+ try{
+  if(!/^[A-Za-z0-9_-]{43}$/.test(privateKey))throw Error('format');
+  const bytes=Buffer.from(privateKey,'base64url');if(bytes.length!==32)throw Error('length');
+  const ecdh=createECDH('prime256v1');ecdh.setPrivateKey(bytes);const derived=ecdh.getPublicKey().toString('base64url');
+  if(derived!==publicKey)return json({ok:false,status:'mismatch',message:'公開金鑰與私密金鑰不配對'});
+  return json({ok:true,status:'ready',message:'通知金鑰設定正常且互相配對'});
+ }catch{return json({ok:false,status:'invalid-private',message:'VAPID_PRIVATE_KEY 格式錯誤'});}
 }
 export async function pushSubscriptionApi82(request,env){
  if(!hasCredentials(request))return json({error:'請先登入'},401);

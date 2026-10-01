@@ -56,6 +56,27 @@ test('notification enable waits for an active worker and validates key before su
  }
 });
 
+test('a device deleted by the administrator returns to the normal enable-notification state',async()=>{
+ let unsubscribed=0,removed='';
+ const button={textContent:'',disabled:true,classList:{remove(){},toggle(){}}};
+ const subscription={unsubscribe:async()=>{unsubscribed++}};
+ const registration={pushManager:{getSubscription:async()=>subscription}};
+ const ctx=vm.createContext({setTimeout,clearTimeout,
+  navigator:{serviceWorker:{ready:Promise.resolve(registration)}},
+  window:{PushManager:{},Notification:{}},Notification:{permission:'granted'},
+  document:{querySelector:selector=>selector==='#notification-enable82'?button:null},
+  localStorage:{getItem:()=> 'deleted-device',removeItem:key=>{removed=key}},
+  apiFetch:async()=>({ok:true,json:async()=>({items:[],personEnabled:true})})
+ });
+ const source=read('dist/notifications-v82.js');
+ vm.runInContext(source.slice(0,source.indexOf('function notificationAddButton82')),ctx);
+ await ctx.notificationUpdateButton82();
+ assert.equal(unsubscribed,1);
+ assert.equal(removed,'notification-device85');
+ assert.equal(button.textContent,'開啟通知');
+ assert.equal(button.disabled,false);
+});
+
 test('mobile camera and gallery append to one report queue, preserve cancellation and enforce ten photos',async()=>{
  const element=()=>({style:{},children:[],value:'',files:[],disabled:false,classList:{add(){}},dataset:{},
   setAttribute(k,v){this[k]=v},append(...items){this.children.push(...items)},appendChild(item){this.children.push(item)},
