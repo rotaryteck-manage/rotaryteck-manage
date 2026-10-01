@@ -1,0 +1,251 @@
+全專案程式碼檢查紀錄 — 2026-10-01
+
+檢查基準：GitHub origin/main，commit 22dad2356b32493a892a65eb53670a539296aba3。
+範圍：案件、倉庫、送鍍、線材、每週／每日排程、回報、料件、照片、通知、權限、後台、匯出、前端樣式、建置與資料庫遷移。
+本輪是檢查，不是更新包。沒有修改正式資料、發送通知或部署網站。
+標記：A＝本機重現；B＝程式流程確認；C＝風險／規格差異，需補測或確認。
+優先：P1先處理權限、資料正確性與備份；P2功能與跨區域衝突；P3版面及維護。
+並非每個問題在正式站都已發生；本輪未取得實際通知服務錯誤，也未完成手機與正式站端到端測試。
+
+一、先修的資料與權限問題
+
+01 [P1/A] 每日編輯權限可以透過舊接口改掉每週紀錄。
+位置：worker/schedule.mjs，scheduleApiCore71 單筆更新。
+依傳入 kind 檢查權限，未依資料庫原本的 kind 再檢查。以只有每日編輯權限的帳號重現：每週資料被改為每日，回傳200。
+處理：限制紀錄種類轉換，並依原紀錄與目標種類雙重驗證；新舊接口規則一致。
+
+02 [P1/A] 排程批次儲存有機會顯示成功，但部分內容沒有存入。
+位置：worker/schedule.mjs，批次及部分單筆更新／刪除。
+先讀版本，之後 UPDATE 帶版本條件，但未核對實際影響筆數。模擬中途另一人更新版本，回傳 saved:true，內容未改。
+處理：以原子方式驗證整批版本，任何一筆衝突都不可留下部分成功；單筆也檢查結果。
+
+03 [P1/A] 新增料件的多照片儲存失敗，可能留下壞掉的照片連結。
+位置：worker/schedule.mjs，scheduleMaterialUploadCore71。
+主紀錄先寫入，附加照片索引後寫入；後一步失敗時刪除新照片，主紀錄卻仍保留。故障注入重現400，但主紀錄指向已不存在的物件。
+處理：主紀錄與照片索引一起提交；失敗時補償流程不可損壞既有照片。
+
+04 [P1/A] 資料／照片匯出漏掉第2至第10張照片。
+位置：worker/records-export.mjs。
+目前只讀主紀錄的照片欄位，沒有整合 schedule_report_photos／schedule_material_photos。
+本機兩張工作照片只匯出一張。處理：完整讀取索引並核對清單與壓縮包。
+
+05 [P1/B] 「全部資料／全部照片」不等於完整備份。
+位置：worker/server.mjs backup-state；dist/admin-layout.js exportEveryPhoto。
+獨立排程資料表、工作回報及其照片、請假、每週備註等沒有完整納入現有全部備份。既有匯入也只處理部分集合，不能當完整還原。
+處理：明確定義備份範圍與版本，提供可驗證的還原流程。帳號與通知訂閱是否可移轉需另訂規則。
+
+06 [P1/A] 手機日期詳情把案件名稱直接當 HTML 插入。
+位置：dist/mobile-v78.js mobileDay78；共用 modal 標題也需檢查。
+使用無害的 <b>markup</b> 測試，確實被保留成標記，而非純文字。
+處理：使用文字節點／統一跳脫所有使用者輸入，檢查其他共用對話框入口。
+
+07 [P1/B] 排程以姓名辨識人員，會受改名及同名影響。
+位置：worker/schedule.mjs 人員儲存與工作回報資格檢查；worker/server.mjs 人員管理。
+排程存姓名；後台允許改名或重名。改名可能失去原工作回報資格，同名可能共用分派資格。
+處理：以員工ID綁定，保留姓名快照；舊資料需安全轉換，歧義不能亂配。
+
+08 [P1/A] 倉庫收領料滿2,000筆後，前後端規則互相衝突。
+位置：dist/app.js receipt-form；worker/server.mjs warehouseChangeAllowed。
+前台只保留最近2,000筆，後端要求舊紀錄不可少。本機驗證截斷後權限判定false；受此限制的倉管可能不能再收料。較高權限則可能直接丟失最舊歷史。
+處理：使用獨立歷史儲存或明確封存，不要在登記收料時截斷歷史。
+
+二、通知功能
+
+09 [P2/A] 通知設定儲存後，視窗與清單沒有正確更新。
+位置：dist/cloud.js saveCloud；dist/admin-layout.js notificationToggle81／notificationDelete81／notificationRuleDialog81。
+saveCloud 不回傳成功值，通知頁卻以該值判斷是否完成。實際成功也被當成未完成。已用回傳true的儲存替身重現undefined。
+處理：統一成功／失敗契約，檢查全部呼叫處。
+
+10 [P2/B] 後台裝置狀態的前後端資料格式不一致。
+位置：dist/admin-layout.js；worker/server.mjs pushSubscriptionApi82。
+前台用 admin=1 並期待 people 與駝峰欄位；後端沒有該管理列表分支，只回本人 items 與資料庫欄位。
+處理：提供有管理權限保護的全員裝置列表；實際裝置數仍需在正式環境核對。
+
+11 [P2/B] 自動通知規則已能存，但沒有真正執行規則的排程器。
+位置：worker/server.mjs scheduled／sendPush82；wrangler.jsonc。
+scheduled 只做刪除清理；sendPush82 目前由測試通知呼叫。每小時的cron也不能直接滿足08:50／17:25等分鐘設定。
+處理：規則執行、台北時區、漏跑補送、防重複發送一起設計。
+
+12 [P2/B] 測試通知把真正失敗原因省略，通知紀錄頁也沒有接上資料。
+位置：worker/server.mjs pushTestApi82／notification_deliveries；dist/admin-layout.js notification-log-list81。
+後端有每裝置回應與錯誤紀錄，但測試只回成功／失敗數；畫面只有歷史紀錄占位。
+處理：管理者可以看到狀態碼與可理解原因，避免顯示敏感金鑰。
+目前不能斷言正式錯誤一定是VAPID金鑰問題。
+
+13 [P2/B] 管理者暫停的装置可以被重新登記流程開啟。
+位置：worker/server.mjs pushSubscriptionApi82 POST；dist/notifications-v82.js。
+POST一律 enabled=1；前台也只看瀏覽器授權及本機訂閱，沒有核對後端停用狀態。
+處理：區分使用者訂閱與管理者封鎖；人員整體開關與個別裝置開關都保留，恢復人員時不要意外解除個別裝置暫停。
+現有程式缺少持續生效的「整個人停用通知」機制。
+
+14 [P2/B＋C] 同一瀏覽器切換帳號，通知訂閱沒有完整重新綁定。
+位置：dist/notifications-v82.js；dist/auth.js；worker/server.mjs。
+只有點開啟通知才向後端登記。換帳號可能仍顯示已開啟，裝置實際綁在原使用者。
+更换VAPID後，既有訂閱也未比對新公鑰：此項需實機驗證。
+處理：登入、登出、切換帳號核對綁定與後端狀態，再訂定共用裝置規則。
+
+15 [P2/B] 隱藏的通知天數欄位仍可能阻擋表單或帶入舊值。
+位置：dist/admin-layout.js 通知規則預設與firstDays。
+欄位隱藏但未停用，0與min=1衝突；切換類型也可能留下舊天數。切換預設還會改寫已填的名稱／內文。
+處理：不適用欄位停用並清值；切換類型保留手動內容或明確提示。
+
+16 [P2/B] 通知及排程設定權限綁到人員管理，不能獨立授權。
+位置：dist/admin-layout.js 人員清單載入；worker/server.mjs /api/employees。
+有admin.settings但沒有admin.employees的管理者，通知規則／測試接收人清單不能正常載入。人員排序也有相關依賴。
+處理：區分可選人員名單與可修改人員資料，使用各自權限。
+
+三、每週／每日排程與照片
+
+17 [P2/B＋規格] 新版手填工作項目被後載入的舊程式改成下拉選單。
+位置：dist/schedule-v60.js、schedule-v63.js；dist/enhancements-v71.js workSelects71。
+後者監看DOM並替換 item-i 輸入欄，和先前「工作項目／內容手KEY」要求不一致。
+處理前確認是否保留手填搭配常用選項；回報的工作選擇仍應只列被安排工作。
+
+18 [P2/B] 同一次照片選取會產生多套預覽，刪除狀態可能不同步。
+位置：dist/enhancements-v76.js、enhancements-v71.js、schedule-v67.js。
+全域change預覽與工作回報／料件自己的照片佇列同時生效。刪掉實際待上傳照片後，另一套預覽可能仍顯示。
+處理：共用一套照片佇列與預覽，維持最多10張、必填照片及大於800KB自動壓到800KB內的既定要求。
+本輪未重跑真手機相機與照片壓縮端到端驗證，不宣稱所有入口都已實測。
+
+19 [P2/A] 刪除工作回報沒有完整清除附加照片。
+位置：worker/schedule.mjs report DELETE；drizzle/0013相關照片表。
+刪掉主紀錄及第一張照片後，第二張索引與物件仍留下。已本機重現。
+處理：刪除所有索引及物件，外部儲存失敗需可重試；保留資料時不要誤删共用物件。
+
+20 [P2/B] 工作回報的工作名稱依賴目前排程，歷史內容會變。
+位置：worker/schedule.mjs schedule_reports；dist/schedule-v67.js 回報顯示。
+只存entry_id；修改排程會改變歷史回報顯示，刪除排程後可能找不到原工作項目。
+處理：新增回報時保存工作項目／內容快照，並保留原連結。
+
+21 [P2/B] 手機日期詳情點某筆料件，沒有傳入該筆ID。
+位置：dist/mobile-v78.js mobileDay78／mobileOpen79。
+月曆按鈕有material-id，但日期詳情只帶日期及區域，容易打開同日整組料件。
+處理：各入口傳遞相同的紀錄ID。
+
+22 [P2/B] 最多20項工作與後端批次總數限制不一致。
+位置：dist/enhancements-v81.js；worker/schedule.mjs batch。
+前端計算可見工作數，後端計算儲存＋刪除數。原有20項刪1新增1，仍是20項，但送出21個操作會被拒絕。
+處理：對齊上限，並驗證完整批次提交及衝突回滾。
+
+23 [P2/B＋規格] 舊收領料的每日入口沒有被新版月曆完整保留。
+位置：dist/schedule-v67.js；dist/mobile-v78.js。
+舊紀錄存在其他區域，但新版產生月曆入口時沒有納入；相關舊開啟分支仍留著。
+需確認是否應在每日區繼續顯示，不能只因程式還有舊分支就認為功能可用。
+另外，工作紀錄／工作回報合併入口、料件顯示案件＋項目，與較早指定畫面不同，列為規格確認，不直接認定是BUG。
+
+24 [P2/B] 排程照片反覆開啟後，物件網址沒有釋放。
+位置：dist/schedule.js schedulePhotoLoad56。
+createObjectURL未對應revoke；共用照片快取的容量管理也未涵蓋此路徑。大型聊天室一次載入大量照片另有記憶體與速度風險。
+處理：對話框關閉清理、限制併發、按需要載入圖片。
+
+25 [P3/B] 桌面今日框在沒有工作或只有料件時可能不標記。
+位置：dist/schedule-v67.js。
+日期取自data-day-jobs，而不是格子本身；手機用格子日期，兩端行為不同。
+處理：統一依格子的日期判定。
+
+四、跨區域匯出與日期
+
+26 [P2/B] 每日出貨／送貨的CSV漏掉項目、數量、人員等欄位。
+位置：dist/records-export.js shipment映射；worker/records-export.mjs。
+前端沿用送鍍欄位處理每日料件出送貨，沒有映射每日料件的item、quantity、actor、direction。
+處理：清楚標示來源與類型，保留各類紀錄必要欄位。
+
+27 [P2/B] 舊照片匯出只有第一頁，部分檔名規則也可能碰撞。
+位置：dist/uploads.js projectPhotoEntries及舊匯出助手。
+只讀一頁而未循游標；同日同名案件的路徑可相同。新版部分匯出已處理分頁，但舊入口／助手未統一。
+處理：盤點仍可用入口，統一匯出服務與唯一ID路徑。不要另加「下載圖片」按鈕。
+
+28 [P2/B] 收料等日期篩選使用UTC截日，和台北日期不同。
+位置：dist/app.js 的ISO時間；worker/records-export.mjs 的slice(0,10)，其他照片日期回退與本機日期也需统一。
+例如台北10月1日00:30＝UTC9月30日16:30，直接截ISO會歸9月30日。
+處理：儲存UTC時間，業務日期／篩選明確按Asia/Taipei；測試跨午夜及跨月。
+
+五、按鈕、顯示與程式維護
+
+29 [P3/B] 共用按鈕等寬與全域樣式把小按鈕撐大，欄位樣式也混用。
+位置：dist/photos.js equalizeControls；dist/controls.css、style.css、mobile-v84.css等。
+同組按最長按鈕套宽，加上全域高度／留白，箭頭、叉號與一般文字按鈕容易不協調。全域input寬度也套到checkbox／radio；textarea在部分視窗沒有一致樣式。
+處理：一般操作按鈕、緊湊圖示按鈕、表單欄位分別統一尺寸；群組內一致，避免所有按鈕被迫一樣宽。手機文字輸入維持避免自動放大的字體設定。
+
+30 [P2/B] 多版程式疊加覆寫，修一區可能改到另一區。
+位置：dist多版schedule／enhancements／mobile／admin檔案、build.mjs載入順序。
+render、renderAdmin及排程函式多層包裝，並有全域MutationObserver與多層!important。第17、18、29項已有實際衝突例子。
+處理：先修具體衝突，再逐區整理到單一入口；不要一次刪所有舊檔，避免遺漏仍在用的功能。
+
+31 [P2/B] 建置與更新途徑不一致，可能上傳到舊版或漏Android補丁。
+位置：dist/server/index.js、dist/index.js；package.json、build.mjs、apply-android-v80.mjs。
+檢查基準的已提交server成品沒有最新版通知與手機修正；npm deploy會先build，所以標準流程可重建，但直接用舊成品部署有風險。
+Android補丁靠額外執行脚本，未在標準npm build／deploy裡統一。已有Cloudflare自訂命令涵蓋該步驟，兩条途徑仍不一致。
+處理：使用同一份來源及建置命令，更新包寫清楚部署方式，避免混用生成檔。
+
+32 [P2/C] 長期資料量及資料庫結構維護還有缺口。
+位置：worker/server.mjs validate/logs；db/schema.ts；drizzle遷移及日誌。
+總操作紀錄上限20,000但無完整封存流程，达到后可能使正常儲存被驗證擋下。提交歷史等表持续增加，需訂保留策略。
+ORM schema／遷移索引沒有完整反映手動新增的表；日後自动產生遷移需審查，不能直接跑遠端。
+案件重名、實際日曆日期與送鍍狀態前後關係的後端驗證也應補測；這些列為邊界檢查，未在本輪逐項重現正式錯誤。
+
+33 [P3/B＋C] 測試與文件沒有跟上新權限及資料結構。
+位置：tests、README、部署说明。
+163項測試：124通過、39失敗。失敗包含未載入新權限函式、舊角色期待、缺少新照片表、舊畫面規格及舊資料fixture；不能換算成39個正式網站BUG。
+處理：先更新測試環境與確認規格，再補本輪已重現的權限、競態、照片及倉庫成長案例。角色说明與通知部署依賴也要同步。
+
+已完成的驗證
+- 49個第一方JS／mjs語法檢查通過。
+- 16個SQL遷移依序在本機SQLite執行成功。
+- 標準build，以及Android補丁後build，都成功。
+- 7項診斷：每日權限跨種類修改、競態假成功、兩張只匯出一張、刪除回報殘留照片、料件故障後壞連結、手機原始HTML、儲存成功回傳undefined。
+- 額外重現倉庫2,000筆截斷被後端拒絕。
+- 本機診斷不是Cloudflare D1／R2及真手機完整整合測試。
+
+建議修正與驗收順序
+1. 先修01–08：權限、原子儲存、照片與完整備份，再做小範圍資料還原測試。
+2. 修09–16：裝置列表、個人＋裝置停用、測試失敗原因、定時發送與防重複。
+3. 修17–28：排程流程、照片佇列、歷史快照、跨區匯出、日期與手機入口。
+4. 修29–33：各區按鈕与欄位、統一建置、更新測試與文件。
+5. 使用主管／倉管／員工／自訂權限帳號測試：案件、倉庫、送鍍、線材、每週／每日、回報、照片、匯出。
+6. iPhone與Android實機測試：相機／相簿、10張上限、超過800KB壓縮、無照片提醒、輸入不放大、聊天與料件詳情。
+7. 通知分開測試：先確認裝置登記，再單一裝置測試、停用測試，最後才測排程。發送給其他人必須由使用者明確授權。
+8. 兩個帳號同時改同一資料，確認衝突提示、資料不丟失、不出現假成功；跨午夜與月底核對日期。
+
+本輪未製作更新包。後續若製作，所有變更、驗收結果及更新包都應記入更新紀錄，並保留既有功能與資料。
+
+附錄：本輪失敗測試名稱（不是正式網站BUG清單）
+✖ admin redraw stays on admin and section links do not navigate to frontend
+✖ all photo export follows pagination and produces unique categorized paths plus manifest
+✖ failed download produces no partial ZIP; viewer cannot export
+✖ full photo backup includes wire photos with categorized folders and uploader manifest
+✖ manifest and iPhone metadata reference public logo route
+✖ category clear removes entire selected category only
+✖ category clear cancel keeps every record
+✖ conflicting restore leaves original state unchanged
+✖ warehouse/supervisor may remove one text log without changing application data
+✖ real API persists warehouse text deletion; rejects viewer and stale replay
+✖ navigation presents only selected section and preserves route after rerender
+✖ published custom pages join navigation and show their own content
+✖ audit navigation remains restricted and unknown routes fall back to cases
+✖ leave create/edit/delete/view each needs its own grant, including supervisor
+✖ cases deletion requires both role and independent capability
+✖ warehouse deletion requires both role and independent capability
+✖ wire deletion requires both role and independent capability
+✖ plating deletion requires both role and independent capability
+✖ supervisor can create a weekly item and concurrent stale edits are rejected
+✖ staff cannot edit schedule, but may report their work; warehouse cannot edit weekly
+✖ weekly work accepts multiple active assignees and rejects unknown people
+✖ supervisor options and multiple daily jobs retain separate people and contents
+✖ warehouse can schedule daily work and register materials, while only supervisors write weekly notes
+✖ work entry order persists and each person has one sorted weekly row with inline content
+✖ daily calendar has separate work and chat links, even before the first report
+✖ material receipt and item photos save together, display securely, and remain in export
+✖ supervisor changes material author; warehouse cannot impersonate
+✖ multi-person cross-month leave persists; retry is idempotent; editing and deletion require revision
+✖ other leave reason is required, persisted, idempotent, audited and cleared when category changes
+✖ quantity validation and independent record storage preserve photos and prevent empty-spool deletion loss
+✖ built-in permission buttons are configurable, persist order, and never grant supervisor export to other roles
+✖ API persists complete restock round, enforces actor/role and rejects competing same-reel update
+✖ API stock correction preserves production baseline and cannot alter manufacturing settings
+✖ restock cycle: low → ordered → received, actor/time and seven-day boundary
+✖ direct receive, undo restores low; order undo requires receive undone first
+✖ repeat low cannot reset ordered round; new low archives previous receipt
+✖ restock permission check rejects forged actor, changed history, stale time and staff registration
+✖ expired receipt cannot be undone and all history survives state round trip
+✖ production enforces one sets value and validates dates

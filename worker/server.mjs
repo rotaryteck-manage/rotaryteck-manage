@@ -1,7 +1,9 @@
+import {backupData85,backupPhotos85} from './backup85.mjs';
+import {notificationPlan85,notificationRulesValid85} from './notifications85.mjs';
 import webpush from 'web-push';
-import {validateWorkflowState,workflowChangeAllowed} from './workflows.mjs';
+import {validateWorkflowState,workflowChangeAllowed,validDate} from './workflows.mjs';
 import {canDeleteProject,projectDeletionAllowed,builtinProfiles,capabilityNames,ensurePermissions,employeePermissions,permitted,validateWire,wireChangeAllowed,visibleState,wirePhotoKey,verifyWirePhotos} from './wire-permissions.mjs';
-import {recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
+import {recordAuxiliary85,recordCollections,recordKey,normalizeLogIds,stableJSON,splitState,joinRecords} from './state-codec.mjs';
 import {scheduleApi,schedulePhotoApi,schedulePhotoUpload,scheduleMaterialPhotoApi,scheduleMaterialUpload} from './schedule.mjs';
 import {recordsExportApi} from './records-export.mjs';
 import {holidayApi60} from './holidays.mjs';
@@ -31,24 +33,25 @@ export function validatePlating(projects=[]){
   }
  }return projects;
 }
-export function validate(s){
+export function validate(s,previous={}){
+ if(s.notificationRules!==undefined)notificationRulesValid85(s.notificationRules);
  check(object(s)&&Array.isArray(s.projects),'專案資料格式不正確');
  validatePlating(s.platingProjects);validateWire(s);validateWorkflowState(s);
  if(s.platingVendors!==undefined)check(Array.isArray(s.platingVendors)&&s.platingVendors.length<=200&&s.platingVendors.every(v=>typeof v==='string'&&v.trim()===v&&v.length>0&&v.length<=100)&&new Set(s.platingVendors.map(v=>v.toLowerCase())).size===s.platingVendors.length,'電鍍廠商選項不正確');
  if(s.platingText!==undefined){check(object(s.platingText),'電鍍文字設定不正確');for(const v of Object.values(s.platingText))check(typeof v==='string'&&v.trim()&&v.length<=100,'電鍍文字設定不正確');}
  const cases=s.cases??[];check(Array.isArray(cases)&&cases.length<=1000,'案件資料格式不正確');const caseIds=new Set();
- for(const c of cases){check(object(c)&&typeof c.id==='string'&&!caseIds.has(c.id),'案件編號重複');caseIds.add(c.id);check(typeof c.name==='string'&&c.name.trim()&&c.name.length<=100,'案件名稱不正確');check(typeof c.vendor==='string'&&c.vendor.length<=100,'案件廠商不正確');check(['尚未開始','執行中','進行中','結案'].includes(c.status),'案件狀態不正確');check(c.batch===undefined||(Number.isSafeInteger(c.batch)&&c.batch>0),'製作批次不正確');check(c.quantity===undefined||(Number.isSafeInteger(c.quantity)&&c.quantity>0),'製作套數不正確');for(const d of [c.acceptedDate,c.closedDate])check(typeof d==='string'&&(!d||/^\d{4}-\d{2}-\d{2}$/.test(d)),'案件日期不正確');}
- const logs=s.logs??[];check(Array.isArray(logs)&&logs.length<=20000,'資訊庫紀錄格式不正確');for(const l of logs)check(object(l)&&typeof l.time==='string'&&typeof l.action==='string'&&typeof l.detail==='string'&&(!l.location||typeof l.location==='string'),'資訊庫紀錄格式不正確');
+ for(const c of cases){check(object(c)&&typeof c.id==='string'&&!caseIds.has(c.id),'案件編號重複');caseIds.add(c.id);check(typeof c.name==='string'&&c.name.trim()&&c.name.length<=100,'案件名稱不正確');check(typeof c.vendor==='string'&&c.vendor.length<=100,'案件廠商不正確');check(['尚未開始','執行中','進行中','結案'].includes(c.status),'案件狀態不正確');check(c.batch===undefined||(Number.isSafeInteger(c.batch)&&c.batch>0),'製作批次不正確');check(c.quantity===undefined||(Number.isSafeInteger(c.quantity)&&c.quantity>0),'製作套數不正確');for(const field of ['acceptedDate','closedDate']){const d=c[field],old=(previous.cases||[]).find(x=>x.id===c.id);check(typeof d==='string'&&(!d||validDate(d)||(old&&old[field]===d)),'案件日期不正確');}}
+ const logs=s.logs??[];check(Array.isArray(logs)&&logs.length<=100000,'資訊庫紀錄格式不正確');for(const l of logs)check(object(l)&&typeof l.time==='string'&&typeof l.action==='string'&&typeof l.detail==='string'&&(!l.location||typeof l.location==='string'),'資訊庫紀錄格式不正確');
  if(s.auditSecurity!==undefined)check(object(s.auditSecurity)&&/^[a-f0-9]{32}$/.test(s.auditSecurity.salt)&&/^[a-f0-9]{64}$/.test(s.auditSecurity.hash),'資訊庫密碼設定格式不正確');
  check(s.projects.length<=1000,'專案上限為 1000');const ids=new Set();
  const deleted=s.deletedProjects??[];check(Array.isArray(deleted),'刪除資料格式不正確');
  for(const p of [...s.projects,...deleted.map(x=>x.project)]){
   check(object(p)&&typeof p.id==='string'&&p.id.length>0&&!ids.has(p.id),'專案編號重複或缺少');ids.add(p.id);
-  if(p.projectDate!==undefined)check(typeof p.projectDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(p.projectDate),'專案日期不正確');
+  if(p.projectDate!==undefined){const old=(previous.projects||[]).find(x=>x.id===p.id);check(typeof p.projectDate==='string'&&(validDate(p.projectDate)||(old&&old.projectDate===p.projectDate)),'專案日期不正確');}
   if(p.basketCount!==undefined)check(int(p.basketCount,1),'籃數必須為正整數');
   check(typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=100,'專案名稱不正確');
   check(Array.isArray(p.parts)&&object(p.inventory),'零件或庫存格式不正確');const parts=new Set();
-  const materialLogs=p.materialLogs??[];check(Array.isArray(materialLogs)&&materialLogs.length<=2000,'收領料紀錄格式不正確');for(const entry of materialLogs){check(object(entry)&&typeof entry.time==='string'&&typeof entry.actor==='string'&&Array.isArray(entry.received)&&Array.isArray(entry.issued),'收領料紀錄格式不正確');for(const item of [...entry.received,...entry.issued])check(object(item)&&typeof item.name==='string'&&int(item.qty,1),'收領料紀錄內容不正確');}
+  const materialLogs=p.materialLogs??[];check(Array.isArray(materialLogs)&&materialLogs.length<=100000,'收領料紀錄格式不正確');for(const entry of materialLogs){check(object(entry)&&typeof entry.time==='string'&&typeof entry.actor==='string'&&Array.isArray(entry.received)&&Array.isArray(entry.issued),'收領料紀錄格式不正確');for(const item of [...entry.received,...entry.issued])check(object(item)&&typeof item.name==='string'&&int(item.qty,1),'收領料紀錄內容不正確');}
   for(const i of [...p.parts,...(p.archivedParts??[]).map(x=>x.part)]){
    check(object(i)&&typeof i.id==='string'&&!parts.has(i.id),'零件編號重複');parts.add(i.id);
    check(typeof i.name==='string'&&i.name.trim()&&typeof i.spec==='string','零件名稱或規格不正確');
@@ -150,7 +153,7 @@ function validateRecordChanges(changes){
  for(const c of changes){
   check(object(c)&&typeof c.key==='string'&&c.key.length<=1000&&!seen.has(c.key)&&int(c.version)&&Object.hasOwn(c,'value'),'資料版本或編號不正確');seen.add(c.key);
   const tuple=JSON.parse(c.key);check(Array.isArray(tuple)&&tuple.length===2&&tuple.every(v=>typeof v==='string'&&v.length>0)&&recordKey(...tuple)===c.key,'資料編號格式不正確');
-  check(c.deleted===undefined||typeof c.deleted==='boolean','刪除標記不正確');const [kind,id]=tuple;check(['root','order','log',...recordCollections].includes(kind),'資料類型不正確');
+  check(c.deleted===undefined||typeof c.deleted==='boolean','刪除標記不正確');const [kind,id]=tuple;check(['root','order','log',...recordAuxiliary85,...recordCollections].includes(kind),'資料類型不正確');
   if(kind==='order')check(recordCollections.includes(id),'排序類型不正確');
   if(!c.deleted&&recordCollections.includes(kind))check((kind==='deletedProjects'?c.value.project?.id:c.value.id)===id,'案件編號不一致');
   if(!c.deleted&&kind==='log')check(c.value.id===id,'操作紀錄編號不一致');
@@ -179,7 +182,7 @@ export async function api(request,env){
    const conflicts=input.changes.filter(c=>(current.versions[c.key]||0)!==c.version);
    if(conflicts.length)return json({error:'你修改的同一筆資料已被其他人更新。請先下載未儲存資料，再重新載入。',code:'RECORD_CONFLICT',keys:conflicts.map(c=>c.key)},409);
    const nextRecords={...current.records};for(const c of input.changes)nextRecords[c.key]=c.deleted?undefined:c.value;
-   const next=joinRecords(nextRecords);validate(next);
+   const next=joinRecords(nextRecords);validate(next,current.state);for(const c of next.cases||[]){const old=(current.state.cases||[]).find(x=>x.id===c.id);if(old&&old.name===c.name&&Number(old.batch||1)===Number(c.batch||1))continue;check(!(next.cases||[]).some(x=>x.id!==c.id&&x.name.trim().toLowerCase()===c.name.trim().toLowerCase()&&Number(x.batch||1)===Number(c.batch||1)),'此案件的製作批次已存在');}for(const p of next.platingProjects||[])for(const shipment of p.shipments||[]){const old=(current.state.platingProjects||[]).find(x=>x.id===p.id)?.shipments?.find(x=>x.id===shipment.id);if(stableJSON(old)!==stableJSON(shipment))check(shipment.inspection==='pending'||!!shipment.returned,'請先登記回貨日期再品檢');}
    if(!stateChangeAllowed(current.state,next,employee))return json({error:'沒有此操作的權限，或紀錄內容不符合規則'},403);
    await verifyWirePhotos(env,current.state,next,employee);
    const nextRevision=current.revision+1,versions=Object.fromEntries(input.changes.map(c=>[c.key,c.version+1])),result={storageVersion:2,revision:nextRevision,versions},now=new Date().toISOString();
@@ -212,6 +215,7 @@ if(request.method==='GET'){const result=await env.DB.prepare("SELECT e.id,e.emai
    check(assigned.every(k=>current.permissions.includes(k)),'不能授予自己沒有的權限');
    if(input.id){const target=await env.DB.prepare('SELECT * FROM employees WHERE id=?').bind(Number(input.id)).first();check(target&&target.id!==current.id&&target.role!=='supervisor','不能修改自己或主管帳號');await employeePermissions(env,target);check(target.permissions.every(k=>current.permissions.includes(k)),'不能管理權限高於自己的帳號');}
   }
+  if(request.method!=='DELETE'&&status==='active')check(!await env.DB.prepare("SELECT id FROM employees WHERE name=? AND status='active' AND id<>?").bind(name,Number(input.id)||0).first(),'已有同名人員，請使用可辨識的姓名');
   const now=new Date().toISOString();
   if(request.method==='POST'){
    const redirect=new URL('/?invited=1',request.url).toString();
@@ -333,8 +337,8 @@ async function sendPush82(env,subscription,options){
  const deliveryId=crypto.randomUUID();
  const createdAt=new Date().toISOString();
 
- await env.DB.prepare(
-  `INSERT INTO notification_deliveries(
+ const claim=await env.DB.prepare(
+  `INSERT OR IGNORE INTO notification_deliveries(
     id,
     rule_id,
     employee_id,
@@ -360,6 +364,7 @@ async function sendPush82(env,subscription,options){
   dedupeKey,
   createdAt
  ).run();
+ if(claim.meta?.changes!==1)return {ok:false,duplicate:true};
 
  try{
   const vapidDetails=pushVapidDetails82(env);
@@ -380,7 +385,7 @@ async function sendPush82(env,subscription,options){
    }),
    {
     TTL:3600,
-    vapidDetails
+    vapidDetails,timeout:15000
    }
   );
 
@@ -467,7 +472,7 @@ async function sendPush82(env,subscription,options){
 export async function pushTestApi82(request,env){
  if(request.method!=='POST')
   return json({error:'不支援的操作'},405);
-
+ if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
  if(!hasCredentials(request))
   return json({error:'請先登入'},401);
 
@@ -489,6 +494,7 @@ export async function pushTestApi82(request,env){
    '請選擇測試通知接收人員'
   );
 
+  const personState=await env.DB.prepare('SELECT enabled FROM notification_people WHERE employee_id=?').bind(employeeId).first();check(personState?.enabled!==0,'此人員通知已由後台停用');
   const targetEmployee=await env.DB.prepare(
    `SELECT id,name
       FROM employees
@@ -542,7 +548,7 @@ export async function pushTestApi82(request,env){
    employeeName:targetEmployee.name,
    devices:results.length,
    sent,
-   failed
+   failed,results
   });
 
  }catch(error){
@@ -593,191 +599,85 @@ export async function pushPublicKeyApi82(request,env){
  }
 }
 export async function pushSubscriptionApi82(request,env){
- if(!hasCredentials(request))
-  return json({error:'請先登入'},401);
-
- if(!env.DB)
-  return json({error:'雲端資料庫尚未就緒'},503);
-
+ if(!hasCredentials(request))return json({error:'請先登入'},401);
  try{
-  const employee=await employeeFor(request,env);
-
-  if(!employee)
-   return json({error:'帳號未啟用'},403);
-
+  const employee=await employeeFor(request,env);if(!employee)return json({error:'帳號未啟用'},403);
+  const url=new URL(request.url),admin=url.searchParams.get('admin')==='1';
+  if(admin&&!permitted(employee,'admin.settings'))return json({error:'沒有系統通知管理權限'},403);
+  const device=d=>({id:d.id,deviceLabel:d.device_label,userAgent:d.user_agent,enabled:!!d.enabled,createdAt:d.created_at,updatedAt:d.updated_at,lastSeenAt:d.last_seen_at,lastSuccessAt:d.last_success_at,lastErrorAt:d.last_error_at,failureCount:d.failure_count});
   if(request.method==='GET'){
-   const result=await env.DB.prepare(
-    `SELECT id,device_label,user_agent,enabled,created_at,
-            updated_at,last_seen_at,last_success_at,
-            last_error_at,failure_count
-       FROM push_subscriptions
-      WHERE employee_id=?
-      ORDER BY updated_at DESC`
-   ).bind(employee.id).all();
-
-   return json({
-    items:result.results||[]
-   });
+   if(admin){
+    const people=await env.DB.prepare("SELECT e.id,e.name,e.status,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id ORDER BY e.id").all();
+    const devices=await env.DB.prepare('SELECT * FROM push_subscriptions ORDER BY updated_at DESC').all();
+    return json({people:people.results.map(p=>({...p,enabled:!!p.enabled,devices:devices.results.filter(d=>d.employee_id===p.id).map(device)}))});
+   }
+   const rows=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? ORDER BY updated_at DESC').bind(employee.id).all();
+   const person=await env.DB.prepare('SELECT enabled FROM notification_people WHERE employee_id=?').bind(employee.id).first();
+   return json({items:rows.results.map(device),personEnabled:person?.enabled!==0,employeeId:employee.id});
   }
-
-  if(request.headers.get('origin')!==new URL(request.url).origin)
-   return json({error:'來源驗證失敗'},403);
-
+  if(request.headers.get('origin')!==url.origin)return json({error:'來源驗證失敗'},403);
+  const input=await boundedJSON(request,32768),now=new Date().toISOString();
+  if(request.method==='PATCH'&&input.employeeId){
+   check(admin,'只有通知管理者可設定人員通知');const id=Number(input.employeeId);check(Number.isSafeInteger(id)&&!!await env.DB.prepare('SELECT id FROM employees WHERE id=?').bind(id).first(),'找不到人員');check(typeof input.enabled==='boolean','開關格式不正確');
+   await env.DB.prepare('INSERT INTO notification_people(employee_id,enabled,updated_at) VALUES(?,?,?) ON CONFLICT(employee_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at').bind(id,input.enabled?1:0,now).run();return json({saved:true});
+  }
   if(request.method==='POST'){
-   const input=await boundedJSON(request,32768);
-
-   const endpoint=String(input.endpoint||'').trim();
-   const p256dh=String(input.p256dh||'').trim();
-   const auth=String(input.auth||'').trim();
-
-   const deviceLabel=String(
-    input.deviceLabel||''
-   ).trim().slice(0,120);
-
-   const userAgent=String(
-    request.headers.get('user-agent')||''
-   ).slice(0,500);
-
-   check(
-    endpoint.startsWith('https://')&&endpoint.length<=4000,
-    '通知訂閱地址不正確'
-   );
-
-   check(
-    p256dh&&p256dh.length<=500,
-    '通知加密金鑰不正確'
-   );
-
-   check(
-    auth&&auth.length<=500,
-    '通知驗證金鑰不正確'
-   );
-
-   const now=new Date().toISOString();
-
-   const old=await env.DB.prepare(
-    'SELECT id FROM push_subscriptions WHERE endpoint=?'
-   ).bind(endpoint).first();
-
+   const endpoint=String(input.endpoint||''),p256dh=String(input.p256dh||''),auth=String(input.auth||'');
+   check(endpoint.startsWith('https://')&&endpoint.length<=4000&&p256dh&&p256dh.length<=500&&auth&&auth.length<=500,'通知訂閱資料不正確');
+   // Only public push service destinations; do not turn the worker into a generic request proxy.
+   const host=new URL(endpoint).hostname;check(['fcm.googleapis.com','updates.push.services.mozilla.com','push.apple.com','wns.windows.com','notify.windows.com'].some(h=>host===h||host.endsWith('.'+h)),'不支援的通知服務地址');
+   let old=await env.DB.prepare('SELECT id,employee_id,enabled FROM push_subscriptions WHERE endpoint=?').bind(endpoint).first();
+   if(old&&old.employee_id!==employee.id)return json({error:'此訂閱綁定其他帳號，請重新建立本機訂閱',rebind:true},409);
+   if(!old&&input.previousDeviceId)old=await env.DB.prepare('SELECT id,employee_id,enabled FROM push_subscriptions WHERE id=? AND employee_id=?').bind(String(input.previousDeviceId),employee.id).first();
    const id=old?.id||crypto.randomUUID();
-
-   await env.DB.prepare(
-    `INSERT INTO push_subscriptions(
-      id,employee_id,endpoint,p256dh,auth,
-      device_label,user_agent,enabled,
-      created_at,updated_at,last_seen_at
-     )
-     VALUES(?,?,?,?,?,?,?,1,?,?,?)
-     ON CONFLICT(endpoint) DO UPDATE SET
-      employee_id=excluded.employee_id,
-      p256dh=excluded.p256dh,
-      auth=excluded.auth,
-      device_label=excluded.device_label,
-      user_agent=excluded.user_agent,
-      enabled=1,
-      updated_at=excluded.updated_at,
-      last_seen_at=excluded.last_seen_at,
-      failure_count=0`
-   ).bind(
-    id,
-    employee.id,
-    endpoint,
-    p256dh,
-    auth,
-    deviceLabel,
-    userAgent,
-    now,
-    now,
-    now
-   ).run();
-
-   return json({
-    saved:true,
-    id
-   });
+   await env.DB.prepare(`INSERT INTO push_subscriptions(id,employee_id,endpoint,p256dh,auth,device_label,user_agent,enabled,created_at,updated_at,last_seen_at) VALUES(?,?,?,?,?,?,?,1,?,?,?) ON CONFLICT(id) DO UPDATE SET endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth=excluded.auth,device_label=excluded.device_label,user_agent=excluded.user_agent,updated_at=excluded.updated_at,last_seen_at=excluded.last_seen_at`).bind(id,employee.id,endpoint,p256dh,auth,String(input.deviceLabel||'').slice(0,120),String(request.headers.get('user-agent')||'').slice(0,500),now,now,now).run();
+   const person=await env.DB.prepare('SELECT enabled FROM notification_people WHERE employee_id=?').bind(employee.id).first();return json({saved:true,id,enabled:old?.enabled!==0&&person?.enabled!==0});
   }
-if(request.method==='PATCH'){
- const url=new URL(request.url);
- const input=await boundedJSON(request,4096);
-
- const id=String(input.id||'');
- const enabled=input.enabled===true?1:0;
-
- check(id,'缺少裝置編號');
-
- if(url.searchParams.get('admin')==='1'){
-  if(!permitted(employee,'admin.settings'))
-   return json({error:'沒有系統通知管理權限'},403);
-
-  await env.DB.prepare(
-   `UPDATE push_subscriptions
-       SET enabled=?,
-           updated_at=?
-     WHERE id=?`
-  ).bind(
-   enabled,
-   new Date().toISOString(),
-   id
-  ).run();
-
- }else{
-  await env.DB.prepare(
-   `UPDATE push_subscriptions
-       SET enabled=?,
-           updated_at=?
-     WHERE id=? AND employee_id=?`
-  ).bind(
-   enabled,
-   new Date().toISOString(),
-   id,
-   employee.id
-  ).run();
- }
-
- return json({saved:true});
-}
-  if(request.method==='DELETE'){
- const url=new URL(request.url);
- const input=await boundedJSON(request,4096);
- const id=String(input.id||'');
-
- check(id,'缺少裝置編號');
-
- if(url.searchParams.get('admin')==='1'){
-  if(!permitted(employee,'admin.settings'))
-   return json({error:'沒有系統通知管理權限'},403);
-
-  await env.DB.prepare(
-   'DELETE FROM push_subscriptions WHERE id=?'
-  ).bind(id).run();
-
- }else{
-  await env.DB.prepare(
-   'DELETE FROM push_subscriptions WHERE id=? AND employee_id=?'
-  ).bind(id,employee.id).run();
- }
-
- return json({deleted:true});
-}
-
+  if(['PATCH','DELETE'].includes(request.method)){
+   check(typeof input.id==='string'&&input.id,'缺少裝置編號');
+   if(request.method==='PATCH')check(typeof input.enabled==='boolean','開關格式不正確');
+   const old=await env.DB.prepare('SELECT id,employee_id FROM push_subscriptions WHERE id=?').bind(input.id).first();if(!old||!admin&&old.employee_id!==employee.id)return json({error:'找不到通知裝置'},404);
+   if(!admin&&request.method==='PATCH'&&input.enabled)return json({error:'此裝置已停用，請通知管理者恢復'},403);
+   const statement=request.method==='PATCH'?env.DB.prepare('UPDATE push_subscriptions SET enabled=?,updated_at=? WHERE id=?').bind(input.enabled?1:0,now,input.id):env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(input.id);
+   const result=await statement.run();return result.meta?.changes===1?json({saved:true,deleted:request.method==='DELETE'}):json({error:'裝置已變更，請重新載入'},409);
+  }
   return json({error:'不支援的操作'},405);
-
- }catch(e){
-  return json({
-   error:e.message||'通知裝置設定失敗'
-  },400);
+ }catch(e){return json({error:e.message||'通知設定失敗'},400);}
+}
+export async function notificationLogApi85(request,env){
+ if(request.method!=='GET')return json({error:'不支援的操作'},405);const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
+ const rows=await env.DB.prepare('SELECT d.id,d.notification_type,d.title,d.message,d.status,d.created_at,d.sent_at,d.error_message,e.name AS employee_name FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id ORDER BY d.created_at DESC LIMIT 100').all();return json({items:rows.results});
+}
+export async function runNotifications85(env,now=Date.now()){
+ const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[];if(!rules.some(r=>r.enabled))return;
+ notificationRulesValid85(rules);
+ const day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+ const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day=?").bind(day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all();
+ const people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
+ for(const person of people.results){await employeePermissions(env,person);const cap=rule=>rule.type==='work'||rule.type==='report'?'schedule.view':rule.type+'.view';person.notificationCaps85=Object.fromEntries(rules.map(r=>[r.id,permitted(person,cap(r))]));}
+ for(const plan of notificationPlan85(rules,state,entries.results,reports.results,people.results,now)){if(!people.results.find(p=>p.id===plan.employeeId)?.notificationCaps85[plan.ruleId])continue;
+  const devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1').bind(plan.employeeId).all();
+  for(const device of devices.results)await sendPush82(env,device,{...plan,dedupeKey:plan.dedupeKey+':'+device.id});
  }
+}
+export async function employeeOrder85(request,env){
+ const employee=await employeeFor(request,env);if(!employee||!['admin.settings','admin.employees','schedule.people'].some(cap=>permitted(employee,cap)))return json({error:'沒有調整人員排序的權限'},403);
+ const rows=await env.DB.prepare('SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();
+ if(request.method==='GET')return json({items:rows.results});
+ if(request.method!=='POST')return json({error:'不支援的操作'},405);if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
+ try{const input=await boundedJSON(request,20000),ids=input.order;check(Array.isArray(ids)&&ids.length===rows.results.length&&new Set(ids).size===ids.length&&rows.results.every(p=>ids.includes(p.id)),'名單已變更，請重新開啟排序');await env.DB.batch(ids.map((id,i)=>env.DB.prepare("INSERT INTO app_employee_settings(employee_id,position) VALUES(?,?) ON CONFLICT(employee_id) DO UPDATE SET position=excluded.position").bind(id,i)));return json({saved:true});}catch(e){return json({error:e.message},400);}
 }
 export async function accessApi(request,env){
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
  if(!hasCredentials(request))return json({error:'請先登入'},401);
  try{const employee=await employeeFor(request,env);if(!employee)return json({error:'帳號未啟用'},403);
- if(new URL(request.url).pathname==='/api/backup-state'){if(!permitted(employee,'admin.export'))return json({error:'沒有匯出權限'},403);const row=await companyRow(env);return json({state:JSON.parse(row.body)});}
+ if(new URL(request.url).pathname==='/api/backup-state'){if(!permitted(employee,'admin.export'))return json({error:'沒有匯出權限'},403);const row=await companyRow(env);return json(await backupData85(env,JSON.parse(row.body),joinRecords));}
  if(new URL(request.url).pathname==='/api/export-access')return permitted(employee,'admin.export')?json({allowed:true}):json({error:'只有主管可以匯出'},403);
- const result=await env.DB.prepare('SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:result.results||[]});
+ if(new URL(request.url).searchParams.get('notification')==='1'&&!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
+ const result=await env.DB.prepare('SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:new URL(request.url).searchParams.get('notification')==='1'?result.results:(result.results||[]).map(p=>({id:p.id,name:p.name}))});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(cleanupDeleted(env));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUpload(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
+export default {async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([cleanupDeleted(env),runNotifications85(env,event.scheduledTime||Date.now())]).then(results=>{for(const [index,result]of results.entries())if(result.status==='rejected')console.error(index===0?'照片清理失敗':'通知排程失敗',result.reason?.message||String(result.reason));}));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/employee-order')return employeeOrder85(request,env);if(path==='/api/backup-photos'){if(request.method!=='GET')return json({error:'不支援的操作'},405);const e=await employeeFor(request,env);if(!e||!permitted(e,'admin.export'))return json({error:'沒有備份權限'},403);return backupPhotos85(request,env);}if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUpload(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/notification-logs')return notificationLogApi85(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
  return pushSubscriptionApi82(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
@@ -807,7 +707,7 @@ export function stateChangeAllowed(before,after,e){
   for(const i of p.parts||[]){const old=prev.parts.find(x=>x.id===i.id);if(!old)continue;
    for(const [field,cap]of Object.entries({receivedDate72:'warehouse.receivedDate',issuedDate72:'warehouse.issuedDate',preparedAdjustment73:'warehouse.preparedAdjust'}))if(permitted(e,cap)){delete old[field];delete i[field];}
   }
-  if(permitted(e,'warehouse.stockAdjust'))p.inventory=structuredClone(prev.inventory);
+  if(permitted(e,'warehouse.stockAdjust')){p.inventory=structuredClone(prev.inventory);for(const i of p.parts||[]){const old=prev.parts.find(x=>x.id===i.id);if(old&&i.received!==old.received)p.inventory[i.id]=Number(prev.inventory[i.id]||0)+i.received-old.received;}}
   if(permitted(e,'warehouse.historyEdit')&&stableJSON(p.materialLogs)!==stableJSON(prev.materialLogs)){
    p.inventory=structuredClone(prev.inventory);
    for(const part of [...(p.parts||[]),...(p.archivedParts||[]).map(x=>x.part)]){const old=[...(prev.parts||[]),...(prev.archivedParts||[]).map(x=>x.part)].find(x=>x.id===part.id);if(old)part.received=old.received;}
@@ -905,7 +805,7 @@ export async function loginLogo(request,env){
  return new Response(file.body,{headers:{'Content-Type':file.httpMetadata.contentType,'Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff'}});
 }
 
-// Hourly recycle-bin retention. DB tombstones and photo cleanup jobs commit atomically.
+// Scheduled recycle-bin retention. DB tombstones and photo cleanup jobs commit atomically.
 export async function cleanupDeleted(env,now=Date.now()){
  await ensureRecordStorage(env);
  await env.DB.prepare('CREATE TABLE IF NOT EXISTS retention_photo_jobs (job TEXT PRIMARY KEY NOT NULL)').run();
@@ -992,7 +892,7 @@ export async function appIconSource55(request,env){
 }
 export function appManifestBody55(settings){return{
  id:'/',name:settings.homeName,short_name:settings.homeName,lang:'zh-TW',start_url:'/',scope:'/',display:'standalone',
- background_color:settings.background,theme_color:'#234e3c',icons:[{src:'/api/app-icon?v='+settings.revision,purpose:'any'}]
+ background_color:settings.background,theme_color:'#234e3c',icons:[{src:'/api/app-icon?v='+settings.revision,sizes:'512x512',type:'image/png',purpose:'any'}]
 };}
 export async function appManifest55(request,env){
  if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
@@ -1000,6 +900,8 @@ export async function appManifest55(request,env){
  return new Response(request.method==='HEAD'?null:body,{headers:{'Content-Type':'application/manifest+json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 }
 export function appIndexBody55(html,settings){
+ // Android install metadata v80 is now part of the canonical build.
+ html=html.replace(/<link\b(?=[^>]*\brel=["']icon["'])[^>]*>/i,'<link rel="icon" type="image/png" sizes="512x512" href="/api/app-icon?v='+settings.revision+'">');
  const name=settings.homeName.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
  return html.replace('<meta name="apple-mobile-web-app-title" content="擎正管理">','<meta name="apple-mobile-web-app-title" content="'+name+'">')
   .replace('href="/api/app-icon?v=53"','href="/api/app-icon?v='+settings.revision+'"');

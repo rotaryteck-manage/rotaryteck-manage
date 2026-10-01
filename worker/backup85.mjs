@@ -1,0 +1,11 @@
+export const backupTables85=['employees','app_employee_settings','app_permission_profiles','app_permission_order','company_state','warehouse_state','state_records','state_storage_meta','schedule_copies71','schedule_text71','schedule_hidden_text71','schedule_text_refs71','app_permission_migrations','state_commits','retention_photo_jobs','wire_pending_uploads','schedule_entries','schedule_reports','schedule_report_photos','schedule_material_photos','schedule_weekly_notes','schedule_options','schedule_leave72','schedule_palette73','notification_people','push_subscriptions','notification_deliveries'];
+export async function backupData85(env,state,decode){
+ const available=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all(),names=new Set(available.results.map(r=>r.name)),tables={};
+ const selected=backupTables85.filter(name=>names.has(name)),snapshot=await env.DB.batch(selected.map(name=>env.DB.prepare('SELECT * FROM "'+name+'"')));selected.forEach((name,i)=>tables[name]=snapshot[i].results);if(tables.state_records)state=decode(Object.fromEntries(tables.state_records.filter(r=>r.body!==null).map(r=>[r.record_key,JSON.parse(r.body)])));
+ return {format:'rotaryteck-backup',version:85,createdAt:new Date().toISOString(),state,tables,notes:['照片物件須搭配全部照片ZIP與物件清單還原。','Supabase帳號與Cloudflare秘密金鑰由各服務另行備份，本檔不含密碼或私鑰。']};
+}
+export async function backupPhotos85(request,env){
+ const q=new URL(request.url).searchParams,key=q.get('key');if(key){const file=await env.UPLOADS?.get(key);if(!file)return Response.json({error:'照片不存在'},{status:404});return new Response(file.body,{headers:{'Content-Type':file.httpMetadata?.contentType||'application/octet-stream','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
+ const page=await env.UPLOADS.list({limit:500,cursor:q.get('cursor')||undefined,include:['customMetadata','httpMetadata']});
+ return Response.json({items:page.objects.map(f=>({id:f.key,key:f.key,created:f.uploaded,size:f.size,name:f.customMetadata?.name||'',actor:f.customMetadata?.actor||'',httpMetadata:f.httpMetadata||{},customMetadata:f.customMetadata||{}})),truncated:page.truncated,cursor:page.truncated?page.cursor:''},{headers:{'Cache-Control':'private, no-store'}});
+}

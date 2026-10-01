@@ -1,0 +1,78 @@
+v85 相對基準異動
+
+M	README.md
+M	build.mjs
+M	db/schema.ts
+M	dist/admin-layout.js
+M	dist/admin.js
+M	dist/app.js
+M	dist/auth.js
+M	dist/cloud.js
+M	dist/enhancements-v71.js
+M	dist/enhancements-v76.js
+D	dist/index.js
+M	dist/manifest.webmanifest
+M	dist/mobile-v78.js
+M	dist/notifications-v82.js
+M	dist/photos.js
+M	dist/records-export.js
+M	dist/schedule-v63.js
+M	dist/schedule-v67.js
+M	dist/schedule.js
+M	dist/server/index.js
+M	dist/state-codec.js
+M	dist/uploads.js
+M	dist/wire.js
+M	package.json
+M	tests/admin-navigation49.test.mjs
+M	tests/all-photo-export.test.mjs
+M	tests/app-icon52.test.mjs
+M	tests/audit-category51.test.mjs
+M	tests/auth.test.mjs
+M	tests/deleted-names50.test.mjs
+M	tests/helpers/d1.mjs
+M	tests/log-delete.test.mjs
+M	tests/navigation.test.mjs
+M	tests/notifications-camera83.test.mjs
+M	tests/permissions75.test.mjs
+M	tests/project-delete51.test.mjs
+M	tests/records-export59.test.mjs
+M	tests/responsiveness.test.mjs
+M	tests/schedule56.test.mjs
+M	tests/schedule60.test.mjs
+M	tests/schedule61.test.mjs
+M	tests/schedule63.test.mjs
+M	tests/schedule67.test.mjs
+M	tests/schedule70.test.mjs
+M	tests/schedule71.test.mjs
+M	tests/schedule72.test.mjs
+M	tests/schedule73.test.mjs
+M	tests/wire.test.mjs
+M	tests/workflows44-api.test.mjs
+M	tests/workflows44.test.mjs
+M	worker/records-export.mjs
+M	worker/schedule.mjs
+M	worker/server.mjs
+M	worker/state-codec.mjs
+M	worker/wire-permissions.mjs
+M	wrangler.jsonc
+
+新增檔案
+.gitignore
+dist/controls-v85.css
+dist/enhancements-v85.js
+drizzle/0016_integrity85.sql
+drizzle/0017_material_history85.sql
+drizzle/0018_cleanup85.sql
+scripts/check-schema85.mjs
+scripts/prepare-restore85.mjs
+tests/helpers/migrations85.mjs
+tests/helpers/schedule85.mjs
+tests/integrity85.test.mjs
+worker/backup85.mjs
+worker/notifications85.mjs
+"\346\233\264\346\226\260\347\264\200\351\214\204/CODE-AUDIT-20261001.txt"
+"\346\233\264\346\226\260\347\264\200\351\214\204/UPDATE-v85.txt"
+"\346\233\264\346\226\260\347\264\200\351\214\204/v85-\344\277\256\346\255\243\345\260\215\347\205\247\350\241\250.txt"
+"\346\233\264\346\226\260\347\264\200\351\214\204/v85-\346\270\254\350\251\246\347\265\220\346\236\234.txt"
+"\346\233\264\346\226\260\347\264\200\351\214\204/v85-\351\251\227\346\224\266\346\255\245\351\251\237.txt"

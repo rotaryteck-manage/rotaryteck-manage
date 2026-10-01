@@ -1,3 +1,19 @@
+function schedulePhotoJobs85(env,keys){return keys.filter(Boolean).map(key=>env.DB.prepare('INSERT OR IGNORE INTO retention_photo_jobs(job) VALUES(?)').bind(JSON.stringify({key})));}
+async function scheduleDiscardPhotos85(env,keys){
+ for(const key of keys.filter(Boolean))try{await env.UPLOADS?.delete(key);await env.DB.prepare('DELETE FROM retention_photo_jobs WHERE job=?').bind(JSON.stringify({key})).run();}catch{try{await env.DB.prepare('INSERT OR IGNORE INTO retention_photo_jobs(job) VALUES(?)').bind(JSON.stringify({key})).run();}catch{console.error('photo cleanup deferred; database unavailable');}}
+}
+// Each guard is checked inside the same D1 transaction as the mutations.
+async function scheduleCommit85(env,statements,expected=[]){
+ const token=crypto.randomUUID();
+ const guards=expected.map((e,i)=>env.DB.prepare(`INSERT INTO schedule_write_guards(id,valid) VALUES (?,COALESCE((SELECT revision=? AND kind=? FROM schedule_entries WHERE id=?),?))`).bind(token+':'+i,e.revision,e.kind,e.id,e.revision===0?1:0));
+ try{await env.DB.batch([...guards,...statements,...expected.map((_,i)=>env.DB.prepare('DELETE FROM schedule_write_guards WHERE id=?').bind(token+':'+i))]);}
+ catch(error){if(/schedule_write_guards|CHECK constraint|UNIQUE constraint.*schedule_entries/i.test(String(error.message)))throw Object.assign(Error('排程已由他人修改，請重新載入'),{status:409});throw error;}
+}
+async function schedulePeople85(env,assignee){
+ const names=JSON.parse(assignee),rows=await env.DB.prepare("SELECT id,name FROM employees WHERE status='active'").all();
+ if(!Array.isArray(names)||!names.length||names.length>50||new Set(names).size!==names.length)throw Error('請選擇有效的人員');
+ return names.map(name=>{const matches=rows.results.filter(p=>p.name===name);if(matches.length!==1)throw Error('人員名單已更新或有同名，請主管確認名單後重新開啟');return String(matches[0].id)});
+}
 const scheduleJSON=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 const scheduleDate=x=>typeof x==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(Date.parse(x))&&new Date(x).toISOString().slice(0,10)===x;
 const scheduleText=(x,max)=>typeof x==='string'&&x.trim().length>0&&x.length<=max;
@@ -14,14 +30,14 @@ async function scheduleApiCore71(request,env,employee){
   if(method==='GET'&&url.searchParams.get('view')==='text')return scheduleExtra71(request,env,employee,null);
   if(method==='GET'){
    const from=url.searchParams.get('from'),to=url.searchParams.get('to');if(!scheduleDate(from)||!scheduleDate(to)||to<from||Date.parse(to)-Date.parse(from)>370*86400000)return scheduleJSON({error:'日期範圍不正確'},400);
-   const rows=await env.DB.prepare('SELECT id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,sort_index,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE day<=? AND end_day>=? ORDER BY day,id').bind(to,from).all();
-   const reports=await env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all();
+   const rows=await env.DB.prepare('SELECT id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE day<=? AND end_day>=? ORDER BY day,id').bind(to,from).all();
+   const reports=await env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,work_title,work_content FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all();
    const reportPhotoCounts=await env.DB.prepare('SELECT report_id,COUNT(*) AS extra_count FROM schedule_report_photos GROUP BY report_id').all(),reportPhotoCountMap=new Map(reportPhotoCounts.results.map(x=>[x.report_id,Number(x.extra_count)||0]));
    const materialPhotoCounts=await env.DB.prepare('SELECT material_id,COUNT(*) AS extra_count FROM schedule_material_photos GROUP BY material_id').all(),materialPhotoCountMap=new Map(materialPhotoCounts.results.map(x=>[x.material_id,Number(x.extra_count)||0]));
-   const people=await env.DB.prepare("SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id WHERE e.status='active' ORDER BY COALESCE(x.position,e.id),e.id").all();
+   const people=await env.DB.prepare("SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,e.id),e.id").all();
    const weeklyNotes=await env.DB.prepare('SELECT week_start,body,updated_at,author_name FROM schedule_weekly_notes WHERE week_start BETWEEN ? AND ? ORDER BY week_start').bind(from,to).all();
    await scheduleLeaveTable72(env);const leaves=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id').bind(to+'T23:59:59',from+'T00:00').all();
-   return scheduleJSON({leaves:(scheduleAllowed(employee,'schedule.leave.view')?leaves.results:[]).map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results.map(e=>({  ...e,  photo_count:e.kind==='material'   ?(e.item_photo_key?1:0)+(materialPhotoCountMap.get(e.id)||0)   :0 })),weeklyNotes:weeklyNotes.results,people:people.results,options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':'',photo_count:(r.photo_key?1:0)+(reportPhotoCountMap.get(r.id)||0)}))});
+   return scheduleJSON({leaves:(scheduleAllowed(employee,'schedule.leave.view')?leaves.results:[]).map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results.map(e=>({  ...e,  assignee:e.assignee_ids&&e.assignee_ids!=='[]'?JSON.stringify(JSON.parse(e.assignee_ids).map((id,index)=>people.results.find(p=>String(p.id)===String(id))?.name||JSON.parse(e.assignee||'[]')[index]||('已離職人員 #'+id))):e.assignee,photo_count:e.kind==='material'   ?(e.item_photo_key?1:0)+(materialPhotoCountMap.get(e.id)||0)   :0 })),weeklyNotes:weeklyNotes.results,people:people.results.filter(p=>p.status==='active').map(p=>({id:p.id,name:p.name})),options:await scheduleOptions60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':'',photo_count:(r.photo_key?1:0)+(reportPhotoCountMap.get(r.id)||0)}))});
   }
   if(request.headers.get('origin')!==url.origin)return scheduleJSON({error:'來源驗證失敗'},403);
   if(method!=='POST'&&method!=='DELETE')return scheduleJSON({error:'不支援的操作'},405);
@@ -40,22 +56,23 @@ async function scheduleApiCore71(request,env,employee){
    await scheduleOptions60(env);await env.DB.prepare('INSERT INTO schedule_options(id,items,contents) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET items=excluded.items,contents=excluded.contents').bind(JSON.stringify(input.items),JSON.stringify(input.contents)).run();return scheduleJSON({saved:true});
   }
   if(kind==='batch'){
-   if(method!=='POST'||!Array.isArray(input.entries)||!Array.isArray(input.deletions||[])||input.entries.length+(input.deletions||[]).length<1||input.entries.length+(input.deletions||[]).length>20)return scheduleJSON({error:'無法批次儲存工作'},403);
+   if(method!=='POST'||!Array.isArray(input.entries)||!Array.isArray(input.deletions||[])||input.entries.length+(input.deletions||[]).length<1||input.entries.length+(input.deletions||[]).length>200||input.entries.length>20)return scheduleJSON({error:'每次最多20項工作及180項刪除'},400);
    if(input.entries.some(item=>!scheduleAllowed(employee,'schedule.'+item.kind+(item.revision?'.edit':'.create'))))return scheduleJSON({error:'沒有新增或編輯此排程的權限'},403);
-   const ids=new Set(),people=await env.DB.prepare("SELECT name FROM employees WHERE status='active'").all(),active=new Set(people.results.map(x=>x.name)),statements=[];
+   const ids=new Set(),people=await env.DB.prepare("SELECT name FROM employees WHERE status='active'").all(),active=new Set(people.results.map(x=>x.name)),statements=[],expected=[];
    for(const item of input.entries){const cap=item.kind==='weekly'?'schedule.weekly':item.kind==='daily'?'schedule.daily':'';if(!cap||!scheduleAllowed(employee,cap+(item.revision?'.edit':'.create'))||!scheduleText(item.id,80)||ids.has(item.id)||!scheduleDate(item.day)||!scheduleDate(item.endDay)||item.endDay<item.day||Date.parse(item.endDay)-Date.parse(item.day)>31*86400000||item.kind==='daily'&&item.day!==item.endDay||!scheduleText(item.title,160)||typeof item.note!=='string'||item.note.length>1000||!/^#[0-9a-fA-F]{6}$/.test(item.color)||!Number.isInteger(item.revision)||item.revision<0||item.sortIndex!==undefined&&(!Number.isInteger(item.sortIndex)||item.sortIndex<0||item.sortIndex>1000000))return scheduleJSON({error:'第 '+(statements.length+1)+' 項工作不完整'},400);ids.add(item.id);
     let assignees,contents;try{assignees=JSON.parse(item.assignee);contents=JSON.parse(item.category)}catch{return scheduleJSON({error:'請勾選工作內容及人員'},400)}
     if(!Array.isArray(assignees)||!assignees.length||assignees.length>50||new Set(assignees).size!==assignees.length||!assignees.every(x=>active.has(x))||!Array.isArray(contents)||!contents.length||contents.length>100||!contents.every(x=>typeof x==='string'&&x.trim()&&x.length<=80))return scheduleJSON({error:'工作人員或內容選擇不正確'},400);
     const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(item.id).first();if(old&&old.kind!==item.kind)return scheduleJSON({error:'排程類型不符'},400);if((old?.revision||0)!==item.revision)return scheduleJSON({error:'排程已由他人修改，請重新載入'},409);
-    statements.push(old?env.DB.prepare('UPDATE schedule_entries SET kind=?,day=?,end_day=?,title=?,assignee=?,color=?,note=?,category=?,sort_index=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?').bind(item.kind,item.day,item.endDay,item.title,item.assignee,item.color,item.note,item.category,item.sortIndex||0,now,item.id,item.revision):env.DB.prepare('INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,1,?)').bind(item.id,item.kind,item.day,item.endDay,item.title,item.assignee,item.color,item.note,item.category,'',String(employee.id),employee.name,now,now,item.sortIndex||0));
+    expected.push({id:item.id,kind:item.kind,revision:item.revision});const personIds=await schedulePeople85(env,item.assignee);
+    statements.push(old?env.DB.prepare('UPDATE schedule_entries SET kind=?,day=?,end_day=?,title=?,assignee=?,color=?,note=?,category=?,sort_index=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?').bind(item.kind,item.day,item.endDay,item.title,item.assignee,item.color,item.note,item.category,item.sortIndex||0,now,item.id,item.revision):env.DB.prepare('INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,1,?)').bind(item.id,item.kind,item.day,item.endDay,item.title,item.assignee,item.color,item.note,item.category,'',String(employee.id),employee.name,now,now,item.sortIndex||0));statements.push(env.DB.prepare('UPDATE schedule_entries SET assignee_ids=? WHERE id=?').bind(JSON.stringify(personIds),item.id));
    }for(const removal of input.deletions||[]){
     if(!scheduleText(removal.id,80)||ids.has(removal.id)||!Number.isInteger(removal.revision)||removal.revision<1)return scheduleJSON({error:'刪除工作資料不正確'},400);
     ids.add(removal.id);const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(removal.id).first();
     if(!old||!['weekly','daily'].includes(old.kind))return scheduleJSON({error:'找不到工作'},404);
     if(!scheduleAllowed(employee,'schedule.'+old.kind+'.delete'))return scheduleJSON({error:'沒有刪除此排程的權限'},403);
     if(old.revision!==removal.revision)return scheduleJSON({error:'排程已由他人修改，請重新載入'},409);
-    statements.push(env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=? AND kind=?').bind(removal.id,removal.revision,old.kind));
-   }await env.DB.batch(statements);return scheduleJSON({saved:true,count:statements.length});
+    expected.push({id:removal.id,kind:old.kind,revision:removal.revision});statements.push(env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=? AND kind=?').bind(removal.id,removal.revision,old.kind));
+   }await scheduleCommit85(env,statements,expected);return scheduleJSON({saved:true,count:expected.length});
   }
   if(kind==='weekly_note'){
    if(method!=='POST'||!scheduleAllowed(employee,'schedule.note'))return scheduleJSON({error:'沒有修改每週備註的權限'},403);
@@ -82,33 +99,15 @@ async function scheduleApiCore71(request,env,employee){
   "SELECT photo_key FROM schedule_material_photos WHERE material_id=?"
  ).bind(input.id).all();
 
- const deleted=await env.DB.prepare(
-  "DELETE FROM schedule_entries WHERE id=? AND kind='material' AND revision=?"
- ).bind(input.id,input.revision).run();
-
- if(deleted.meta?.changes!==1){
-  return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
- }
-
- await env.DB.prepare(
-  "DELETE FROM schedule_material_photos WHERE material_id=?"
- ).bind(input.id).run();
-
- const photoKeys=[
-  old.receipt_photo_key,
-  old.item_photo_key,
-  ...(extraPhotos.results||[]).map(photo=>photo.photo_key)
- ].filter(Boolean);
-
- await Promise.allSettled(
-  photoKeys.map(key=>env.UPLOADS?.delete(key))
- );
+ const photoKeys=[old.receipt_photo_key,old.item_photo_key,...extraPhotos.results.map(p=>p.photo_key)].filter(Boolean);
+ await scheduleCommit85(env,[env.DB.prepare("DELETE FROM schedule_entries WHERE id=? AND kind='material' AND revision=?").bind(input.id,input.revision),env.DB.prepare('DELETE FROM schedule_material_photos WHERE material_id=?').bind(input.id),...schedulePhotoJobs85(env,photoKeys)],[{id:input.id,kind:'material',revision:input.revision}]);
+ await scheduleDiscardPhotos85(env,photoKeys);
 
  return scheduleJSON({deleted:true});
 }
    if(!scheduleText(input.id,80)||!scheduleDate(input.day)||!scheduleText(input.title,160)||!['收料','出貨','送貨'].includes(input.category)||!Number.isSafeInteger(input.quantity)||input.quantity<1||input.quantity>1000000||typeof input.note!=='string'||input.note.length>1000||!Number.isInteger(input.revision)||input.revision<0)return scheduleJSON({error:'請填寫物料日期、品項、數量與類型'},400);
    const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(input.id).first();if(old&&old.kind!==kind)return scheduleJSON({error:'紀錄類型不符'},400);if((old?.revision||0)!==input.revision)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);
-   if(old)await env.DB.prepare("UPDATE schedule_entries SET day=?,end_day=?,title=?,category=?,quantity=?,note=?,updated_at=?,revision=revision+1 WHERE id=? AND kind='material' AND revision=?").bind(input.day,input.day,input.title.trim(),input.category,input.quantity,input.note.trim(),now,input.id,input.revision).run();
+   if(old){const result=await env.DB.prepare("UPDATE schedule_entries SET day=?,end_day=?,title=?,category=?,quantity=?,note=?,updated_at=?,revision=revision+1 WHERE id=? AND kind='material' AND revision=?").bind(input.day,input.day,input.title.trim(),input.category,input.quantity,input.note.trim(),now,input.id,input.revision).run();if(result.meta?.changes!==1)return scheduleJSON({error:'紀錄已由他人修改，請重新載入'},409);}
    else await env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision) VALUES (?,'material',?,? ,?,'','#4e8069',?,?,?,'',?,?,?,?,1)").bind(input.id,input.day,input.day,input.title.trim(),input.note.trim(),input.category,input.quantity,String(employee.id),employee.name,now,now).run();return scheduleJSON({saved:true});
   }
   if(kind==='report'){
@@ -122,12 +121,20 @@ async function scheduleApiCore71(request,env,employee){
     const result=await env.DB.prepare('UPDATE schedule_reports SET body=? WHERE id=? AND body=?').bind(input.body.trim(),old.id,old.body).run();
     return result.meta?.changes?scheduleJSON({saved:true}):scheduleJSON({error:'回報已更新，請重新開啟'},409);
    }
-   if(method==='DELETE'){const old=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(input.id).first();if(!old)return scheduleJSON({error:'找不到回報'},404);if(!scheduleAllowed(employee,'schedule.report.deleteAll')&&!(old.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.deleteOwn')))return scheduleJSON({error:'只能刪除自己的回報'},403);await env.DB.prepare('DELETE FROM schedule_reports WHERE id=? AND author_id=?').bind(old.id,old.author_id).run();if(old.photo_key)await env.UPLOADS?.delete(old.photo_key);return scheduleJSON({deleted:true});}
+   if(method==='DELETE'){
+    const old=await env.DB.prepare('SELECT * FROM schedule_reports WHERE id=?').bind(input.id).first();
+    if(!old)return scheduleJSON({error:'找不到回報'},404);
+    if(!scheduleAllowed(employee,'schedule.report.deleteAll')&&!(old.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.deleteOwn')))return scheduleJSON({error:'只能刪除自己的回報'},403);
+    const extra=await env.DB.prepare('SELECT photo_key FROM schedule_report_photos WHERE report_id=?').bind(old.id).all();
+    const keys=[old.photo_key,...extra.results.map(p=>p.photo_key)].filter(Boolean);await env.DB.batch([env.DB.prepare('DELETE FROM schedule_report_photos WHERE report_id=?').bind(old.id),env.DB.prepare('DELETE FROM schedule_reports WHERE id=? AND author_id=?').bind(old.id,old.author_id),...schedulePhotoJobs85(env,keys)]);
+    await scheduleDiscardPhotos85(env,keys);
+    return scheduleJSON({deleted:true});
+   }
    return scheduleJSON({error:'請選擇安排給自己的工作，並上傳工作照片'},400);
   }
   if(!['weekly','daily','special'].includes(kind))return scheduleJSON({error:'排程類型不正確'},400);
   const capability=kind==='weekly'?'schedule.weekly':'schedule.daily';if(!scheduleAllowed(employee,capability+(method==='DELETE'?'.delete':input.revision?'.edit':'.create')))return scheduleJSON({error:'沒有此排程的修改權限'},403);
-  if(method==='DELETE'){const old=await env.DB.prepare('SELECT id,revision,kind FROM schedule_entries WHERE id=?').bind(input.id).first();if(!old)return scheduleJSON({error:'找不到項目'},404);if(old.kind!==kind)return scheduleJSON({error:'排程類型不符'},400);if(old.revision!==input.revision)return scheduleJSON({error:'排程已被他人修改，請重新載入'},409);await env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=?').bind(input.id,input.revision).run();return scheduleJSON({deleted:true});}
+  if(method==='DELETE'){const old=await env.DB.prepare('SELECT id,revision,kind FROM schedule_entries WHERE id=?').bind(input.id).first();if(!old)return scheduleJSON({error:'找不到項目'},404);if(old.kind!==kind)return scheduleJSON({error:'排程類型不符'},400);if(old.revision!==input.revision)return scheduleJSON({error:'排程已被他人修改，請重新載入'},409);await scheduleCommit85(env,[env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=?').bind(input.id,input.revision)],[{id:input.id,revision:input.revision,kind}]);return scheduleJSON({deleted:true});}
   if(input.sortIndex!==undefined&&(!Number.isInteger(input.sortIndex)||input.sortIndex<0||input.sortIndex>1000000))return scheduleJSON({error:'工作順序不正確'},400);
   if(!scheduleText(input.id,80)||!scheduleDate(input.day)||!scheduleDate(input.endDay)||input.endDay<input.day||Date.parse(input.endDay)-Date.parse(input.day)>31*86400000||!scheduleText(input.title,160)||typeof input.assignee!=='string'||input.assignee.length>2000||typeof input.note!=='string'||input.note.length>1000||!/^#[0-9a-fA-F]{6}$/.test(input.color))return scheduleJSON({error:'請檢查排程日期與內容'},400);
   
@@ -135,11 +142,11 @@ async function scheduleApiCore71(request,env,employee){
   if(kind==='daily'&&input.category){let names;try{names=JSON.parse(input.assignee)}catch{names=null}if(!Array.isArray(names)||!names.length||!names.every(n=>typeof n==='string'))return scheduleJSON({error:'請選擇每日工作的人員'},400)}
   if(input.category){let contents;try{contents=JSON.parse(input.category)}catch{contents=null}if(!Array.isArray(contents)||!contents.length||contents.length>100||!contents.every(x=>typeof x==='string'&&x.trim()&&x.length<=80))return scheduleJSON({error:'請選擇有效的工作內容'},400)}
   if(kind==='daily'&&input.day!==input.endDay)return scheduleJSON({error:'每日排程只能安排單日'},400);
-  const old=await env.DB.prepare('SELECT revision FROM schedule_entries WHERE id=?').bind(input.id).first();if((old?.revision||0)!==input.revision)return scheduleJSON({error:'排程已被他人修改，請重新載入'},409);
-  if(old)await env.DB.prepare('UPDATE schedule_entries SET kind=?,day=?,end_day=?,title=?,assignee=?,color=?,note=?,category=?,sort_index=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?').bind(kind,input.day,input.endDay,input.title.trim(),input.assignee.trim(),input.color,input.note.trim(),input.category||'',input.sortIndex||0,now,input.id,input.revision).run();
-  else await env.DB.prepare('INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,1,?)').bind(input.id,kind,input.day,input.endDay,input.title.trim(),input.assignee.trim(),input.color,input.note.trim(),input.category||'', '',String(employee.id),employee.name,now,now,input.sortIndex||0).run();
+  const old=await env.DB.prepare('SELECT revision,kind FROM schedule_entries WHERE id=?').bind(input.id).first();if(old&&old.kind!==kind)return scheduleJSON({error:'排程類型不符'},400);if((old?.revision||0)!==input.revision)return scheduleJSON({error:'排程已被他人修改，請重新載入'},409);
+  const write=old?env.DB.prepare('UPDATE schedule_entries SET kind=?,day=?,end_day=?,title=?,assignee=?,color=?,note=?,category=?,sort_index=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?').bind(kind,input.day,input.endDay,input.title.trim(),input.assignee.trim(),input.color,input.note.trim(),input.category||'',input.sortIndex||0,now,input.id,input.revision):env.DB.prepare('INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,1,?)').bind(input.id,kind,input.day,input.endDay,input.title.trim(),input.assignee.trim(),input.color,input.note.trim(),input.category||'', '',String(employee.id),employee.name,now,now,input.sortIndex||0);
+  const identities=['weekly','daily'].includes(kind)?await schedulePeople85(env,input.assignee):[];await scheduleCommit85(env,[write,env.DB.prepare('UPDATE schedule_entries SET assignee_ids=? WHERE id=?').bind(JSON.stringify(identities),input.id)],[{id:input.id,kind,revision:input.revision}]);
   return scheduleJSON({saved:true});
- }catch(e){return scheduleJSON({error:e.message||'排程操作失敗'},400);}
+ }catch(e){return scheduleJSON({error:e.message||'排程操作失敗'},e.status||400);}
 }
 export async function schedulePhotoApi(request,env,employee){
  try{
@@ -184,8 +191,8 @@ if(form.get('mode')==='create'){
   if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);
   const day=String(form.get('day')||''),body=String(form.get('body')||'').trim(),entryId=String(form.get('entryId')||'');
   if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(body,3000)||!scheduleText(entryId,80))return scheduleJSON({error:'請填寫日期、工作與回報內容'},400);
-  const entry=await env.DB.prepare("SELECT kind,day,end_day,assignee FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
-  if(entry?.kind!=='daily'||day<entry.day||day>entry.end_day||!Array.isArray(people)||!people.includes(employee.name))return scheduleJSON({error:'只能回報當天安排給自己的工作'},403);
+  const entry=await env.DB.prepare("SELECT kind,day,end_day,assignee,assignee_ids,title,category FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
+  if(entry?.kind!=='daily'||day<entry.day||day>entry.end_day||!Array.isArray(people)||!(entry.assignee_ids&&entry.assignee_ids!=='[]'?JSON.parse(entry.assignee_ids).includes(String(employee.id)):people.includes(employee.name)&&(await env.DB.prepare("SELECT COUNT(*) AS n FROM employees WHERE name=? AND status='active'").bind(employee.name).first()).n===1))return scheduleJSON({error:'只能回報當天安排給自己的工作'},403);
 
   const stored=[];
   try{
@@ -198,13 +205,13 @@ if(form.get('mode')==='create'){
     const first=stored[0];
     const now=new Date().toISOString();
     const statements=[
-      env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at) VALUES (?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,first.key,first.name,String(employee.id),employee.name,now),
+      env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,work_title,work_content) VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,first.key,first.name,String(employee.id),employee.name,now,entry.title,entry.category),
       ...stored.slice(1).map(p=>env.DB.prepare('INSERT INTO schedule_report_photos(id,report_id,photo_key,photo_name,sort_index,created_at) VALUES (?,?,?,?,?,?)').bind(p.id,id,p.key,p.name,p.sortIndex,now))
     ];
     await env.DB.batch(statements);
     return scheduleJSON({saved:true,photoCount:stored.length});
   }catch(e){
-    await Promise.allSettled(stored.map(p=>env.UPLOADS.delete(p.key)));
+    await scheduleDiscardPhotos85(env,stored.map(p=>p.key));
     throw e;
   }
 }
@@ -231,7 +238,7 @@ try{
   await Promise.allSettled(oldKeys.map(key=>env.UPLOADS.delete(key)));
   return scheduleJSON({saved:true,photoCount:stored.length});
 }catch(e){
-  await Promise.allSettled(stored.map(p=>env.UPLOADS.delete(p.key)));
+  await scheduleDiscardPhotos85(env,stored.map(p=>p.key));
   throw e;
 }
  }catch(e){return scheduleJSON({error:e.message||'照片上傳失敗'},400);}
@@ -387,15 +394,14 @@ async function scheduleMaterialUploadCore71(request,env,employee){
    authorName=person.name;
   }
 
-  const incoming=[
-   ...form.getAll('photo')
-  ].filter(file=>file instanceof File&&file.size);
+  const receiptUpload=form.get('receiptPhoto');const receiptFiles=receiptUpload instanceof File&&receiptUpload.size?[receiptUpload]:[];
+  const incoming=[...form.getAll('photo'),...form.getAll('itemPhoto')].filter(file=>file instanceof File&&file.size);
 
-  if(incoming.length>10){
+  if(incoming.length+receiptFiles.length>10){
    return scheduleJSON({error:'料件照片一次最多10張'},400);
   }
 
-  for(const file of incoming){
+  for(const file of [...incoming,...receiptFiles]){
    if(
     !['image/jpeg','image/png','image/webp'].includes(file.type)||
     file.size>schedulePhotoLimit67||
@@ -413,6 +419,8 @@ async function scheduleMaterialUploadCore71(request,env,employee){
     ).bind(id).all()
    :{results:[]};
 
+  let receiptKey=old?.receipt_photo_key||'',receiptName=old?.receipt_photo_name||'';
+  if(receiptFiles.length){const receipt=receiptFiles[0];receiptKey='schedule-material/'+id+'/receipt/'+crypto.randomUUID();receiptName=receipt.name.slice(0,200);await env.UPLOADS.put(receiptKey,receipt.stream(),{httpMetadata:{contentType:receipt.type}});stored.push(receiptKey);}
   let itemKey=old?.item_photo_key||'';
   let itemName=old?.item_photo_name||'';
 
@@ -445,9 +453,8 @@ async function scheduleMaterialUploadCore71(request,env,employee){
 
   const now=new Date().toISOString();
 
-  if(old){
-   const result=await env.DB.prepare(
-    "UPDATE schedule_entries SET author_id=?,author_name=?,day=?,end_day=?,title=?,project_name=?,category=?,quantity=?,note=?,item_photo_key=?,item_photo_name=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND kind='material'"
+  const mainWrite=old?env.DB.prepare(
+    "UPDATE schedule_entries SET author_id=?,author_name=?,day=?,end_day=?,title=?,project_name=?,category=?,quantity=?,note=?,receipt_photo_key=?,receipt_photo_name=?,item_photo_key=?,item_photo_name=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND kind='material'"
    ).bind(
     authorId,
     authorName,
@@ -458,19 +465,15 @@ async function scheduleMaterialUploadCore71(request,env,employee){
     category,
     quantity,
     note,
+    receiptKey,
+    receiptName,
     itemKey,
     itemName,
     now,
     id,
     revision
-   ).run();
-
-   if(result.meta?.changes!==1){
-    throw Error('紀錄已由他人修改，請重新載入');
-   }
-  }else{
-   await env.DB.prepare(
-    "INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name) VALUES (?,'material',?,?,?,'','#4e8069',?,?,?,'',?,?,?,?,?,1,'','',?,?)"
+   ):env.DB.prepare(
+    "INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name) VALUES (?,'material',?,?,?,'','#4e8069',?,?,?,'',?,?,?,?,?,1,?,?,?,?)"
    ).bind(
     id,
     day,
@@ -484,13 +487,13 @@ async function scheduleMaterialUploadCore71(request,env,employee){
     authorName,
     now,
     now,
+    receiptKey,
+    receiptName,
     itemKey,
     itemName
-   ).run();
-  }
+   );
 
-  if(incoming.length){
-   const statements=[
+  const statements=[mainWrite,...(incoming.length?[
     env.DB.prepare(
      "DELETE FROM schedule_material_photos WHERE material_id=?"
     ).bind(id),
@@ -506,19 +509,11 @@ async function scheduleMaterialUploadCore71(request,env,employee){
       now
      )
     )
-   ];
-
-   await env.DB.batch(statements);
-
-   const oldKeys=[
-    old?.item_photo_key,
-    ...(oldExtra.results||[]).map(photo=>photo.photo_key)
-   ].filter(Boolean);
-
-   await Promise.allSettled(
-    oldKeys.map(key=>env.UPLOADS.delete(key))
-   );
-  }
+   ]:[])];
+  const oldKeys=[...(receiptFiles.length?[old?.receipt_photo_key]:[]),...(incoming.length?[old?.item_photo_key]:[]),...(incoming.length?(oldExtra.results||[]).map(photo=>photo.photo_key):[])].filter(Boolean);
+  statements.push(...schedulePhotoJobs85(env,oldKeys));
+  await scheduleCommit85(env,statements,[{id,kind:'material',revision}]);
+  await scheduleDiscardPhotos85(env,oldKeys);
 
   return scheduleJSON({
    saved:true,
@@ -526,13 +521,11 @@ async function scheduleMaterialUploadCore71(request,env,employee){
   });
 
  }catch(e){
-  await Promise.allSettled(
-   stored.map(key=>env.UPLOADS?.delete(key))
-  );
+  await scheduleDiscardPhotos85(env,stored);
 
   return scheduleJSON({
    error:e.message||'料件照片上傳失敗'
-  },400);
+  },e.status||400);
  }
 }
 const scheduleReadable71=x=>{try{const a=JSON.parse(x);return Array.isArray(a)?a.join('、'):String(x||'')}catch{return String(x||'')}};
@@ -577,12 +570,12 @@ async function scheduleExtra71(request,env,employee,input){
   const target=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=?").bind(week,end).all();
   const projected=rows.results.map(e=>({...e,day:scheduleShift71(e.day<source?source:e.day,7),end_day:scheduleShift71(e.end_day>last?last:e.end_day,7)}));
   const missing=scheduleUnique73(projected,target.results).kept;
-  for(const e of missing)statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES(?,'weekly',?,?,?,?,?,?,?,0,'',?,?,?,?,1,?)").bind(crypto.randomUUID(),e.day,e.end_day,e.title,e.assignee,e.color,e.note,e.category,String(employee.id),employee.name,now,now,e.sort_index||0));
+  for(const e of missing)statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids) VALUES(?,'weekly',?,?,?,?,?,?,?,0,'',?,?,?,?,1,?,?)").bind(crypto.randomUUID(),e.day,e.end_day,e.title,e.assignee,e.color,e.note,e.category,String(employee.id),employee.name,now,now,e.sort_index||0,e.assignee_ids||'[]'));
   statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'weekly',week,employee.name,'複製上週排程｜新增 '+missing.length+' 項',now));
   try{await env.DB.batch(statements)}catch(e){if(await env.DB.prepare('SELECT week FROM schedule_copies71 WHERE week=?').bind(week).first())return scheduleJSON({saved:true,already:true});throw e}return scheduleJSON({saved:true,count:missing.length,already:missing.length===0});
  }
  // SQL-only range splitting is atomic, preserving the dates outside the selected week.
- statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) SELECT lower(hex(randomblob(16))),kind,?,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,?,1,sort_index FROM schedule_entries WHERE kind='weekly' AND day<? AND end_day>?").bind(scheduleShift71(end,1),now,week,end));
+ statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids) SELECT lower(hex(randomblob(16))),kind,?,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,?,1,sort_index,assignee_ids FROM schedule_entries WHERE kind='weekly' AND day<? AND end_day>?").bind(scheduleShift71(end,1),now,week,end));
  statements.push(env.DB.prepare("DELETE FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=?").bind(week,end));
  statements.push(env.DB.prepare("UPDATE schedule_entries SET end_day=?,revision=revision+1,updated_at=? WHERE kind='weekly' AND day<? AND end_day>=?").bind(scheduleShift71(week,-1),now,week,week));
  statements.push(env.DB.prepare("UPDATE schedule_entries SET day=?,revision=revision+1,updated_at=? WHERE kind='weekly' AND day BETWEEN ? AND ? AND end_day>?").bind(scheduleShift71(end,1),now,week,end,end));
@@ -658,7 +651,7 @@ export function scheduleUnique73(rows,existing=[]){
  const keys=e=>(scheduleNames73(e).length?scheduleNames73(e):['']).map(n=>JSON.stringify([scheduleSignature73(e),n]));
  for(const e of existing)for(const key of keys(e))seen.add(key);
  for(const e of rows){const names=scheduleNames73(e),all=names.length?names:[''],remaining=all.filter(n=>!seen.has(JSON.stringify([scheduleSignature73(e),n])));for(const n of remaining)seen.add(JSON.stringify([scheduleSignature73(e),n]));
-  if(remaining.length){const next={...e,assignee:names.length?JSON.stringify(remaining):''};kept.push(next);if(remaining.length!==all.length)changes.push({before:e,after:next,removed:all.filter(n=>!remaining.includes(n))});}
+  if(remaining.length){let identities=[];try{const oldIds=JSON.parse(e.assignee_ids||'[]');identities=remaining.map(n=>oldIds[names.indexOf(n)]).filter(Boolean)}catch{}const next={...e,assignee:names.length?JSON.stringify(remaining):'',assignee_ids:JSON.stringify(identities)};kept.push(next);if(remaining.length!==all.length)changes.push({before:e,after:next,removed:all.filter(n=>!remaining.includes(n))});}
   else changes.push({before:e,after:null,removed:all});
  }return{kept,changes};
 }
@@ -677,7 +670,7 @@ async function scheduleDedupe73(request,env,employee,input=null){
  // All guards and changes run in one transaction: any concurrent edit aborts the entire cleanup.
  statements.push(env.DB.prepare("INSERT INTO schedule_guard73 VALUES(?,CASE WHEN (SELECT count(*) FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=?)=? THEN 1 ELSE 0 END)").bind(id,week,end,rows.length));
  for(const e of rows)statements.push(env.DB.prepare('UPDATE schedule_guard73 SET valid=CASE WHEN EXISTS(SELECT 1 FROM schedule_entries WHERE id=? AND revision=?) THEN 1 ELSE 0 END WHERE id=?').bind(e.id,e.revision,id));
- for(const c of plan.changes){if(c.after)statements.push(env.DB.prepare('UPDATE schedule_entries SET assignee=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?').bind(c.after.assignee,now,c.before.id,c.before.revision));else statements.push(env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=?').bind(c.before.id,c.before.revision));}
+ for(const c of plan.changes){if(c.after)statements.push(env.DB.prepare('UPDATE schedule_entries SET assignee=?,assignee_ids=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?').bind(c.after.assignee,c.after.assignee_ids||'[]',now,c.before.id,c.before.revision));else statements.push(env.DB.prepare('DELETE FROM schedule_entries WHERE id=? AND revision=?').bind(c.before.id,c.before.revision));}
  statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'weekly',week,employee.name,'整理重複排程｜'+week+' 至 '+end+'｜'+preview.map(c=>c.action+'：'+c.title+'／'+c.people.join('、')).join('；'),now));
  statements.push(env.DB.prepare('DELETE FROM schedule_guard73 WHERE id=?').bind(id));
  try{await env.DB.batch(statements)}catch(e){if(String(e.message).includes('CHECK'))return scheduleJSON({error:'排程已由他人更新，請重新預覽'},409);throw e}
