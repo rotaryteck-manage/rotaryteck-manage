@@ -76,6 +76,7 @@ async function notificationTestDialog82(){
    '<label class="field">接收人員'+
     '<select name="employeeId" required>'+
      '<option value="">請選擇員工</option>'+
+     '<option value="all">全員（所有已開啟通知的裝置）</option>'+
      employees.map(employee=>
       '<option value="'+esc(String(employee.id))+'">'+
        esc(employee.name)+
@@ -91,10 +92,11 @@ async function notificationTestDialog82(){
    '發送測試通知',
 
    async fd=>{
-    const employeeId=Number(fd.get('employeeId'));
+    const selected=String(fd.get('employeeId')||'');
 
-    if(!employeeId)
+    if(!selected)
      throw Error('請選擇接收人員');
+    if(selected==='all'&&!await confirmAction('確定發送測試通知給全員所有已開啟的裝置？'))return;
 
     const response=await apiFetch('/api/push-test',{
      method:'POST',
@@ -102,7 +104,7 @@ async function notificationTestDialog82(){
       'Content-Type':'application/json'
      },
      body:JSON.stringify({
-      employeeId
+      employeeId:selected==='all'?'all':Number(selected)
      })
     });
 
@@ -121,8 +123,8 @@ async function notificationTestDialog82(){
      );
     }else{
      toast(
-      '測試通知已發送給 '+data.employeeName+
-      '，共 '+data.sent+' 台裝置'
+     '測試通知已發送給 '+data.employeeName+
+     '，共 '+data.sent+' 台裝置'
      );
     }
    }
@@ -166,8 +168,9 @@ async function notificationDevicesDialog82(){
    const devices=person.devices||[];
 
    return (
-    '<div class="notification-person-devices82">'+
-     '<h3>'+esc(person.name)+' <button type="button" class="small" data-notification-person85="'+esc(String(person.id))+'" data-enabled="'+(person.enabled?'1':'0')+'">'+(person.enabled?'停用此人所有通知':'恢復此人通知')+'</button></h3>'+ (person.enabled?'':'<p class="muted">此人全部通知已停用，包含之後新增的裝置。</p>')+
+    '<details class="notification-person-devices82">'+
+     '<summary>'+esc(person.name)+'｜'+devices.length+' 台裝置｜'+(person.enabled?(devices.some(device=>device.enabled)?'通知已開啟':'尚未開啟通知'):'人員通知已停用')+'</summary><div class="notification-person-body86">'+
+     '<button type="button" class="small" data-notification-person85="'+esc(String(person.id))+'" data-enabled="'+(person.enabled?'1':'0')+'">'+(person.enabled?'停用此人所有通知':'恢復此人通知')+'</button>'+ (person.enabled?'':'<p class="muted">此人全部通知已停用，包含之後新增的裝置。</p>')+
 
      (
       devices.length
@@ -204,7 +207,7 @@ async function notificationDevicesDialog82(){
        :'<p class="muted">尚未開啟通知</p>'
      )+
 
-    '</div>'
+    '</div></details>'
    );
   }).join('');
 box.querySelectorAll('[data-notification-person85]').forEach(button=>{button.onclick=async()=>{try{const response=await apiFetch('/api/push-subscription?admin=1',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({employeeId:Number(button.dataset.notificationPerson85),enabled:button.dataset.enabled!=='1'})}),data=await response.json();if(!response.ok)throw Error(data.error);await notificationDevicesDialog82();}catch(e){toast(e.message)}}});

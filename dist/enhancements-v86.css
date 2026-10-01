@@ -1,0 +1,11 @@
+.notification-fold86{margin:12px 0;border:1px solid #d8e3d5;border-radius:7px;background:#fff}
+.notification-fold86>summary{cursor:pointer;padding:12px 14px;font-weight:700;color:#294f3b;background:#f4f8f1;border-radius:7px;list-style-position:inside}
+.notification-fold86[open]>summary{border-bottom:1px solid #d8e3d5;border-radius:7px 7px 0 0}
+.notification-fold86>#notification-rule-list81,.notification-fold86>#notification-log-list81{padding:6px 14px 12px}
+.notification-key-status86{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0;padding:10px 12px;border:1px solid #d8e3d5;border-radius:7px;background:#f7faf5}
+.notification-key-status86 span{flex:1;min-width:180px}.notification-key-status86 .success86{color:#24653d}.notification-key-status86 .error{color:#b33d35}
+.notification-person-devices82{margin:8px 0;border:1px solid #d8e3d5;border-radius:7px;background:#fff}
+.notification-person-devices82>summary{cursor:pointer;padding:12px 14px;font-weight:700;background:#f4f8f1;border-radius:7px;list-style-position:inside}
+.notification-person-devices82[open]>summary{border-bottom:1px solid #d8e3d5;border-radius:7px 7px 0 0}
+.notification-person-devices82>.notification-person-body86{padding:10px 14px}
+@media(max-width:700px),(pointer:coarse){.notification-key-status86 button{min-height:40px}.notification-person-devices82>summary{padding:14px 12px}}

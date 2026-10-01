@@ -5,8 +5,7 @@ function mobileRows78(day){
  const jobs=entries.some(e=>e.kind==='daily'&&e.day<=day&&(e.end_day||e.day)>=day);
  const reports=(scheduleData56.reports||[]).some(e=>e.day===day);
 
-if(jobs||reports)rows.push({title:'工作紀錄',section:'jobs'});
- if(typeof scheduleMaterial56==='function'&&scheduleMaterial56().some(e=>e.day===day))rows.push({title:'收／領料紀錄',section:'legacy'});
+ if(jobs||reports)rows.push({title:'工作紀錄',section:'jobs'});
  if(canDo('schedule.leave.view')&&(scheduleData56.leaves||[]).some(e=>leaveOnDay72(e,day)))rows.push({title:'請假紀錄',section:'leaves'});
 
  entries

@@ -44,9 +44,7 @@ async function scheduleTextRecords71(kind=scheduleTab56){
  ['#text-kind71','#text-from71','#text-to71'].forEach(s=>$(s).onchange=load);await load();
 }
 function workSelects71(){
- let list=document.querySelector('#schedule-items85');
- if(!list&&document.querySelector('#modal .schedule-task60')){list=document.createElement('datalist');list.id='schedule-items85';list.innerHTML=(scheduleData56.options?.items||[]).map(x=>'<option value="'+esc(x)+'"></option>').join('');document.querySelector('#modal .modal-body').append(list);}
- document.querySelectorAll('#modal .schedule-task60 input[name^="item-"]').forEach(input=>input.setAttribute('list','schedule-items85'));
+ // v86 uses a real select so work items always come from the managed list.
 }
 
 function accountButton71(){const badge=$('#current-role');if(!badge||badge.dataset.switch71)return;badge.dataset.switch71='1';badge.tabIndex=0;badge.setAttribute('role','button');badge.setAttribute('aria-label','切換帳號');badge.title='點擊切換帳號';badge.onclick=()=>switchAccount71().catch(e=>toast(e.message));badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();badge.click()}}}

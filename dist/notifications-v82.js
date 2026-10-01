@@ -205,7 +205,8 @@ async function notificationUpdateButton82(){
   try{
    const response=await apiFetch('/api/push-subscription'),data=await response.json();if(!response.ok)throw Error(data.error);
    const device=(data.items||[]).find(d=>d.id===localStorage.getItem('notification-device85'));
-   button.textContent=!data.personEnabled?'人員通知已停用':device?device.enabled?'通知已開啟':'裝置通知已停用':'重新綁定通知';button.classList.toggle('selected',!!device?.enabled&&data.personEnabled);
+   if(!device){try{await subscription.unsubscribe()}catch{}localStorage.removeItem('notification-device85');button.textContent='開啟通知';button.classList.remove('selected');}
+   else{button.textContent=!data.personEnabled?'人員通知已停用':device.enabled?'通知已開啟':'裝置通知已停用';button.classList.toggle('selected',!!device.enabled&&data.personEnabled);}
   }catch{button.textContent='確認通知狀態';button.classList.remove('selected');}
  }else{button.textContent='開啟通知';button.classList.remove('selected');}
 

@@ -40,7 +40,7 @@ renderAdmin=function(){
  $('#app').innerHTML='<header class="header"><div class="brand">管理後台</div><a href="#warehouse">返回庫房</a></header><main><h1>管理後台</h1><p>只顯示已授權的功能。</p><div id="delegated-admin75" class="admin-actions"></div></main>';
  const host=$('#delegated-admin75'),add=(cap,label,fn)=>{if(!canDo(cap))return;const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=fn;host.append(b)};
  add('warehouse.options','庫房櫃／層選單',warehouseOptionsDialog73);
- add('schedule.options','工作項目選單',workOptions71);
+ add('schedule.options','工作項目選單',workOptions86);
  add('schedule.palette','設定共用常用色',async()=>{try{const r=await apiFetch('/api/schedule?view=palette'),d=await r.json();if(!r.ok)throw Error(d.error);palette73=d;const input=document.createElement('input'),host=document.createElement('div');input.value=d.colors[0];paletteEditor73(0,input,host)}catch(e){toast(e.message)}});
  add('plating.options','電鍍廠商選單',managePlatingVendors);
  add('admin.import','匯入舊資料',importData);
