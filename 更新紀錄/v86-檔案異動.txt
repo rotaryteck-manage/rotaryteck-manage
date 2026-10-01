@@ -1,0 +1,28 @@
+v86 檔案異動摘要 — 2026-10-01
+
+建置
+- build.mjs：納入v86前端JS/CSS並更新資源版本。
+- dist/server/index.js：由標準建置重新產生的完整Worker成品。
+
+排程與每日顯示
+- worker/schedule.mjs：工作項目後端白名單、舊值相容及獨立選單讀取權限。
+- dist/schedule-v60.js：每週／每日工作項目改為下拉選單。
+- dist/schedule-v67.js：移除桌面版舊收／領料入口。
+- dist/mobile-v78.js：移除手機版舊收／領料入口並保留正確順序。
+- dist/enhancements-v71.js：停用舊的手填／建議清單替換，避免覆蓋正式下拉選單。
+- dist/enhancements-v75.js：修正授權使用者開啟工作項目設定的入口。
+- dist/enhancements-v86.js：工作項目設定、每日順序、通知收合及金鑰狀態。
+- dist/enhancements-v86.css：v86通知收合與狀態版面。
+
+通知
+- worker/server.mjs：全員測試通知、VAPID完整性與公私鑰配對檢查。
+- dist/admin-layout.js：全員選項、確認提示、依人員收合的裝置狀態。
+- dist/notifications-v82.js：後台刪除裝置後清理瀏覽器失效訂閱。
+
+測試與說明
+- tests/v86.test.mjs：v86功能與權限測試。
+- tests/notifications-camera83.test.mjs：刪除裝置後恢復開啟狀態測試。
+- tests/helpers/schedule85.mjs及相關排程測試：測試資料配合正式工作項目選單。
+- README.md、更新紀錄/UPDATE-v86.txt、v86-驗收步驟.txt、v86-測試結果.txt：安裝、檢查與驗收說明。
+
+沒有新增、刪除或改名任何SQL遷移檔。
