@@ -1,0 +1,19 @@
+v88 差異檔案清單 — 2026-10-02
+
+本清單以 v87 commit 2b4bf43 為基準，只列本次修改或新增檔案。
+
+build.mjs
+dist/enhancements-v88.css
+dist/enhancements-v88.js
+dist/server/index.js
+drizzle/0019_notification_center88.sql
+tests/integrity85.test.mjs
+tests/v88.test.mjs
+worker/backup85.mjs
+worker/notifications85.mjs
+worker/server.mjs
+更新紀錄/UPDATE-v88.txt
+更新紀錄/v88-差異檔案清單.txt
+更新紀錄/v88-測試結果.txt
+更新紀錄/v88-驗收步驟.txt
+

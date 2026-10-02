@@ -470,6 +470,22 @@ async function sendPush82(env,subscription,options){
   };
  }
 }
+function notificationCategory88(type,preferred=''){
+ if(preferred)return String(preferred).slice(0,30);
+ return({work:'工作排程',report:'工作回報',wire:'線材提醒',plating:'電鍍提醒',material:'料件紀錄',test:'系統通知',custom:'自訂提醒'})[type]||'其他';
+}
+async function notificationInboxCreate88(env,employeeId,options){
+ const sourceKey=String(options.sourceKey||options.dedupeKey||('manual:'+crypto.randomUUID())).slice(0,300),now=new Date().toISOString(),id=crypto.randomUUID();
+ await env.DB.prepare(`INSERT OR IGNORE INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(id,Number(employeeId),notificationCategory88(options.notificationType,options.category),String(options.title||'擎正科技提醒').slice(0,100),String(options.message||'您有一則新的系統通知。').slice(0,500),String(options.targetUrl||'/').slice(0,1000),sourceKey,now).run();
+ return sourceKey;
+}
+async function notificationDispatch88(env,employeeId,options){
+ const person=await env.DB.prepare("SELECT e.id,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.id=? AND e.status='active'").bind(Number(employeeId)).first();
+ if(!person||person.enabled===0)return{sent:0,failed:0,results:[]};
+ const sourceKey=await notificationInboxCreate88(env,employeeId,options),devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1 ORDER BY updated_at DESC').bind(Number(employeeId)).all(),results=[];
+ for(const device of devices.results||[])results.push(await sendPush82(env,device,{...options,employeeId:Number(employeeId),dedupeKey:sourceKey+':'+device.id}));
+ return{sent:results.filter(x=>x.ok).length,failed:results.filter(x=>!x.ok&&!x.duplicate).length,results};
+}
 export async function pushTestApi82(request,env){
  if(request.method!=='POST')
   return json({error:'不支援的操作'},405);
@@ -486,10 +502,12 @@ export async function pushTestApi82(request,env){
   if(!permitted(employee,'admin.settings'))
    return json({error:'沒有系統通知管理權限'},403);
 
-  const input=await boundedJSON(request,4096);
+  const input=await boundedJSON(request,8192);
 
   const all=input.employeeId==='all',employeeId=all?null:Number(input.employeeId);
   check(all||Number.isSafeInteger(employeeId)&&employeeId>0,'請選擇測試通知接收人員');
+  const title=String(input.title||'擎正科技測試通知').trim(),message=String(input.message||'通知功能測試成功。').trim(),targetUrl=String(input.targetUrl||'/');
+  check(title&&title.length<=100&&message&&message.length<=500,'請填寫完整的測試通知內容');check(/^\/(?!\/)[^\\\r\n]*$/.test(targetUrl)&&targetUrl.length<=1000,'通知前往位置不正確');
   let targetEmployee=null,result;
   if(all){
    result=await env.DB.prepare(`SELECT s.id,s.employee_id,s.endpoint,s.p256dh,s.auth,s.device_label,e.name AS employee_name FROM push_subscriptions s JOIN employees e ON e.id=s.employee_id LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active' AND s.enabled=1 AND COALESCE(n.enabled,1)=1 ORDER BY e.id,s.updated_at DESC`).all();
@@ -506,28 +524,9 @@ export async function pushTestApi82(request,env){
    all?'目前全員都沒有已開啟的通知裝置':'這位員工目前沒有已開啟的通知裝置'
   );
 
-  const results=[];
-
-  for(const subscription of subscriptions){
-   results.push(
-    await sendPush82(
-     env,
-     subscription,
-     {
-      employeeId:all?subscription.employee_id:employeeId,
-      notificationType:'test',
-      title:'擎正科技測試通知',
-      message:'通知功能測試成功。',
-      targetUrl:'/',
-      dedupeKey:
-       'test:'+
-       crypto.randomUUID()+
-       ':'+
-       subscription.id
-     }
-    )
-   );
-  }
+  const results=[],testId=crypto.randomUUID(),employeeIds=[...new Set(subscriptions.map(x=>Number(x.employee_id)))];
+  for(const id of employeeIds)await notificationInboxCreate88(env,id,{notificationType:'test',category:'系統通知',title,message,targetUrl,sourceKey:'test:'+testId+':'+id});
+  for(const subscription of subscriptions)results.push(await sendPush82(env,subscription,{employeeId:Number(subscription.employee_id),notificationType:'test',title,message,targetUrl,dedupeKey:'test:'+testId+':'+subscription.employee_id+':'+subscription.id}));
 
   const sent=results.filter(x=>x.ok).length;
   const failed=results.length-sent;
@@ -545,6 +544,22 @@ export async function pushTestApi82(request,env){
    error:error.message||'測試通知發送失敗'
   },400);
  }
+}
+export async function notificationInboxApi88(request,env){
+ const employee=await employeeFor(request,env);if(!employee)return json({error:'請先登入'},401);
+ if(request.method==='GET'){
+  const rows=await env.DB.prepare('SELECT id,category,title,message,target_url,created_at,read_at FROM notification_inbox88 WHERE employee_id=? ORDER BY created_at DESC,id DESC LIMIT 100').bind(employee.id).all();
+  const unread=await env.DB.prepare("SELECT COUNT(*) AS n FROM notification_inbox88 WHERE employee_id=? AND read_at=''").bind(employee.id).first();
+  return json({items:(rows.results||[]).map(x=>({id:x.id,category:x.category,title:x.title,message:x.message,targetUrl:x.target_url,createdAt:x.created_at,readAt:x.read_at})),unread:Number(unread?.n)||0});
+ }
+ if(request.method!=='PATCH')return json({error:'不支援的操作'},405);
+ if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
+ try{
+  const input=await boundedJSON(request,4096),now=new Date().toISOString();let result;
+  if(input.scope==='all')result=await env.DB.prepare("UPDATE notification_inbox88 SET read_at=? WHERE employee_id=? AND read_at=''").bind(now,employee.id).run();
+  else{check(typeof input.id==='string'&&input.id.length<=100,'通知編號不正確');result=await env.DB.prepare("UPDATE notification_inbox88 SET read_at=? WHERE id=? AND employee_id=? AND read_at=''").bind(now,input.id,employee.id).run();}
+  const unread=await env.DB.prepare("SELECT COUNT(*) AS n FROM notification_inbox88 WHERE employee_id=? AND read_at=''").bind(employee.id).first();return json({saved:true,changed:Number(result.meta?.changes)||0,unread:Number(unread?.n)||0});
+ }catch(error){return json({error:error.message||'通知已讀狀態儲存失敗'},400);}
 }
 export async function validatePushPublicKey83(value){
  const key=String(value||'').trim();
@@ -652,7 +667,7 @@ export async function pushSubscriptionApi82(request,env){
 }
 export async function notificationLogApi85(request,env){
  const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
- if(request.method==='GET'){const rows=await env.DB.prepare('SELECT d.id,d.notification_type,d.title,d.message,d.status,d.created_at,d.sent_at,d.error_message,e.name AS employee_name FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id ORDER BY d.created_at DESC LIMIT 100').all();return json({items:rows.results});}
+ if(request.method==='GET'){const rows=await env.DB.prepare('SELECT d.id,d.notification_type,d.title,d.message,d.status,d.created_at,d.sent_at,d.error_message,e.name AS employee_name FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id ORDER BY d.created_at DESC LIMIT 100').all();return json({items:(rows.results||[]).map(x=>({...x,category:notificationCategory88(x.notification_type)}))});}
  if(request.method!=='DELETE')return json({error:'不支援的操作'},405);
  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
  try{
@@ -672,11 +687,24 @@ export async function runNotifications85(env,now=Date.now()){
  const day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
  const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day=?").bind(day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all();
  const people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
- for(const person of people.results){await employeePermissions(env,person);const cap=rule=>rule.type==='work'||rule.type==='report'?'schedule.view':rule.type+'.view';person.notificationCaps85=Object.fromEntries(rules.map(r=>[r.id,permitted(person,cap(r))]));}
+ for(const person of people.results){await employeePermissions(env,person);const cap=rule=>rule.type==='work'||rule.type==='report'?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationCaps85=Object.fromEntries(rules.map(r=>[r.id,!cap(r)||permitted(person,cap(r))]));}
  for(const plan of notificationPlan85(rules,state,entries.results,reports.results,people.results,now)){if(!people.results.find(p=>p.id===plan.employeeId)?.notificationCaps85[plan.ruleId])continue;
-  const devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1').bind(plan.employeeId).all();
-  for(const device of devices.results)await sendPush82(env,device,{...plan,dedupeKey:plan.dedupeKey+':'+device.id});
+  await notificationDispatch88(env,plan.employeeId,{...plan,sourceKey:plan.dedupeKey});
  }
+}
+async function materialNotification88(env,employee,form){
+ try{
+  const state=JSON.parse((await companyRow(env)).body),configured=(state.notificationRules||[]).filter(r=>r.enabled&&r.type==='material'&&(!r.materialCategories?.length||r.materialCategories.includes(String(form.get('category')||''))));
+  const rules=configured.length?configured:[{id:'material-default88',type:'material',name:'料件紀錄通知',title:'{類型}紀錄通知',message:'{登記人}新增了 {案件名稱}的{類型}紀錄。',category:'料件紀錄',recipientMode:'auto',recipientIds:[],excludeActor:true,target:'material-record'}];
+  const category=String(form.get('category')||''),projectName=String(form.get('projectName')||'').trim(),title=String(form.get('title')||'').trim(),id=String(form.get('id')||''),day=String(form.get('day')||'');
+  const active=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
+  for(const rule of rules){const chosen=new Set((rule.recipientIds||[]).map(String)),targets=(active.results||[]).filter(p=>p.enabled!==0&&(rule.recipientMode==='selected'?chosen.has(String(p.id)):['supervisor','warehouse'].includes(p.role))&&(!(rule.excludeActor!==false)||Number(p.id)!==Number(employee.id)));const replace=value=>String(value||'').replaceAll('{類型}',category).replaceAll('{案件名稱}',projectName).replaceAll('{料件名稱}',title).replaceAll('{登記人}',employee.name);
+   for(const person of targets)await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'material',category:rule.category||'料件紀錄',title:replace(rule.title||'{類型}紀錄通知'),message:replace(rule.message||'{登記人}新增了 {案件名稱}的{類型}紀錄。'),targetUrl:'/?notificationDay='+encodeURIComponent(day)+'&notificationSection=materials&notificationMaterial='+encodeURIComponent(id)+'#schedule',sourceKey:'material:'+rule.id+':'+id+':'+person.id});
+  }
+ }catch(error){console.error('料件即時通知失敗',error?.message||String(error));}
+}
+async function scheduleMaterialUploadWithNotification88(request,env,employee){
+ const copy=request.clone(),response=await scheduleMaterialUpload(request,env,employee);if(response.ok)try{const form=await copy.formData();if(Number(form.get('revision'))===0)await materialNotification88(env,employee,form);}catch(error){console.error('料件通知資料讀取失敗',error?.message||String(error));}return response;
 }
 export async function employeeOrder85(request,env){
  const employee=await employeeFor(request,env);if(!employee||!['admin.settings','admin.employees','schedule.people'].some(cap=>permitted(employee,cap)))return json({error:'沒有調整人員排序的權限'},403);
@@ -695,7 +723,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:new URL(request.url).searchParams.get('notification')==='1'?result.results:(result.results||[]).map(p=>({id:p.id,name:p.name}))});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([cleanupDeleted(env),runNotifications85(env,event.scheduledTime||Date.now())]).then(results=>{for(const [index,result]of results.entries())if(result.status==='rejected')console.error(index===0?'照片清理失敗':'通知排程失敗',result.reason?.message||String(result.reason));}));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/employee-order')return employeeOrder85(request,env);if(path==='/api/backup-photos'){if(request.method!=='GET')return json({error:'不支援的操作'},405);const e=await employeeFor(request,env);if(!e||!permitted(e,'admin.export'))return json({error:'沒有備份權限'},403);return backupPhotos85(request,env);}if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUpload(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/notification-logs')return notificationLogApi85(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
+export default {async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([cleanupDeleted(env),runNotifications85(env,event.scheduledTime||Date.now())]).then(results=>{for(const [index,result]of results.entries())if(result.status==='rejected')console.error(index===0?'照片清理失敗':'通知排程失敗',result.reason?.message||String(result.reason));}));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/employee-order')return employeeOrder85(request,env);if(path==='/api/backup-photos'){if(request.method!=='GET')return json({error:'不支援的操作'},405);const e=await employeeFor(request,env);if(!e||!permitted(e,'admin.export'))return json({error:'沒有備份權限'},403);return backupPhotos85(request,env);}if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUploadWithNotification88(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/notification-inbox')return notificationInboxApi88(request,env);if(path==='/api/notification-logs')return notificationLogApi85(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
  return pushSubscriptionApi82(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
