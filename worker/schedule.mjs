@@ -35,7 +35,7 @@ async function scheduleApiCore71(request,env,employee){
   if(method==='GET'){
    const from=url.searchParams.get('from'),to=url.searchParams.get('to');if(!scheduleDate(from)||!scheduleDate(to)||to<from||Date.parse(to)-Date.parse(from)>370*86400000)return scheduleJSON({error:'日期範圍不正確'},400);
    const rows=await env.DB.prepare('SELECT id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE day<=? AND end_day>=? ORDER BY day,id').bind(to,from).all();
-   const reports=await env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,work_title,work_content FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all();
+   const reports=await env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,updated_at,work_title,work_content FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all();
    const reportPhotoCounts=await env.DB.prepare('SELECT report_id,COUNT(*) AS extra_count FROM schedule_report_photos GROUP BY report_id').all(),reportPhotoCountMap=new Map(reportPhotoCounts.results.map(x=>[x.report_id,Number(x.extra_count)||0]));
    const materialPhotoCounts=await env.DB.prepare('SELECT material_id,COUNT(*) AS extra_count FROM schedule_material_photos GROUP BY material_id').all(),materialPhotoCountMap=new Map(materialPhotoCounts.results.map(x=>[x.material_id,Number(x.extra_count)||0]));
    const people=await env.DB.prepare("SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,e.id),e.id").all();
@@ -122,7 +122,7 @@ async function scheduleApiCore71(request,env,employee){
     if(!scheduleAllowed(employee,'schedule.report.editAll')&&!(old.author_id===String(employee.id)&&scheduleAllowed(employee,'schedule.report.editOwn')))return scheduleJSON({error:'沒有修改此回報的權限'},403);
     if(!scheduleText(input.body,3000))return scheduleJSON({error:'請填寫回報內容'},400);
     if(input.previousBody!==old.body)return scheduleJSON({error:'回報已更新，請重新開啟'},409);
-    const result=await env.DB.prepare('UPDATE schedule_reports SET body=? WHERE id=? AND body=?').bind(input.body.trim(),old.id,old.body).run();
+    const result=await env.DB.prepare('UPDATE schedule_reports SET body=?,updated_at=? WHERE id=? AND body=?').bind(input.body.trim(),now,old.id,old.body).run();
     return result.meta?.changes?scheduleJSON({saved:true}):scheduleJSON({error:'回報已更新，請重新開啟'},409);
    }
    if(method==='DELETE'){
@@ -210,7 +210,7 @@ if(form.get('mode')==='create'){
     const first=stored[0];
     const now=new Date().toISOString();
     const statements=[
-      env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,work_title,work_content) VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,first.key,first.name,String(employee.id),employee.name,now,entry.title,entry.category),
+      env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,updated_at,work_title,work_content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,first.key,first.name,String(employee.id),employee.name,now,now,entry.title,entry.category),
       ...stored.slice(1).map(p=>env.DB.prepare('INSERT INTO schedule_report_photos(id,report_id,photo_key,photo_name,sort_index,created_at) VALUES (?,?,?,?,?,?)').bind(p.id,id,p.key,p.name,p.sortIndex,now))
     ];
     await env.DB.batch(statements);
@@ -234,7 +234,7 @@ try{
 
   const first=stored[0],now=new Date().toISOString();
   await env.DB.batch([
-    env.DB.prepare('UPDATE schedule_reports SET photo_key=?,photo_name=? WHERE id=?').bind(first.key,first.name,id),
+    env.DB.prepare('UPDATE schedule_reports SET photo_key=?,photo_name=?,updated_at=? WHERE id=?').bind(first.key,first.name,now,id),
     env.DB.prepare('DELETE FROM schedule_report_photos WHERE report_id=?').bind(id),
     ...stored.slice(1).map(p=>env.DB.prepare('INSERT INTO schedule_report_photos(id,report_id,photo_key,photo_name,sort_index,created_at) VALUES (?,?,?,?,?,?)').bind(p.id,id,p.key,p.name,p.sortIndex,now))
   ]);

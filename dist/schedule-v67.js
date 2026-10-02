@@ -44,7 +44,7 @@ body='<div class="schedule-daily-list67">'+
       (job?'<strong>'+scheduleEsc56(scheduleLabel63(job))+'</strong>':'')+
       '<p>'+scheduleEsc56(r.body)+'</p>'+
       (r.photo_count>0?'<div class="schedule-report-photos80">'+Array.from({length:Math.min(Number(r.photo_count)||1,10)},(_,i)=>'<img class="schedule-report-photo80" data-schedule-photo="'+scheduleEsc56(r.id)+'" data-photo-index="'+i+'" alt="'+scheduleEsc56(r.author_name)+' 的工作照片 '+(i+1)+'">').join('')+'</div>':'')+
-      '<small>'+scheduleEsc56(String(r.created_at||'').replace('T',' ').slice(0,16))+'</small>'+
+      '<small>回報時間：'+scheduleEsc56(receiptTime(r.created_at))+(r.updated_at&&r.updated_at!==r.created_at?' · 最後修改：'+scheduleEsc56(receiptTime(r.updated_at)):'')+'</small>'+
       (canReport75(r,'delete')?'<button type="button" data-schedule-delete-report="'+scheduleEsc56(r.id)+'">刪除回報</button>':'')+
      '</div>'+
     '</article>';

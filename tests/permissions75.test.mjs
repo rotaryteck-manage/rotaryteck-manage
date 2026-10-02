@@ -99,6 +99,7 @@ test('report body edit/delete distinguishes own and all, with stale edit protect
  const u=cap=>({...boss,role:'viewer',permissions:['schedule.view',cap]});
  assert.equal((await send({kind:'report',id:'r',body:'new',previousBody:'old'},u('schedule.report.editOwn'))).status,403);
  assert.equal((await send({kind:'report',id:'r',body:'new',previousBody:'old'},u('schedule.report.editAll'))).status,200);
+ assert.notEqual(db.prepare("SELECT updated_at FROM schedule_reports WHERE id='r'").get().updated_at,'now');
  assert.equal((await send({kind:'report',id:'r',body:'new2',previousBody:'old'},u('schedule.report.editAll'))).status,409);
  assert.equal((await send({kind:'report',id:'r'},u('schedule.report.deleteOwn'),'DELETE')).status,403);
  assert.equal((await send({kind:'report',id:'r'},u('schedule.report.deleteAll'),'DELETE')).status,200);

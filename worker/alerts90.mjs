@@ -21,6 +21,15 @@ export function parseClosureFeed90(xml,city='高雄市',district='左營區'){
  const blocks=[...xml.matchAll(/<(?:\w+:)?(?:alert|entry|item)\b[^>]*>[\s\S]*?<\/(?:\w+:)?(?:alert|entry|item)>/gi)].map(x=>x[0]);if(!blocks.length)blocks.push(xml);
  const candidates=blocks.map(block=>blockStatus90(block,city,district)).filter(Boolean);return candidates.sort((a,b)=>String(b.announcedAt).localeCompare(String(a.announcedAt)))[0]||{status:'unknown',sourceId:'',effectiveDate:'',announcedAt:'',headline:'',detail:'',city,district};
 }
+export function closureDateActive901(result,day){
+ const effective=String(result?.effectiveDate||'').slice(0,10);
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(effective)||!/^\d{4}-\d{2}-\d{2}$/.test(day))return false;
+ const tomorrow=new Date(day+'T12:00:00Z');tomorrow.setUTCDate(tomorrow.getUTCDate()+1);
+ return effective===day||effective===tomorrow.toISOString().slice(0,10);
+}
+export function closureStateChanged902(result,previous){
+ return result?.status!=='unknown'&&(result?.status!==previous?.status||result?.effectiveDate!==previous?.effective_date);
+}
 export async function fetchClosureStatus90(city='高雄市',district='左營區',fetcher=fetch){
  const response=await fetcher(closureFeed90,{signal:AbortSignal.timeout(9000),headers:{Accept:'application/atom+xml, application/xml, text/xml'}});if(!response.ok)throw Error('官方停班資料暫時無法讀取');const xml=await response.text();if(xml.length>1500000)throw Error('官方停班資料過大');
  let result=parseClosureFeed90(xml,city,district);if(result.status!=='unknown')return result;

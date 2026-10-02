@@ -1,0 +1,39 @@
+v90.2 差異更新包說明
+
+比較基準：v90（commit ec42c5a）
+本包包含：v90.1 全部修改＋v90.2 工作回報時間修正
+不包含：v89、v90、v90.1 舊壓縮包及其他未修改檔案
+
+主要修改範圍：
+- 停班公告與過期通知清理
+- 帳號選單與通知鈴鐺版面
+- 手機每週排程與每工作區塊設定
+- 工作回報台灣時間及最後修改時間
+- D1 migration、測試與更新紀錄
+
+差異檔案共 25 個：
+- build.mjs
+- db/schema.ts
+- dist/enhancements-v88.js
+- dist/enhancements-v901.css
+- dist/enhancements-v901.js
+- dist/schedule-v67.js
+- dist/schedule.js
+- dist/server/index.js
+- dist/uploads.js
+- drizzle/0021_schedule_report_updated_at.sql
+- tests/permissions75.test.mjs
+- tests/v901.test.mjs
+- tests/v902.test.mjs
+- worker/alerts90.mjs
+- worker/holidays.mjs
+- worker/schedule.mjs
+- worker/server.mjs
+- 更新紀錄/UPDATE-v90.1.txt
+- 更新紀錄/UPDATE-v90.2.txt
+- 更新紀錄/v90.1-差異檔案清單.txt
+- 更新紀錄/v90.1-測試結果.txt
+- 更新紀錄/v90.1-驗收步驟.txt
+- 更新紀錄/v90.2-差異檔案清單.txt
+- 更新紀錄/v90.2-測試結果.txt
+- 更新紀錄/v90.2-驗收步驟.txt
