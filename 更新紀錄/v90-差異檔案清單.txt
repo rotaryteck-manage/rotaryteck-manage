@@ -1,0 +1,19 @@
+v90 差異檔案清單 — 2026-10-02
+
+本清單以 v89 commit ea35652 為基準，只列本次修改或新增檔案。
+
+build.mjs
+dist/enhancements-v88.css
+dist/enhancements-v88.js
+dist/server/index.js
+drizzle/0020_holiday_closure90.sql
+tests/v90.test.mjs
+worker/alerts90.mjs
+worker/backup85.mjs
+worker/holidays.mjs
+worker/notifications85.mjs
+worker/server.mjs
+更新紀錄/UPDATE-v90.txt
+更新紀錄/v90-差異檔案清單.txt
+更新紀錄/v90-測試結果.txt
+更新紀錄/v90-驗收步驟.txt

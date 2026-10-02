@@ -24,14 +24,14 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v
  '<script src="mobile-form-v84.js?v=84" defer></script>'+
  '<script src="enhancements-v85.js?v=87" defer></script>'+
  '<script src="enhancements-v86.js?v=86" defer></script>'+
- '<script src="enhancements-v88.js?v=89" defer></script>'+
+ '<script src="enhancements-v88.js?v=90" defer></script>'+
  '<link rel="stylesheet" href="controls-v85.css?v=85">'+
  '<link rel="stylesheet" href="enhancements-v86.css?v=87">'+
- '<link rel="stylesheet" href="enhancements-v88.css?v=89">'+
+ '<link rel="stylesheet" href="enhancements-v88.css?v=90">'+
  '<link rel="stylesheet" href="mobile-form-v84.css?v=84">'+
  '</head>'
 );
 fs.mkdirSync('dist/server',{recursive:true});
 const code=fs.readFileSync('worker/server.mjs','utf8').replace(/^import .*from '\.\/.*';?\n/gm,'').replace("return new Response('Not found',{status:404});","const a=assets[path==='/'?'/index.html':path];if(!a)return new Response('Not found',{status:404});return new Response(a.body,{headers:{'Content-Type':a.type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});");
-fs.writeFileSync('dist/server/index.js',fs.readFileSync('worker/backup85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications85.mjs','utf8').replace(/^export /gm,'')+'\n'+workflows+'\n'+codec+'\n'+fs.readFileSync('worker/wire-permissions.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\nconst assets='+JSON.stringify(assets)+';\n'+fs.readFileSync('worker/schedule.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/records-export.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/holidays.mjs','utf8').replace(/^export /gm,'')+'\n'+code);
+fs.writeFileSync('dist/server/index.js',fs.readFileSync('worker/backup85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/alerts90.mjs','utf8').replace(/^export /gm,'')+'\n'+workflows+'\n'+codec+'\n'+fs.readFileSync('worker/wire-permissions.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\nconst assets='+JSON.stringify(assets)+';\n'+fs.readFileSync('worker/schedule.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/records-export.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/holidays.mjs','utf8').replace(/^export /gm,'')+'\n'+code);
 console.log('Built authenticated warehouse Worker');
