@@ -16,7 +16,7 @@ const names=['notifications-v82.js','sw.js','enhancements-v81.js','enhancements-
 names.push('mobile-form-v84.js','mobile-form-v84.css','enhancements-v85.js','controls-v85.css','enhancements-v86.js','enhancements-v86.css','enhancements-v88.js','enhancements-v88.css');
 const types={webmanifest:'application/manifest+json; charset=utf-8',html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml'};
 const assets=Object.fromEntries(names.map(n=>['/'+n,{body:fs.readFileSync('dist/'+n,'utf8'),type:types[n.split('.').pop()]}]));
-assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v=79','schedule-v67.js?v=83').replace(
+assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v=79','schedule-v67.js?v=83').replace('cloud.js?v=29','cloud.js?v=89').replace(
  '</head>',
  '<script src="notifications-v82.js?v=83" defer></script>'+
  '<script src="enhancements-v81.js?v=83" defer></script>'+
@@ -24,10 +24,10 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v
  '<script src="mobile-form-v84.js?v=84" defer></script>'+
  '<script src="enhancements-v85.js?v=87" defer></script>'+
  '<script src="enhancements-v86.js?v=86" defer></script>'+
- '<script src="enhancements-v88.js?v=88" defer></script>'+
+ '<script src="enhancements-v88.js?v=89" defer></script>'+
  '<link rel="stylesheet" href="controls-v85.css?v=85">'+
  '<link rel="stylesheet" href="enhancements-v86.css?v=87">'+
- '<link rel="stylesheet" href="enhancements-v88.css?v=88">'+
+ '<link rel="stylesheet" href="enhancements-v88.css?v=89">'+
  '<link rel="stylesheet" href="mobile-form-v84.css?v=84">'+
  '</head>'
 );

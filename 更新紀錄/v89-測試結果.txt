@@ -1,0 +1,20 @@
+v89 測試結果 — 2026-10-02
+
+結果：通過
+
+自動測試
+- npm test：199 / 199 通過，0 失敗。
+- v89 新增驗證：後台原文通知模板、工作／回報變數、線材／電鍍／自訂變數、7 天通知中心清理、規則列表預覽、小按鈕、接收對象說明、儲存失敗復原、HEIC／HEIF 轉 JPG、RAW／DNG 明確阻擋。
+- 原有排程、權限、通知金鑰、裝置停用／刪除、照片上限與壓縮、工作回報、料件、匯出及備份回歸測試全部通過。
+
+建置與靜態檢查
+- npm run build：通過。
+- dist/uploads.js、dist/enhancements-v71.js、dist/enhancements-v88.js、dist/cloud.js、worker/server.mjs、worker/notifications85.mjs 語法檢查：通過。
+- git diff --check：通過。
+
+尚需正式環境人工測試
+- iPhone PWA 原生推播外觀；系統會保留「from 擎正管理」。
+- 真實 iPhone HEIC／HEIF 解碼、轉 JPG與 800 KB 壓縮。
+- ProRAW／DNG 選取時的提示，以及同批正常照片是否保留。
+- Android、iPhone、電腦的通知規則列表按鈕排列與預覽視窗。
+- 多帳號自動／指定接收對象及通知滿 7 天清理。

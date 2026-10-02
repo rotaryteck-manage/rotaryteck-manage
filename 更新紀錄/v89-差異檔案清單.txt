@@ -1,0 +1,19 @@
+v89 差異檔案清單 — 2026-10-02
+
+本清單以 v88 commit d2b17fc 為基準，只列本次修改或新增檔案。
+
+build.mjs
+dist/cloud.js
+dist/enhancements-v71.js
+dist/enhancements-v88.css
+dist/enhancements-v88.js
+dist/server/index.js
+dist/uploads.js
+tests/integrity85.test.mjs
+tests/v89.test.mjs
+worker/notifications85.mjs
+worker/server.mjs
+更新紀錄/UPDATE-v89.txt
+更新紀錄/v89-差異檔案清單.txt
+更新紀錄/v89-測試結果.txt
+更新紀錄/v89-驗收步驟.txt

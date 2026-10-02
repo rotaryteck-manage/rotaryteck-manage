@@ -14,12 +14,15 @@ function previewImages71(input){
 }
 function enhanceImageInputs71(){
  for(const [input,value] of imagePreviews71)if(!input.isConnected){value.urls.forEach(URL.revokeObjectURL);imagePreviews71.delete(input)}
- for(const input of document.querySelectorAll('input[type=file]'))if(
+ for(const input of document.querySelectorAll('input[type=file]')){
+  if(/image\/(?:png|jpeg|webp)/.test(input.accept))input.accept='image/jpeg,image/png,image/webp,image/heic,image/heif';
+  if(
  /image\//.test(input.accept)&&
  !input.dataset.paste71&&
  input.name!=='photo-report80'&&
 input.name!=='material-photo80'
-){input.dataset.paste71='1';const hint=document.createElement('button');hint.type='button';hint.className='paste-target71';hint.textContent='點此後按 Ctrl＋V 貼上照片';hint.onclick=()=>{imageTarget71=input;document.querySelectorAll('.paste-target71').forEach(b=>b.classList.remove('selected'));hint.classList.add('selected');hint.focus()};input.after(hint);input.addEventListener('focus',()=>imageTarget71=input);input.addEventListener('click',()=>imageTarget71=input);input.addEventListener('change',()=>previewImages71(input))}
+ ){input.dataset.paste71='1';const hint=document.createElement('button');hint.type='button';hint.className='paste-target71';hint.textContent='點此後按 Ctrl＋V 貼上照片';hint.onclick=()=>{imageTarget71=input;document.querySelectorAll('.paste-target71').forEach(b=>b.classList.remove('selected'));hint.classList.add('selected');hint.focus()};input.after(hint);input.addEventListener('focus',()=>imageTarget71=input);input.addEventListener('click',()=>imageTarget71=input);input.addEventListener('change',()=>previewImages71(input))}
+ }
 }
 document.addEventListener('paste',event=>{
  const files=[...(event.clipboardData?.items||[])].filter(i=>i.kind==='file'&&i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);if(!files.length)return;

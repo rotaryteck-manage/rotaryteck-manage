@@ -26,11 +26,11 @@ export function notificationPlan85(rules,state,entries,reports,people,now=Date.n
    }else if(rule.type==='material')continue;
    if(['wire','plating'].includes(rule.type))events=events.filter(e=>Number.isFinite(e.days)&&e.days>=(rule.firstDays||0));
    if(!events.length)continue;
-   for(const event of (['work','report'].includes(rule.type)?[{id:day,title:events.map(e=>e.title).join('、'),days:0}]:events)){
+   for(const event of (['work','report'].includes(rule.type)?[{id:day,title:events.map(e=>e.title).join('、'),content:events.map(e=>e.content).filter(Boolean).join('、'),days:0}]:events)){
     const period=['work','report'].includes(rule.type)?day:rule.repeatDays?Math.floor((event.days-(rule.firstDays||0))/rule.repeatDays):0;
-    const workList=events.map(e=>e.title+(e.content?'（'+e.content+'）':'')).join('、');const replace=text=>String(text||'').replaceAll('{數量}',String(events.length)).replaceAll('{案件名稱}',event.project||'').replaceAll('{料件名稱}',event.title||'').replaceAll('{工作名稱}',event.title||'').replaceAll('{工作內容}',event.content||'').replaceAll('{工作清單}',workList).replaceAll('{人員}',person.name).replaceAll('{逾期天數}',String(event.days));let message=replace(rule.message);if(rule.type==='work'&&!/[{]工作(?:名稱|內容|清單)[}]/.test(rule.message))message=person.name+'今日工作：'+workList;
+    const workList=events.map(e=>e.title+(e.content?'（'+e.content+'）':'')).join('、');const replace=text=>String(text||'').replaceAll('{數量}',String(events.length)).replaceAll('{日期}',day).replaceAll('{通知名稱}',rule.name||'').replaceAll('{案件名稱}',event.project||'').replaceAll('{料件名稱}',event.title||'').replaceAll('{線材名稱}',rule.type==='wire'?event.title||'':'').replaceAll('{電鍍內容}',rule.type==='plating'?event.title||'':'').replaceAll('{工作名稱}',event.title||'').replaceAll('{工作內容}',event.content||'').replaceAll('{工作清單}',workList).replaceAll('{人員}',person.name).replaceAll('{逾期天數}',String(event.days));
     const targetUrl=rule.target==='work-record'||rule.target==='work-report'?'/?notificationDay='+encodeURIComponent(day)+'&notificationSection=jobs#schedule':({'wire-restock':'/#wire','plating-record':'/#plating','schedule':'/#schedule','warehouse':'/#warehouse','home':'/'})[rule.target]||'/';
-    plans.push({ruleId:rule.id,employeeId:person.id,notificationType:rule.type,category:rule.category||(rule.type==='work'?'工作排程':rule.type==='report'?'工作回報':rule.type==='wire'?'線材提醒':rule.type==='plating'?'電鍍提醒':'自訂提醒'),title:replace(rule.title),message,targetUrl,dedupeKey:'auto:'+rule.id+':'+person.id+':'+event.id+':'+period});
+    plans.push({ruleId:rule.id,employeeId:person.id,notificationType:rule.type,category:rule.category||(rule.type==='work'?'工作排程':rule.type==='report'?'工作回報':rule.type==='wire'?'線材提醒':rule.type==='plating'?'電鍍提醒':'自訂提醒'),title:replace(rule.title),message:replace(rule.message),targetUrl,dedupeKey:'auto:'+rule.id+':'+person.id+':'+event.id+':'+period});
    }
   }
  }

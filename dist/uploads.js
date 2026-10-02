@@ -18,11 +18,20 @@ document.addEventListener('click',async e=>{const button=e.target.closest('[data
 let imageUploading=false;
 function showLogo(){const brand=$('.brand');if(!brand||brand.querySelector('.site-logo'))return;const img=document.createElement('img');img.className='site-logo';img.alt='網站 LOGO';img.hidden=true;img.onload=()=>{img.hidden=false;brand.querySelector('.mark')?.remove();};img.dataset.photoSrc='/api/logo';img.dataset.photoThumb='1';brand.prepend(img);}
 function canvasBlob(canvas,type,quality){return new Promise(resolve=>canvas.toBlob(resolve,type,quality));}
+function rawPhoto89(file){return /\.(?:dng|raw|arw|cr2|cr3|nef|orf|rw2|raf)$/i.test(file?.name||'')||/(?:dng|camera-raw|x-raw)/i.test(file?.type||'')}
+function convertiblePhoto89(file){return /\.(?:heic|heif)$/i.test(file?.name||'')||['image/heic','image/heif'].includes(String(file?.type||'').toLowerCase())}
+async function decodePhoto89(file){
+ try{return await createImageBitmap(file,{imageOrientation:'from-image'})}catch(firstError){
+  if(typeof Image==='undefined')throw firstError;const url=URL.createObjectURL(file);
+  try{return await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(firstError);image.src=url})}finally{URL.revokeObjectURL(url)}
+ }
+}
 async function compressReceiptImage(file,maxBytes=800*1024){
  if(!file)throw Error('請先選擇圖片');
- if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('請選擇 JPG、PNG 或 WebP 圖片');
- if(file.size<=maxBytes)return file;
- let image;try{image=await createImageBitmap(file,{imageOrientation:'from-image'});}catch{throw Error('這張圖片無法讀取，請改用 JPG、PNG 或 WebP');}
+ if(rawPhoto89(file))throw Error('iPhone RAW／DNG 無法直接上傳，請改用「直接拍照」，或先在照片 App 轉成 JPG');
+ const direct=['image/jpeg','image/png','image/webp'].includes(file.type),convertible=convertiblePhoto89(file);if(!direct&&!convertible)throw Error('請選擇 JPG、PNG、WebP、HEIC 或 HEIF 圖片');
+ if(direct&&file.size<=maxBytes)return file;
+ let image;try{image=await decodePhoto89(file)}catch{throw Error(convertible?'這張 iPhone 照片無法轉成 JPG，請改用「直接拍照」或先轉成 JPG':'這張圖片無法讀取，請改用 JPG、PNG 或 WebP');}
  let width=image.width,height=image.height,scale=Math.min(1,3000/Math.max(width,height));width=Math.max(1,Math.round(width*scale));height=Math.max(1,Math.round(height*scale));
  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{alpha:false});let blob=null;
  for(let round=0;round<7;round++){
@@ -34,6 +43,7 @@ async function compressReceiptImage(file,maxBytes=800*1024){
  const name=file.name.replace(/\.[^.]+$/, '')+'.jpg';return new File([blob],name,{type:'image/jpeg',lastModified:file.lastModified});
 }
 async function uploadImage(file,url,limit){if(!file)throw Error('請先選擇圖片');file=await compressReceiptImage(file);if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('請選擇 JPG、PNG 或 WebP 圖片');const thumbnail=await makePhotoThumbnail(file);const body=new FormData();body.append('photo',file);if(url.startsWith('/api/logo'))body.append('appIcon',await makeAppIcon52(file),'app-icon.png');body.append('thumbnail',thumbnail,'thumbnail.jpg');const r=await apiFetch(url,{method:'POST',headers:{'X-File-Name':encodeURIComponent(file.name)},body});const d=await r.json();if(!r.ok)throw Error(d.error||'上傳失敗');if(url.startsWith('/api/logo'))clearPhotoCache();return{...d,uploadedName:file.name,uploadedSize:file.size};}
+document.addEventListener('change',event=>{const input=event.target;if(!input?.matches?.('input[type=file]')||!input.files?.length)return;const files=[...input.files],raw=files.filter(rawPhoto89);if(!raw.length)return;event.stopImmediatePropagation();const valid=files.filter(file=>!rawPhoto89(file));try{const data=new DataTransfer();valid.forEach(file=>data.items.add(file));input.files=data.files}catch{input.value=''}toast('已略過 RAW／DNG 照片：'+raw.map(file=>file.name).join('、')+'。請改用「直接拍照」或先轉成 JPG。');if(valid.length)queueMicrotask(()=>input.dispatchEvent(new Event('change',{bubbles:true})))},true);
 const crcTable=(()=>{const table=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;table[n]=c>>>0;}return table;})();
 function crc32(bytes){let crc=0xffffffff;for(const byte of bytes)crc=crcTable[(crc^byte)&255]^(crc>>>8);return(crc^0xffffffff)>>>0;}
 function zipDate(value){const d=new Date(value||Date.now()),year=Math.max(1980,d.getFullYear());return{time:(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1),date:((year-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate()};}
