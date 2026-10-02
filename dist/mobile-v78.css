@@ -15,12 +15,12 @@ body .schedule-workspace:has(.mobile-calendar78) .schedule-action-controls{displ
 body .schedule-workspace .schedule-action-controls>[data-schedule-new],body .schedule-workspace .schedule-action-controls>[data-schedule-material],body .schedule-workspace .schedule-action-controls>[data-leave-new72],body .schedule-workspace .schedule-action-controls>[data-schedule-report]{display:none!important}
 body .schedule-workspace:has(.mobile-calendar78) .schedule-calendar67{display:none!important}
 body .mobile-calendar78{display:grid;grid-template-columns:
-minmax(0,1fr)
-minmax(0,1fr)
-minmax(0,1fr)
-minmax(0,1fr)
-minmax(0,1fr)
 minmax(0,.65fr)
+minmax(0,1fr)
+minmax(0,1fr)
+minmax(0,1fr)
+minmax(0,1fr)
+minmax(0,1fr)
 minmax(0,.65fr);gap:0;width:100%;margin-top:12px;border-top:1px solid #d5ddcf}
 body .mobile-weekday78{text-align:center;font-size:12px;padding:8px 0;background:#e8eedf}
 body .mobile-day78{min-width:0;min-height:190px;padding:2px 1px 6px;border-right:1px solid #e0e5dc;border-bottom:1px solid #d5ddcf;box-sizing:border-box;background:#fbfcf8}

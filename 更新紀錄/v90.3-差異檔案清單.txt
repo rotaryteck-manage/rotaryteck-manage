@@ -1,0 +1,42 @@
+v90.3 合併差異更新包說明
+
+基準：已部署 v90
+本包包含：尚未部署的 v90.1、v90.2，以及本次 v90.3
+形式：只放從 v90 之後實際新增或修改的檔案，不含完整專案與舊版 ZIP。
+
+主要程式
+- build.mjs
+- db/schema.ts
+- drizzle/0021_schedule_report_updated_at.sql
+- worker/alerts90.mjs
+- worker/holidays.mjs
+- worker/schedule.mjs
+- worker/server.mjs
+- dist/enhancements-v88.js
+- dist/enhancements-v901.js
+- dist/enhancements-v901.css
+- dist/enhancements-v903.js
+- dist/enhancements-v903.css
+- dist/mobile-v78.js
+- dist/mobile-v78.css
+- dist/schedule.js
+- dist/schedule-v67.js
+- dist/uploads.js
+- dist/server/index.js
+
+測試
+- tests/permissions75.test.mjs
+- tests/schedule70.test.mjs
+- tests/v901.test.mjs
+- tests/v902.test.mjs
+- tests/v903.test.mjs
+
+更新紀錄
+- UPDATE-v90.1.txt、UPDATE-v90.2.txt、UPDATE-v90.3.txt
+- v90.1、v90.2、v90.3 的差異檔案清單、測試結果、驗收步驟
+
+部署方式
+1. 將 ZIP 解壓後，以原路徑覆蓋／新增到 GitHub 專案根目錄。
+2. 提交到 main，由既有 Cloudflare 部署流程執行。
+3. 部署完成後，手機與電腦皆重新整理；若仍看到舊畫面，關閉網站後再開一次。
+4. 不要只上傳 ZIP 檔，必須上傳 ZIP 內的檔案與資料夾。
