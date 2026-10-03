@@ -46,7 +46,7 @@ test('new material record creates an in-app notification for warehouse staff wit
 
 test('test notification rejects external-looking target paths',async()=>{
  const {env}=fixture();
- const response=await pushTestApi82(request('/api/push-test',{method:'POST',user:'boss',body:{employeeId:2,title:'測試',message:'內容',targetUrl:'//evil.example'}}),env);
+ const response=await pushTestApi82(request('/api/push-test',{method:'POST',user:'boss',body:{employeeId:2,title:'測試',message:'內容',targetUrl:'//evil.example',confirmed:true}}),env);
  assert.equal(response.status,400);assert.match((await response.json()).error,/前往位置/);
 });
 

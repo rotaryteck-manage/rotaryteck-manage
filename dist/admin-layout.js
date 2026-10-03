@@ -92,11 +92,12 @@ async function notificationTestDialog82(){
    '發送測試通知',
 
    async fd=>{
-    const selected=String(fd.get('employeeId')||'');
+   const selected=String(fd.get('employeeId')||'');
 
     if(!selected)
      throw Error('請選擇接收人員');
     if(selected==='all'&&!await confirmAction('確定發送測試通知給全員所有已開啟的裝置？'))return;
+    if(selected!=='all'&&!await confirmAction('確定發送測試通知？此動作會使用通知發送額度。'))return;
 
     const response=await apiFetch('/api/push-test',{
      method:'POST',
@@ -105,6 +106,8 @@ async function notificationTestDialog82(){
      },
      body:JSON.stringify({
       employeeId:selected==='all'?'all':Number(selected)
+      ,confirmed:true
+      ,source:'admin-test'
      })
     });
 

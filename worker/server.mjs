@@ -327,20 +327,25 @@ async function sendPush82(env,subscription,options){
  );
 
  const oldDelivery=await env.DB.prepare(
-  'SELECT id,status FROM notification_deliveries WHERE dedupe_key=?'
+  'SELECT id,status,retry_count FROM notification_deliveries WHERE dedupe_key=?'
  ).bind(dedupeKey).first();
 
  if(oldDelivery){
+  if(oldDelivery.status==='failed'&&Number(oldDelivery.retry_count||0)<2){
+   const attemptedAt=new Date().toISOString();
+   await env.DB.prepare("UPDATE notification_deliveries SET status='pending',retry_count=retry_count+1,last_attempt_at=?,error_message='' WHERE id=?").bind(attemptedAt,oldDelivery.id).run();
+  }else{
   return {
    ok:oldDelivery.status==='sent',
    duplicate:true
   };
+  }
  }
 
- const deliveryId=crypto.randomUUID();
+ const deliveryId=oldDelivery?.id||crypto.randomUUID();
  const createdAt=new Date().toISOString();
 
- const claim=await env.DB.prepare(
+ const claim=oldDelivery?null:await env.DB.prepare(
   `INSERT OR IGNORE INTO notification_deliveries(
     id,
     rule_id,
@@ -367,7 +372,7 @@ async function sendPush82(env,subscription,options){
   dedupeKey,
   createdAt
  ).run();
- if(claim.meta?.changes!==1)return {ok:false,duplicate:true};
+ if(claim&&claim.meta?.changes!==1)return {ok:false,duplicate:true};
 
  try{
   const vapidDetails=pushVapidDetails82(env);
@@ -481,12 +486,13 @@ async function notificationInboxCreate88(env,employeeId,options){
  await env.DB.prepare(`INSERT OR IGNORE INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(id,Number(employeeId),notificationCategory88(options.notificationType,options.category),String(options.title||'擎正科技提醒').slice(0,100),String(options.message||'您有一則新的系統通知。').slice(0,500),String(options.targetUrl||'/').slice(0,1000),sourceKey,now).run();
  return sourceKey;
 }
-async function notificationDispatch88(env,employeeId,options){
+async function notificationDispatch88(env,employeeId,options,budget=null){
  const person=await env.DB.prepare("SELECT e.id,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.id=? AND e.status='active'").bind(Number(employeeId)).first();
  if(!person||person.enabled===0)return{sent:0,failed:0,results:[]};
  const sourceKey=await notificationInboxCreate88(env,employeeId,options),devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1 ORDER BY updated_at DESC').bind(Number(employeeId)).all(),results=[];
- for(const device of devices.results||[])results.push(await sendPush82(env,device,{...options,employeeId:Number(employeeId),dedupeKey:sourceKey+':'+device.id}));
- return{sent:results.filter(x=>x.ok).length,failed:results.filter(x=>!x.ok&&!x.duplicate).length,results};
+ let deferred=0;
+ for(const device of devices.results||[]){if(budget&&budget.remaining<=0){deferred++;continue}if(budget)budget.remaining--;try{results.push(await sendPush82(env,device,{...options,employeeId:Number(employeeId),dedupeKey:sourceKey+':'+device.id}))}catch(error){results.push({ok:false,error:error?.message||String(error)})}}
+ return{sent:results.filter(x=>x.ok).length,failed:results.filter(x=>!x.ok&&!x.duplicate).length,deferred,results};
 }
 export async function pushTestApi82(request,env){
  if(request.method!=='POST')
@@ -505,11 +511,13 @@ export async function pushTestApi82(request,env){
    return json({error:'沒有系統通知管理權限'},403);
 
   const input=await boundedJSON(request,8192);
+  check(input.confirmed===true,'請先確認要發送測試通知');
 
   const all=input.employeeId==='all',employeeId=all?null:Number(input.employeeId);
   check(all||Number.isSafeInteger(employeeId)&&employeeId>0,'請選擇測試通知接收人員');
-  const title=String(input.title||'擎正科技測試通知').trim(),message=String(input.message||'通知功能測試成功。').trim(),targetUrl=String(input.targetUrl||'/');
+  const title=String(input.title||'擎正科技測試通知').trim(),message=String(input.message||'通知功能測試成功。').trim(),targetUrl=String(input.targetUrl||'/'),sourcePage=String(input.source||'manual-test').trim();
   check(title&&title.length<=100&&message&&message.length<=500,'請填寫完整的測試通知內容');check(/^\/(?!\/)[^\\\r\n]*$/.test(targetUrl)&&targetUrl.length<=1000,'通知前往位置不正確');
+  check(/^[a-z0-9-]{1,40}$/.test(sourcePage),'測試通知來源不正確');
   let targetEmployee=null,result;
   if(all){
    result=await env.DB.prepare(`SELECT s.id,s.employee_id,s.endpoint,s.p256dh,s.auth,s.device_label,e.name AS employee_name FROM push_subscriptions s JOIN employees e ON e.id=s.employee_id LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active' AND s.enabled=1 AND COALESCE(n.enabled,1)=1 ORDER BY e.id,s.updated_at DESC`).all();
@@ -526,12 +534,12 @@ export async function pushTestApi82(request,env){
    all?'目前全員都沒有已開啟的通知裝置':'這位員工目前沒有已開啟的通知裝置'
   );
 
-  const results=[],testId=crypto.randomUUID(),employeeIds=[...new Set(subscriptions.map(x=>Number(x.employee_id)))];
-  for(const id of employeeIds)await notificationInboxCreate88(env,id,{notificationType:'test',category:'系統通知',title,message,targetUrl,sourceKey:'test:'+testId+':'+id});
+  const results=[],testId=crypto.randomUUID();
   for(const subscription of subscriptions)results.push(await sendPush82(env,subscription,{employeeId:Number(subscription.employee_id),notificationType:'test',title,message,targetUrl,dedupeKey:'test:'+testId+':'+subscription.employee_id+':'+subscription.id}));
 
   const sent=results.filter(x=>x.ok).length;
   const failed=results.length-sent;
+  await env.DB.prepare('INSERT INTO notification_test_audit92(id,actor_id,actor_name,target_employee,title,message,device_count,sent_count,failed_count,source_page,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(testId,employee.id,employee.name,all?'全員':targetEmployee.name,title,message,results.length,sent,failed,sourcePage,String(request.headers.get('user-agent')||'').slice(0,500),new Date().toISOString()).run();
 
   return json({
    employeeName:all?'全員':targetEmployee.name,
@@ -662,10 +670,10 @@ export async function pushSubscriptionApi82(request,env){
   }
   if(['PATCH','DELETE'].includes(request.method)){
    check(typeof input.id==='string'&&input.id,'缺少裝置編號');
-   if(request.method==='PATCH')check(typeof input.enabled==='boolean','開關格式不正確');
+   if(request.method==='PATCH')check(typeof input.enabled==='boolean'||typeof input.deviceLabel==='string','裝置設定格式不正確');
    const old=await env.DB.prepare('SELECT id,employee_id FROM push_subscriptions WHERE id=?').bind(input.id).first();if(!old||!admin&&old.employee_id!==employee.id)return json({error:'找不到通知裝置'},404);
    if(!admin&&request.method==='PATCH'&&input.enabled)return json({error:'此裝置已停用，請通知管理者恢復'},403);
-   const statement=request.method==='PATCH'?env.DB.prepare('UPDATE push_subscriptions SET enabled=?,updated_at=? WHERE id=?').bind(input.enabled?1:0,now,input.id):env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(input.id);
+   const statement=request.method==='PATCH'?(typeof input.deviceLabel==='string'?env.DB.prepare('UPDATE push_subscriptions SET device_label=?,updated_at=? WHERE id=?').bind(String(input.deviceLabel).trim().slice(0,120)||'未命名裝置',now,input.id):env.DB.prepare('UPDATE push_subscriptions SET enabled=?,updated_at=? WHERE id=?').bind(input.enabled?1:0,now,input.id)):env.DB.prepare('DELETE FROM push_subscriptions WHERE id=?').bind(input.id);
    const result=await statement.run();return result.meta?.changes===1?json({saved:true,deleted:request.method==='DELETE'}):json({error:'裝置已變更，請重新載入'},409);
   }
   return json({error:'不支援的操作'},405);
@@ -673,7 +681,13 @@ export async function pushSubscriptionApi82(request,env){
 }
 export async function notificationLogApi85(request,env){
  const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
- if(request.method==='GET'){const rows=await env.DB.prepare('SELECT d.id,d.notification_type,d.title,d.message,d.status,d.created_at,d.sent_at,d.error_message,e.name AS employee_name FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id ORDER BY d.created_at DESC LIMIT 100').all();return json({items:(rows.results||[]).map(x=>({...x,category:notificationCategory88(x.notification_type)}))});}
+ if(request.method==='GET'&&new URL(request.url).searchParams.get('export')==='1')return notificationExportApi92(request,env);
+ if(request.method==='GET'){
+  const rows=await env.DB.prepare('SELECT d.id,d.employee_id,d.subscription_id,d.notification_type,d.title,d.message,d.target_url,d.status,d.dedupe_key,d.retry_count,d.created_at,d.sent_at,d.error_message,e.name AS employee_name,s.device_label,s.user_agent FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN push_subscriptions s ON s.id=d.subscription_id ORDER BY d.created_at DESC LIMIT 500').all(),groups=new Map();
+  for(const row of rows.results||[]){const suffix=row.subscription_id?':'+row.subscription_id:'',key=suffix&&row.dedupe_key.endsWith(suffix)?row.dedupe_key.slice(0,-suffix.length):row.dedupe_key;let group=groups.get(key);if(!group){group={id:key,notification_type:row.notification_type,category:notificationCategory88(row.notification_type),title:row.title,message:row.message,target_url:row.target_url,employee_id:row.employee_id,employee_name:row.employee_name,created_at:row.created_at,devices:[]};groups.set(key,group)}group.devices.push({id:row.id,subscriptionId:row.subscription_id,deviceLabel:row.device_label||'已移除／未命名裝置',userAgent:row.user_agent||'',status:row.status,sentAt:row.sent_at,error:row.error_message,retryCount:Number(row.retry_count||0)});}
+  const items=[...groups.values()].filter(group=>group.notification_type!=='test').map(group=>{const sent=group.devices.filter(x=>x.status==='sent').length,failed=group.devices.filter(x=>x.status==='failed').length,pending=group.devices.length-sent-failed;return{...group,sent,failed,pending,status:failed?(sent?'partial':'failed'):pending?'pending':'sent'}});
+  const audits=await env.DB.prepare('SELECT * FROM notification_test_audit92 ORDER BY created_at DESC LIMIT 100').all();return json({items,testAudits:audits.results||[]});
+ }
  if(request.method!=='DELETE')return json({error:'不支援的操作'},405);
  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
  try{
@@ -686,6 +700,16 @@ export async function notificationLogApi85(request,env){
   if(input.id&&!deleted)return json({error:'通知紀錄已不存在，請重新載入'},404);
   return json({deleted});
  }catch(error){return json({error:error.message||'通知紀錄刪除失敗'},400);}
+}
+export async function notificationExportApi92(request,env){
+ const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知匯出權限'},403);
+ if(request.method!=='GET')return json({error:'不支援的操作'},405);
+ const query=new URL(request.url).searchParams,from=query.get('from')||'',to=query.get('to')||'',valid=value=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value));
+ if(!valid(from)||!valid(to)||to<from||Date.parse(to)-Date.parse(from)>366*86400000)return json({error:'請選擇一年內的正確日期範圍'},400);
+ const start=new Date(from+'T00:00:00+08:00').toISOString(),end=new Date(to+'T23:59:59.999+08:00').toISOString();
+ const rows=await env.DB.prepare("SELECT d.id,d.employee_id,d.subscription_id,d.notification_type,d.title,d.message,d.target_url,d.status,d.dedupe_key,d.retry_count,d.created_at,d.sent_at,d.error_message,e.name AS employee_name,s.device_label,s.user_agent FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN push_subscriptions s ON s.id=d.subscription_id WHERE d.created_at BETWEEN ? AND ? ORDER BY d.created_at,d.employee_id,d.dedupe_key").bind(start,end).all();
+ const audits=await env.DB.prepare("SELECT * FROM notification_test_audit92 WHERE created_at BETWEEN ? AND ? ORDER BY created_at").bind(start,end).all();
+ return json({from,to,items:(rows.results||[]).filter(row=>row.notification_type!=='test').map(row=>({...row,category:notificationCategory88(row.notification_type),deviceLabel:row.device_label||'已移除／未命名裝置',userAgent:row.user_agent||''})),testAudits:audits.results||[]});
 }
 function dateAdd90(day,amount){const date=new Date(day+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+amount);return date.toISOString().slice(0,10)}
 function template90(value,values){let output=String(value||'');for(const [key,replacement]of Object.entries(values))output=output.replaceAll('{'+key+'}',String(replacement??''));return output}
@@ -746,8 +770,9 @@ export async function runNotifications85(env,now=Date.now()){
  const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all();
  const people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
  for(const person of people.results){await employeePermissions(env,person);const cap=rule=>rule.type==='work'||rule.type==='report'?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationCaps85=Object.fromEntries(rules.map(r=>[r.id,!cap(r)||permitted(person,cap(r))]));}
+ const budget={remaining:32};
  for(const plan of notificationPlan85(rules,state,entries.results,reports.results,people.results,now)){if(!people.results.find(p=>p.id===plan.employeeId)?.notificationCaps85[plan.ruleId])continue;
- await notificationDispatch88(env,plan.employeeId,{...plan,sourceKey:plan.dedupeKey});
+  try{await notificationDispatch88(env,plan.employeeId,{...plan,sourceKey:plan.dedupeKey},budget)}catch(error){console.error('單筆通知失敗',plan.notificationType,plan.employeeId,error?.message||String(error))}
  }
  try{await runHolidayRules90(env,rules,now)}catch(error){console.error('國定假日通知檢查失敗',error?.message||String(error))}
  try{await runClosureRules90(env,rules,now)}catch(error){console.error('停班通知檢查失敗',error?.message||String(error))}

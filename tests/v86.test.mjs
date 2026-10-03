@@ -44,7 +44,7 @@ test('all-person test notification sends only to active devices of people not pa
  for(const [id,employee]of [['d2',2],['d3',3]])db.prepare('INSERT INTO push_subscriptions(id,employee_id,endpoint,p256dh,auth,device_label,user_agent,enabled,created_at,updated_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,employee,'https://fcm.googleapis.com/'+id,'x','x','手機','test',1,now,now,now);
  db.prepare('INSERT INTO notification_people(employee_id,enabled,updated_at) VALUES(3,0,?)').run(now);
  const original=webpush.sendNotification;let sends=0;webpush.sendNotification=async()=>{sends++};
- try{const response=await pushTestApi82(new Request('https://local.test/api/push-test',{method:'POST',headers:{Authorization:'Bearer boss',origin:'https://local.test','content-type':'application/json'},body:JSON.stringify({employeeId:'all'})}),env),data=await response.json();assert.equal(response.status,200);assert.equal(data.employeeName,'全員');assert.equal(data.employeeCount,1);assert.equal(data.sent,1);assert.equal(sends,1);}finally{webpush.sendNotification=original}
+ try{const response=await pushTestApi82(new Request('https://local.test/api/push-test',{method:'POST',headers:{Authorization:'Bearer boss',origin:'https://local.test','content-type':'application/json'},body:JSON.stringify({employeeId:'all',confirmed:true})}),env),data=await response.json();assert.equal(response.status,200);assert.equal(data.employeeName,'全員');assert.equal(data.employeeCount,1);assert.equal(data.sent,1);assert.equal(sends,1);}finally{webpush.sendNotification=original}
 });
 
 test('mobile daily rows always show work, leave, then current daily records and never the legacy receipt entry',()=>{
