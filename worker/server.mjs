@@ -42,15 +42,15 @@ export function validate(s,previous={}){
  validatePlating(s.platingProjects);validateWire(s);validateWorkflowState(s);
  if(s.platingVendors!==undefined)check(Array.isArray(s.platingVendors)&&s.platingVendors.length<=200&&s.platingVendors.every(v=>typeof v==='string'&&v.trim()===v&&v.length>0&&v.length<=100)&&new Set(s.platingVendors.map(v=>v.toLowerCase())).size===s.platingVendors.length,'電鍍廠商選項不正確');
  if(s.platingText!==undefined){check(object(s.platingText),'電鍍文字設定不正確');for(const v of Object.values(s.platingText))check(typeof v==='string'&&v.trim()&&v.length<=100,'電鍍文字設定不正確');}
- const cases=s.cases??[];check(Array.isArray(cases)&&cases.length<=1000,'案件資料格式不正確');const caseIds=new Set();
- for(const c of cases){check(object(c)&&typeof c.id==='string'&&!caseIds.has(c.id),'案件編號重複');caseIds.add(c.id);check(typeof c.name==='string'&&c.name.trim()&&c.name.length<=100,'案件名稱不正確');check(typeof c.vendor==='string'&&c.vendor.length<=100,'案件廠商不正確');check(['尚未開始','執行中','進行中','結案'].includes(c.status),'案件狀態不正確');check(c.batch===undefined||(Number.isSafeInteger(c.batch)&&c.batch>0),'製作批次不正確');check(c.quantity===undefined||(Number.isSafeInteger(c.quantity)&&c.quantity>0),'製作套數不正確');for(const field of ['acceptedDate','closedDate']){const d=c[field],old=(previous.cases||[]).find(x=>x.id===c.id);check(typeof d==='string'&&(!d||validDate(d)||(old&&old[field]===d)),'案件日期不正確');}}
+ const cases=s.cases??[];check(Array.isArray(cases)&&cases.length<=1000,'案件資料格式不正確');const caseIds=new Set(),previousCases=new Map((previous.cases||[]).map(x=>[x.id,x]));
+ for(const c of cases){check(object(c)&&typeof c.id==='string'&&!caseIds.has(c.id),'案件編號重複');caseIds.add(c.id);check(typeof c.name==='string'&&c.name.trim()&&c.name.length<=100,'案件名稱不正確');check(typeof c.vendor==='string'&&c.vendor.length<=100,'案件廠商不正確');check(['尚未開始','執行中','進行中','結案'].includes(c.status),'案件狀態不正確');check(c.batch===undefined||(Number.isSafeInteger(c.batch)&&c.batch>0),'製作批次不正確');check(c.quantity===undefined||(Number.isSafeInteger(c.quantity)&&c.quantity>0),'製作套數不正確');for(const field of ['acceptedDate','closedDate']){const d=c[field],old=previousCases.get(c.id);check(typeof d==='string'&&(!d||validDate(d)||(old&&old[field]===d)),'案件日期不正確');}}
  const logs=s.logs??[];check(Array.isArray(logs)&&logs.length<=100000,'資訊庫紀錄格式不正確');for(const l of logs)check(object(l)&&typeof l.time==='string'&&typeof l.action==='string'&&typeof l.detail==='string'&&(!l.location||typeof l.location==='string'),'資訊庫紀錄格式不正確');
  if(s.auditSecurity!==undefined)check(object(s.auditSecurity)&&/^[a-f0-9]{32}$/.test(s.auditSecurity.salt)&&/^[a-f0-9]{64}$/.test(s.auditSecurity.hash),'資訊庫密碼設定格式不正確');
  check(s.projects.length<=1000,'專案上限為 1000');const ids=new Set();
- const deleted=s.deletedProjects??[];check(Array.isArray(deleted),'刪除資料格式不正確');
+ const deleted=s.deletedProjects??[];check(Array.isArray(deleted),'刪除資料格式不正確');const previousProjects=new Map((previous.projects||[]).map(x=>[x.id,x]));
  for(const p of [...s.projects,...deleted.map(x=>x.project)]){
   check(object(p)&&typeof p.id==='string'&&p.id.length>0&&!ids.has(p.id),'專案編號重複或缺少');ids.add(p.id);
-  if(p.projectDate!==undefined){const old=(previous.projects||[]).find(x=>x.id===p.id);check(typeof p.projectDate==='string'&&(validDate(p.projectDate)||(old&&old.projectDate===p.projectDate)),'專案日期不正確');}
+  if(p.projectDate!==undefined){const old=previousProjects.get(p.id);check(typeof p.projectDate==='string'&&(validDate(p.projectDate)||(old&&old.projectDate===p.projectDate)),'專案日期不正確');}
   if(p.basketCount!==undefined)check(int(p.basketCount,1),'籃數必須為正整數');
   check(typeof p.name==='string'&&p.name.trim().length>0&&p.name.length<=100,'專案名稱不正確');
   check(Array.isArray(p.parts)&&object(p.inventory),'零件或庫存格式不正確');const parts=new Set();
@@ -104,12 +104,14 @@ export function warehouseChangeAllowed(before,after){
  const a=structuredClone(before),b=structuredClone(after);a.logs=[];b.logs=[];
  delete a.platingProjects;delete b.platingProjects;
  if(a.projects.length!==b.projects.length)return false;
+ const previousProjects=new Map(a.projects.map(p=>[p.id,p]));
  for(const next of b.projects){
- const prev=a.projects.find(p=>p.id===next.id);if(!prev||prev.parts.length!==next.parts.length)return false;
+ const prev=previousProjects.get(next.id);if(!prev||prev.parts.length!==next.parts.length)return false;
   const oldMaterial=prev.materialLogs||[],newMaterial=next.materialLogs||[];if(newMaterial.length<oldMaterial.length||JSON.stringify(newMaterial.slice(newMaterial.length-oldMaterial.length))!==JSON.stringify(oldMaterial))return false;
   const active=new Set(prev.parts.map(i=>i.id));
   for(const key of new Set([...Object.keys(prev.inventory),...Object.keys(next.inventory)]))if(!active.has(key)&&next.inventory[key]!==prev.inventory[key])return false;
-  for(const part of next.parts){const old=prev.parts.find(i=>i.id===part.id);if(!old)return false;const received=part.received-old.received,oldStock=Number(prev.inventory[part.id]||0),newStock=Number(next.inventory[part.id]||0);const correction=(next.materialLogs||[]).find(l=>!(prev.materialLogs||[]).some(x=>x.id===l.id)&&l.correction?.partId===part.id)?.correction;if(received<0){if(!correction||correction.delta!==received||newStock!==oldStock+received)return false;}else if(!int(received)||newStock>oldStock+received)return false;part.received=old.received;}
+  const previousParts=new Map(prev.parts.map(i=>[i.id,i])),oldLogIds=new Set(oldMaterial.map(x=>x.id)),corrections=new Map(newMaterial.filter(l=>!oldLogIds.has(l.id)&&l.correction?.partId).map(l=>[l.correction.partId,l.correction]));
+  for(const part of next.parts){const old=previousParts.get(part.id);if(!old)return false;const received=part.received-old.received,oldStock=Number(prev.inventory[part.id]||0),newStock=Number(next.inventory[part.id]||0),correction=corrections.get(part.id);if(received<0){if(!correction||correction.delta!==received||newStock!==oldStock+received)return false;}else if(!int(received)||newStock>oldStock+received)return false;part.received=old.received;}
   next.inventory=structuredClone(prev.inventory);if(prev.materialLogs===undefined)delete next.materialLogs;else next.materialLogs=structuredClone(prev.materialLogs);
  }
  return stableJSON(a)===stableJSON(b);
@@ -185,7 +187,9 @@ export async function api(request,env){
    const conflicts=input.changes.filter(c=>(current.versions[c.key]||0)!==c.version);
    if(conflicts.length)return json({error:'你修改的同一筆資料已被其他人更新。請先下載未儲存資料，再重新載入。',code:'RECORD_CONFLICT',keys:conflicts.map(c=>c.key)},409);
    const nextRecords={...current.records};for(const c of input.changes)nextRecords[c.key]=c.deleted?undefined:c.value;
-   const next=joinRecords(nextRecords);validate(next,current.state);for(const c of next.cases||[]){const old=(current.state.cases||[]).find(x=>x.id===c.id);if(old&&old.name===c.name&&Number(old.batch||1)===Number(c.batch||1))continue;check(!(next.cases||[]).some(x=>x.id!==c.id&&x.name.trim().toLowerCase()===c.name.trim().toLowerCase()&&Number(x.batch||1)===Number(c.batch||1)),'此案件的製作批次已存在');}for(const p of next.platingProjects||[])for(const shipment of p.shipments||[]){const old=(current.state.platingProjects||[]).find(x=>x.id===p.id)?.shipments?.find(x=>x.id===shipment.id);if(stableJSON(old)!==stableJSON(shipment))check(shipment.inspection==='pending'||!!shipment.returned,'請先登記回貨日期再品檢');}
+   const next=joinRecords(nextRecords);validate(next,current.state);
+   const previousCases=new Map((current.state.cases||[]).map(x=>[x.id,x])),caseNames=new Set();for(const c of next.cases||[]){const old=previousCases.get(c.id),key=c.name.trim().toLowerCase()+'\u0000'+Number(c.batch||1);if(!old||old.name!==c.name||Number(old.batch||1)!==Number(c.batch||1))check(!caseNames.has(key),'此案件的製作批次已存在');caseNames.add(key);}
+   const previousShipments=new Map((current.state.platingProjects||[]).flatMap(p=>(p.shipments||[]).map(s=>[p.id+'\u0000'+s.id,s])));for(const p of next.platingProjects||[])for(const shipment of p.shipments||[]){const old=previousShipments.get(p.id+'\u0000'+shipment.id);if(stableJSON(old)!==stableJSON(shipment))check(shipment.inspection==='pending'||!!shipment.returned,'請先登記回貨日期再品檢');}
    if(!stateChangeAllowed(current.state,next,employee))return json({error:'沒有此操作的權限，或紀錄內容不符合規則'},403);
    await verifyWirePhotos(env,current.state,next,employee);
    const nextRevision=current.revision+1,versions=Object.fromEntries(input.changes.map(c=>[c.key,c.version+1])),result={storageVersion:2,revision:nextRevision,versions},now=new Date().toISOString();
@@ -807,7 +811,15 @@ async function runClosureRules90(env,rules,clock=Date.now(),budget=null,suppress
 async function notificationRuleSuppressions921(env,rules,now){
  const {day,time}=notificationClock85(now),result=new Map(),stamp=new Date(now).toISOString();
  for(const rule of rules){const recipients=(rule.recipientIds||[]).map(String).sort(),fingerprint=JSON.stringify({enabled:rule.enabled,type:rule.type,time:rule.time,firstDays:rule.firstDays,repeatDays:rule.repeatDays,target:rule.target,startDate:rule.startDate||'',city:rule.city||'',district:rule.district||'',materialCategories:rule.materialCategories||[]}),old=await env.DB.prepare('SELECT * FROM notification_rule_state921 WHERE rule_id=?').bind(rule.id).first();let suppressDay=old?.suppress_day||'',suppressed=[];try{suppressed=JSON.parse(old?.suppressed_ids||'[]')}catch{}
-  if(old){let previous=[];try{previous=JSON.parse(old.recipient_ids||'[]')}catch{}const added=recipients.filter(id=>!previous.includes(id));if(day!==suppressDay)suppressed=[];if(time>=rule.time){if(old.fingerprint!==fingerprint)suppressed=['*'];else suppressed=[...new Set([...suppressed,...added])];if(suppressed.length)suppressDay=day}}
+  if(old){let previous=[];try{previous=JSON.parse(old.recipient_ids||'[]')}catch{}const added=recipients.filter(id=>!previous.includes(id));if(day!==suppressDay)suppressed=[];if(time>=rule.time){
+    if(old.fingerprint!==fingerprint){
+     const changedAt=Date.parse(rule.updatedAt||'');const changed=Number.isFinite(changedAt)?notificationClock85(changedAt):null;
+     // A rule saved before today's send time must still run today. Only changes
+     // made after the send time are suppressed to prevent surprise backfills.
+     suppressed=changed&&changed.day===day&&changed.time>=rule.time?['*']:[];
+    }else suppressed=[...new Set([...suppressed,...added])];
+    if(suppressed.length)suppressDay=day;
+   }}
   await env.DB.prepare("INSERT INTO notification_rule_state921(rule_id,fingerprint,recipient_ids,suppress_day,suppressed_ids,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(rule_id) DO UPDATE SET fingerprint=excluded.fingerprint,recipient_ids=excluded.recipient_ids,suppress_day=excluded.suppress_day,suppressed_ids=excluded.suppressed_ids,updated_at=excluded.updated_at").bind(rule.id,fingerprint,JSON.stringify(recipients),suppressDay,JSON.stringify(suppressed),stamp).run();
   if(suppressDay===day&&suppressed.length)result.set(rule.id,new Set(suppressed));
  }
@@ -828,7 +840,7 @@ async function cleanupNotificationHistory921(env,now=Date.now()){
 }
 export async function runNotifications85(env,now=Date.now()){
  await cleanupNotificationHistory921(env,now);
- const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[];if(!rules.some(r=>r.enabled))return;
+ const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[];if(!rules.some(r=>r.enabled))return{checked:true,planned:0,eligible:0,remainingBudget:32};
  notificationRulesValid85(rules);
  const day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
  const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all();
@@ -840,6 +852,19 @@ export async function runNotifications85(env,now=Date.now()){
  for(const group of groups.values()){const plan=group[0];try{await notificationDispatchBatch93(env,plan.employeeId,group,budget)}catch(error){console.error('單筆通知失敗',plan.notificationType,plan.employeeId,error?.message||String(error))}}
  try{await runHolidayRules90(env,rules,now,budget,suppressed)}catch(error){console.error('國定假日通知檢查失敗',error?.message||String(error))}
  try{await runClosureRules90(env,rules,now,budget,suppressed)}catch(error){console.error('停班通知檢查失敗',error?.message||String(error))}
+ return{checked:true,planned:plans.length,eligible:dispatchable.length,remainingBudget:budget.remaining};
+}
+export async function notificationCheckApi94(request,env){
+ const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
+ if(request.method==='POST'){
+  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
+  try{return json(await runNotifications85(env,Date.now())||{checked:true,planned:0,eligible:0})}catch(error){console.error('手動檢查通知失敗',error?.message||String(error));return json({error:'通知檢查失敗，請稍後再試'},503)}
+ }
+ if(request.method!=='GET')return json({error:'不支援的操作'},405);
+ try{
+  const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[],clock=notificationClock85(),start=new Date(clock.day+'T00:00:00+08:00').toISOString(),rows=await env.DB.prepare("SELECT rule_id,SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent FROM notification_deliveries WHERE created_at>=? GROUP BY rule_id").bind(start).all(),sent=new Map((rows.results||[]).map(row=>[String(row.rule_id),Number(row.sent||0)])),states=await env.DB.prepare('SELECT rule_id,suppress_day,suppressed_ids FROM notification_rule_state921').all(),suppressed=new Map((states.results||[]).map(row=>[String(row.rule_id),row]));
+  return json({items:rules.map(rule=>{const delivered=sent.get(String(rule.id))||0,row=suppressed.get(String(rule.id));let blocked=[];try{blocked=JSON.parse(row?.suppressed_ids||'[]')}catch{}const skipped=row?.suppress_day===clock.day&&blocked.includes('*');return{id:rule.id,status:!rule.enabled?'disabled':delivered?'sent':skipped?'skipped':clock.time<rule.time?'scheduled':'waiting',sent:delivered,time:rule.time};})});
+ }catch(error){return json({error:'無法讀取今日通知狀態'},503)}
 }
 async function materialNotification88(env,employee,form){
  try{
@@ -872,7 +897,7 @@ export async function accessApi(request,env){
  const result=await env.DB.prepare('SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,0),e.id').all();return json({items:new URL(request.url).searchParams.get('notification')==='1'?result.results:(result.results||[]).map(p=>({id:p.id,name:p.name}))});
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
-export default {async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([cleanupDeleted(env),cleanupNotificationInbox89(env,event.scheduledTime||Date.now()),runNotifications85(env,event.scheduledTime||Date.now())]).then(results=>{for(const [index,result]of results.entries())if(result.status==='rejected')console.error(index===0?'照片清理失敗':index===1?'通知中心清理失敗':'通知排程失敗',result.reason?.message||String(result.reason));}));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/employee-order')return employeeOrder85(request,env);if(path==='/api/backup-photos'){if(request.method!=='GET')return json({error:'不支援的操作'},405);const e=await employeeFor(request,env);if(!e||!permitted(e,'admin.export'))return json({error:'沒有備份權限'},403);return backupPhotos85(request,env);}if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUploadWithNotification88(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request,env);if(path==='/api/notification-preview90')return notificationPreviewApi90(request,env);if(path==='/api/notification-source-status90')return notificationSourceStatusApi90(request,env);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/notification-inbox')return notificationInboxApi88(request,env);if(path==='/api/notification-logs')return notificationLogApi85(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
+export default {async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([cleanupDeleted(env),cleanupNotificationInbox89(env,event.scheduledTime||Date.now()),runNotifications85(env,event.scheduledTime||Date.now())]).then(results=>{for(const [index,result]of results.entries())if(result.status==='rejected')console.error(index===0?'照片清理失敗':index===1?'通知中心清理失敗':'通知排程失敗',result.reason?.message||String(result.reason));}));},async fetch(request,env){const path=new URL(request.url).pathname;if(path==='/api/notification-check94')return notificationCheckApi94(request,env);if(path==='/api/employee-order')return employeeOrder85(request,env);if(path==='/api/backup-photos'){if(request.method!=='GET')return json({error:'不支援的操作'},405);const e=await employeeFor(request,env);if(!e||!permitted(e,'admin.export'))return json({error:'沒有備份權限'},403);return backupPhotos85(request,env);}if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUploadWithNotification88(request,env,e)}if(path==='/api/schedule-holidays')return holidayApi60(request,env);if(path==='/api/notification-preview90')return notificationPreviewApi90(request,env);if(path==='/api/notification-source-status90')return notificationSourceStatusApi90(request,env);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApi(request,env,e);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/notification-inbox')return notificationInboxApi88(request,env);if(path==='/api/notification-logs')return notificationLogApi85(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
  return pushSubscriptionApi82(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
@@ -890,7 +915,7 @@ export function stateChangeAllowed(before,after,e){
  if(singleLogRemovalAllowed(before,after,e))return true;
  if(!wireChangeAllowed(before,after,e)||!workflowChangeAllowed(before,after,e))return false;
  const supervisor=permitted(e,'admin.auditDelete');
- const added=(after.logs||[]).filter(l=>!(before.logs||[]).some(x=>x.id===l.id));if(!supervisor&&added.some(l=>l.actor!==e.name))return false;
+ const beforeLogIds=new Set((before.logs||[]).map(x=>x.id)),added=(after.logs||[]).filter(l=>!beforeLogIds.has(l.id));if(!supervisor&&added.some(l=>l.actor!==e.name))return false;
  if(!supervisor&&!logsOnlyAppend(before,after))return false;
  const a=structuredClone(before),b=structuredClone(after);
  if(canDeleteProject(e,'plating'))for(const old of a.platingProjects||[]){const n=(b.platingProjects||[]).find(x=>x.id===old.id);if(n&&!old.archived&&n.archived)for(const k of ['archived','deletedAt','purgeAfter'])old[k]=n[k];}
@@ -898,14 +923,14 @@ export function stateChangeAllowed(before,after,e){
  if(canDeleteProject(e,'warehouse')){const removed=(a.projects||[]).filter(x=>!(b.projects||[]).some(n=>n.id===x.id));a.projects=(a.projects||[]).filter(x=>!removed.includes(x));b.deletedProjects=(b.deletedProjects||[]).filter(entry=>!removed.some(x=>stableJSON(x)===stableJSON(entry.project)));a.deletedProjects??=[];}
 
  for(const [key,cap]of Object.entries({warehouseOptions73:'warehouse.options',platingVendors:'plating.options'}))if(permitted(e,cap)){delete a[key];delete b[key];}
- for(const p of b.projects||[]){const prev=(a.projects||[]).find(x=>x.id===p.id);if(!prev)continue;
-  for(const i of p.parts||[]){const old=prev.parts.find(x=>x.id===i.id);if(!old)continue;
+ const stateProjects=new Map((a.projects||[]).map(x=>[x.id,x]));for(const p of b.projects||[]){const prev=stateProjects.get(p.id);if(!prev)continue;const previousParts=new Map((prev.parts||[]).map(x=>[x.id,x]));
+  for(const i of p.parts||[]){const old=previousParts.get(i.id);if(!old)continue;
    for(const [field,cap]of Object.entries({receivedDate72:'warehouse.receivedDate',issuedDate72:'warehouse.issuedDate',preparedAdjustment73:'warehouse.preparedAdjust'}))if(permitted(e,cap)){delete old[field];delete i[field];}
   }
-  if(permitted(e,'warehouse.stockAdjust')){p.inventory=structuredClone(prev.inventory);for(const i of p.parts||[]){const old=prev.parts.find(x=>x.id===i.id);if(old&&i.received!==old.received)p.inventory[i.id]=Number(prev.inventory[i.id]||0)+i.received-old.received;}}
+  if(permitted(e,'warehouse.stockAdjust')){p.inventory=structuredClone(prev.inventory);for(const i of p.parts||[]){const old=previousParts.get(i.id);if(old&&i.received!==old.received)p.inventory[i.id]=Number(prev.inventory[i.id]||0)+i.received-old.received;}}
   if(permitted(e,'warehouse.historyEdit')&&stableJSON(p.materialLogs)!==stableJSON(prev.materialLogs)){
    p.inventory=structuredClone(prev.inventory);
-   for(const part of [...(p.parts||[]),...(p.archivedParts||[]).map(x=>x.part)]){const old=[...(prev.parts||[]),...(prev.archivedParts||[]).map(x=>x.part)].find(x=>x.id===part.id);if(old)part.received=old.received;}
+   const allPreviousParts=new Map([...(prev.parts||[]),...(prev.archivedParts||[]).map(x=>x.part)].map(x=>[x.id,x]));for(const part of [...(p.parts||[]),...(p.archivedParts||[]).map(x=>x.part)]){const old=allPreviousParts.get(part.id);if(old)part.received=old.received;}
    if(prev.materialLogs===undefined)delete p.materialLogs;else p.materialLogs=structuredClone(prev.materialLogs);
   }
  }

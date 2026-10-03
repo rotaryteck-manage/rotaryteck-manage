@@ -1,0 +1,2 @@
+.wire-restock-tools94{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}.wire-restock-select94{width:34px}.notification-tools94{display:flex;align-items:center;gap:10px;padding:10px 0}.notification-tools94 small,.notification-today94{display:block;color:var(--ui-muted);margin-top:4px}.pending-delete94{display:none!important}
+@media(max-width:700px){.wire-restock-tools94,.notification-tools94{align-items:stretch;flex-direction:column}.wire-restock-tools94 button,.notification-tools94 button{width:100%}}

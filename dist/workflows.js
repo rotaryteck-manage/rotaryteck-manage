@@ -17,12 +17,14 @@ function restockTransition(reel,action,who,time=new Date().toISOString(),id){
  else if(action==='receive'){if(!['low','ordered'].includes(r.status)||c.received)throw Error('此筆已入庫');c.received=stamp;r.status='enough';}
  else if(action==='undoReceive'){if(!c.received||!restockActive(r,Date.parse(time)))throw Error('此輪已進入歷史，不能撤銷');delete c.received;r.status=c.ordered?'ordered':'low';}
  else if(action==='undoOrder'){if(!c.ordered||c.received)throw Error('請先撤銷已入庫');delete c.ordered;r.status='low';}
+ else if(action==='deleteRestock'){if(!access75(who,'wire.restock')||!['low','ordered'].includes(r.status))throw Error('只有倉管、主管可以刪除待補貨紀錄');delete r.restock;r.status='enough';}
  else throw Error('補貨操作不正確');
- c.events.push({action,...stamp});return r;
+ if(r.restock)c.events.push({action,...stamp});return r;
 }
 function restockChangeAllowed(a,b,e,now=Date.now()){
  const same=(x,y)=>JSON.stringify(x)===JSON.stringify(y);
  if(same(a.restock,b.restock)&&same(a.restockHistory,b.restockHistory))return !(a.status==='ordered'||b.status==='ordered')||a.status===b.status;
+ if(a.restock&&!b.restock&&b.status==='enough'&&access75(e,'wire.restock')){try{const expected=restockTransition(a,'deleteRestock',e,new Date(now).toISOString());return same(expected.restock,b.restock)&&same(expected.restockHistory,b.restockHistory)&&expected.status===b.status;}catch{return false;}}
  const last=b.restock?.events?.at(-1);if(!last||last.actor!==e.name||last.actorId!==String(e.id)||!Number.isFinite(Date.parse(last.time))||Math.abs(Date.parse(last.time)-now)>300000)return false;
  if(last.action==='low'&&!access75(e,'wire.restock')&&!(e.permissions?.includes('wire.view')&&e.permissions?.includes('wire.cut')))return false;
  try{const expected=restockTransition(a,last.action,e,last.time,b.restock.id);return same(expected.restock,b.restock)&&same(expected.restockHistory,b.restockHistory)&&expected.status===b.status;}catch{return false;}

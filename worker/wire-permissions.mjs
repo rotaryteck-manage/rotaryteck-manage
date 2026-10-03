@@ -75,9 +75,11 @@ export function validateWire(s){
 function wireEqual(a,b){return JSON.stringify(a)===JSON.stringify(b);}
 export function wireChangeAllowed(before,after,e){
  const bt=before.wireTypes||[],at=after.wireTypes||[],br=before.wireReels||[],ar=after.wireReels||[],bc=before.wireCuts||[],ac=after.wireCuts||[];
- for(const [old,list]of [[bt,at],[br,ar]]){
-  for(const x of old)if(!list.some(n=>n.id===x.id)&&(!permitted(e,'wire.delete')||(old===br&&(x.photos.length||bc.some(c=>c.reelId===x.id)))||(old===bt&&br.some(r=>r.wireId===x.id))))return false;
-  for(const x of list){const prev=old.find(n=>n.id===x.id);if(!prev){if(!permitted(e,'wire.create')||(old===br&&(x.status!=='enough'||x.photos.length||x.restock||x.restockHistory)))return false;continue;}
+ const typeBefore=new Map(bt.map(x=>[x.id,x])),typeAfter=new Map(at.map(x=>[x.id,x])),reelBefore=new Map(br.map(x=>[x.id,x])),reelAfter=new Map(ar.map(x=>[x.id,x])),cutBefore=new Map(bc.map(x=>[x.id,x])),cutAfter=new Map(ac.map(x=>[x.id,x]));
+ const reelsWithCuts=new Set(bc.map(x=>x.reelId)),typesWithReels=new Set(br.map(x=>x.wireId)),beforePhotoIds=new Set(br.flatMap(r=>(r.photos||[]).map(p=>p.id)));
+ for(const [old,list,oldMap,newMap]of [[bt,at,typeBefore,typeAfter],[br,ar,reelBefore,reelAfter]]){
+  for(const x of old)if(!newMap.has(x.id)&&(!permitted(e,'wire.delete')||(old===br&&(x.photos.length||reelsWithCuts.has(x.id)))||(old===bt&&typesWithReels.has(x.id))))return false;
+  for(const x of list){const prev=oldMap.get(x.id);if(!prev){if(!permitted(e,'wire.create')||(old===br&&(x.status!=='enough'||x.photos.length||x.restock||x.restockHistory)))return false;continue;}
    if(old===bt){const a={...prev},b={...x};if((!prev.archived&&x.archived&&canDeleteProject(e,'wire'))||(prev.archived&&!x.archived&&permitted(e,'wire.restore')))for(const k of ['archived','deletedAt','purgeAfter']){delete a[k];delete b[k];}if(!wireEqual(a,b)&&!permitted(e,'wire.edit'))return false;}
    else{const a={...prev},b={...x};delete a.photos;delete b.photos;delete a.status;delete b.status;delete a.restock;delete b.restock;delete a.restockHistory;delete b.restockHistory;if(!restockChangeAllowed(prev,x,e))return false;
     if(!wireEqual(a,b)&&!permitted(e,'wire.edit'))return false;
@@ -87,11 +89,11 @@ export function wireChangeAllowed(before,after,e){
     if(x.photos.length>prev.photos.length&&!permitted(e,'wire.photos'))return false;
    }
   }
-  if(!wireEqual(old.filter(x=>list.some(n=>n.id===x.id)).map(x=>x.id),list.filter(x=>old.some(n=>n.id===x.id)).map(x=>x.id))&&!permitted(e,'wire.edit'))return false;
+  if(!wireEqual(old.filter(x=>newMap.has(x.id)).map(x=>x.id),list.filter(x=>oldMap.has(x.id)).map(x=>x.id))&&!permitted(e,'wire.edit'))return false;
  }
- for(const c of bc)if(!ac.some(x=>x.id===c.id))return false;
- for(const c of ac){const prev=bc.find(x=>x.id===c.id);if(!prev){if(!permitted(e,'wire.cut')||c.actorId!==String(e.id)||c.actor!==e.name)return false;const r=ar.find(r=>r.id===c.reelId),photo=r?.photos.find(p=>p.id===c.photoId);if(c.photoId&&(!photo||photo.actorId!==String(e.id)||photo.created!==c.time||br.some(r=>r.photos.some(p=>p.id===c.photoId))))return false;}
- else if(!wireEqual(prev,c)){if(!permitted(e,'wire.editAll')&&(!permitted(e,'wire.editOwn')||prev.actorId!==String(e.id)))return false;const a={...prev},b={...c};for(const k of ['length','quantity','photoId','updatedAt','updatedBy']){delete a[k];delete b[k];}if(!wireEqual(a,b)||c.updatedBy!==e.name||Number.isNaN(Date.parse(c.updatedAt)))return false;if(c.photoId!==prev.photoId&&br.some(r=>r.photos.some(p=>p.id===c.photoId)))return false;}
+ for(const c of bc)if(!cutAfter.has(c.id))return false;
+ for(const c of ac){const prev=cutBefore.get(c.id);if(!prev){if(!permitted(e,'wire.cut')||c.actorId!==String(e.id)||c.actor!==e.name)return false;const r=reelAfter.get(c.reelId),photo=r?.photos.find(p=>p.id===c.photoId);if(c.photoId&&(!photo||photo.actorId!==String(e.id)||photo.created!==c.time||beforePhotoIds.has(c.photoId)))return false;}
+ else if(!wireEqual(prev,c)){if(!permitted(e,'wire.editAll')&&(!permitted(e,'wire.editOwn')||prev.actorId!==String(e.id)))return false;const a={...prev},b={...c};for(const k of ['length','quantity','photoId','updatedAt','updatedBy']){delete a[k];delete b[k];}if(!wireEqual(a,b)||c.updatedBy!==e.name||Number.isNaN(Date.parse(c.updatedAt)))return false;if(c.photoId!==prev.photoId&&beforePhotoIds.has(c.photoId))return false;}
  }return true;
 }
 export function visibleState(s,e){const out=structuredClone(s);for(const [key,collections]of [['cases',['cases']],['warehouse',['projects','deletedProjects']],['plating',['platingProjects']],['wire',['wireTypes','wireReels','wireCuts']]])if(!permitted(e,key+'.view'))for(const c of collections)out[c]=[];
@@ -104,6 +106,6 @@ export async function verifyWirePhotos(env,before,after,e){
 export function canDeleteProject(e,kind){return permitted(e,kind+'.deleteProject');}
 export function projectDeletionAllowed(before,after,e){
  for(const [kind,key] of [['cases','cases'],['warehouse','projects'],['plating','platingProjects'],['wire','wireTypes']]){
-  for(const old of before[key]||[]){const n=(after[key]||[]).find(x=>x.id===old.id);if((!n||(!old.archived&&n.archived))&&!canDeleteProject(e,kind))return false;}
+  const next=new Map((after[key]||[]).map(x=>[x.id,x]));for(const old of before[key]||[]){const n=next.get(old.id);if((!n||(!old.archived&&n.archived))&&!canDeleteProject(e,kind))return false;}
  }return true;
 }

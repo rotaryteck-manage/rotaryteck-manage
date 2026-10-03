@@ -1,7 +1,7 @@
 'use strict';
 
 function notificationDeepLink93(){
- if(!window.cloudReady)return setTimeout(notificationDeepLink93,250);
+ if(typeof cloudReady!=='undefined'&&!cloudReady)return setTimeout(notificationDeepLink93,250);
  const q=new URLSearchParams(location.search),wire=q.get('notificationWire'),project=q.get('notificationPlatingProject'),shipment=q.get('notificationPlatingShipment');
  if(wire&&location.hash==='#wire'&&!sessionStorage.getItem('notification-open:'+location.href)){
   sessionStorage.setItem('notification-open:'+location.href,'1');openWireRestock();setTimeout(()=>{const row=document.querySelector('[data-restock-row="'+CSS.escape(wire)+'"]');if(row){row.classList.add('notification-focus93');row.scrollIntoView({block:'center'})}else toast('這筆線材已處理或已刪除。')},50);
