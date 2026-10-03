@@ -12,14 +12,14 @@ const request=(path,body=null,method=body?'POST':'GET')=>new Request('https://lo
 function fixture(){const {db,DB}=database();migrations85(db);db.exec("INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(1,'boss','boss@local.test','主管','supervisor','active','now','now')");return{db,env:{DB,SUPABASE_URL:'https://test.supabase.co',SUPABASE_PUBLISHABLE_KEY:'test',SUPABASE_SECRET_KEY:'test'}}}
 const base={enabled:true,category:'提醒',name:'提醒',title:'{通知名稱}',message:'共有 {數量} 筆：{線材名稱}{電鍍內容}',time:'09:00',firstDays:0,repeatDays:0,recipientMode:'selected',recipientIds:['1','2','3']};
 
-test('v92 summarizes eleven wire records to one logical notification per recipient',()=>{
+test('v93 keeps eleven wire records independently deduplicated for each recipient',()=>{
  const rule={...base,id:'wire',type:'wire',target:'wire-restock'},people=[1,2,3].map(id=>({id,name:'人'+id,enabled:1})),state={wireTypes:[{id:'t',name:'UL線'}],wireReels:Array.from({length:11},(_,i)=>({id:'r'+i,wireId:'t',status:'low',restock:{id:'s'+i,reported:{time:'2026-10-01'}}}))};
- const plans=notificationPlan85([rule],state,[],[],people,'2026-10-03T01:01:00Z');assert.equal(plans.length,3);assert.deepEqual(plans.map(plan=>plan.eventCount),[11,11,11]);assert.ok(plans.every(plan=>plan.message.includes('共有 11 筆')));
+ const plans=notificationPlan85([rule],state,[],[],people,'2026-10-03T01:01:00Z');assert.equal(plans.length,33);assert.ok(plans.every(plan=>plan.eventCount===1));assert.equal(new Set(plans.map(plan=>plan.dedupeKey)).size,33);
 });
 
-test('v92 summarizes plating and puts work and report before bulk reminders',()=>{
+test('v93 keeps plating records independent and puts work before bulk reminders',()=>{
  const people=[{id:1,name:'人1',enabled:1}],wire={...base,id:'wire',type:'wire',target:'wire-restock',recipientIds:['1']},plating={...base,id:'plating',type:'plating',target:'plating-record',recipientIds:['1']},work={...base,id:'work',type:'work',target:'work-record',recipientMode:'auto',recipientIds:[],message:'{工作清單}'},state={wireTypes:[{id:'t',name:'線'}],wireReels:[{id:'r',wireId:'t',status:'low',restock:{id:'s',reported:{time:'2026-10-01'}}}],platingProjects:[{id:'p',name:'FAA',shipments:[{id:'a',sent:'2026-10-01',returned:''},{id:'b',sent:'2026-10-01',returned:''}]}]},entries=[{id:'j',kind:'daily',day:'2026-10-03',end_day:'2026-10-03',title:'FAA',assignee_ids:'["1"]',category:'["製作"]'}];
- const plans=notificationPlan85([wire,plating,work],state,entries,[],people,'2026-10-03T01:01:00Z');assert.deepEqual(plans.map(plan=>plan.notificationType),['work','wire','plating']);assert.equal(plans.find(plan=>plan.notificationType==='plating').eventCount,2);
+ const plans=notificationPlan85([wire,plating,work],state,entries,[],people,'2026-10-03T01:01:00Z');assert.deepEqual(plans.map(plan=>plan.notificationType),['work','wire','plating','plating']);assert.ok(plans.filter(plan=>plan.notificationType==='plating').every(plan=>plan.eventCount===1));
 });
 
 test('v92 groups three device deliveries into one administrator row',async()=>{

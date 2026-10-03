@@ -43,7 +43,7 @@ function workflowChangeAllowed(before,after,e){
  if(!access75(e,'warehouse.options')&&JSON.stringify(before.warehouseOptions73)!==JSON.stringify(after.warehouseOptions73))return false;
  {const old=new Map(warehouseDateParts72(before).map(x=>[x.key,x.part]));for(const {key,part} of warehouseDateParts72(after))for(const field of ['receivedDate72','issuedDate72','preparedAdjustment73'])if((part[field]||'')!==(old.get(key)?.[field]||'')&&!access75(e,({receivedDate72:'warehouse.receivedDate',issuedDate72:'warehouse.issuedDate',preparedAdjustment73:'warehouse.preparedAdjust'})[field]))return false;}
 
- for(const p of after.platingProjects||[])for(const s of p.shipments||[]){const old=before.platingProjects?.find(x=>x.id===p.id)?.shipments.find(x=>x.id===s.id);if(JSON.stringify(old)!==JSON.stringify(s)&&(!s.welderId?.trim()||!s.welderName?.trim()))return false;}
- for(const c of after.cases||[]){const old=before.cases?.find(x=>x.id===c.id);if(c.status==='結案'&&old?.status!=='結案'&&!validDate(c.actualClosedDate))return false;if(c.status!=='結案'&&c.actualClosedDate)return false;}
+ const oldShipments=new Map((before.platingProjects||[]).flatMap(p=>(p.shipments||[]).map(s=>[p.id+'\u0000'+s.id,s])));for(const p of after.platingProjects||[])for(const s of p.shipments||[]){const old=oldShipments.get(p.id+'\u0000'+s.id);if(JSON.stringify(old)!==JSON.stringify(s)&&(!s.welderId?.trim()||!s.welderName?.trim()))return false;}
+ const oldCases=new Map((before.cases||[]).map(c=>[c.id,c]));for(const c of after.cases||[]){const old=oldCases.get(c.id);if(c.status==='結案'&&old?.status!=='結案'&&!validDate(c.actualClosedDate))return false;if(c.status!=='結案'&&c.actualClosedDate)return false;}
  return true;
 }

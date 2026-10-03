@@ -1,0 +1,30 @@
+Rotaryteck Manage v93 差異更新包
+
+build.mjs
+dist/auth.js
+dist/cloud.js
+dist/enhancements-v921.css
+dist/enhancements-v921.js
+dist/enhancements-v93.css
+dist/enhancements-v93.js
+dist/plating-ledger.js
+dist/server/index.js
+dist/wire.js
+dist/workflows.js
+drizzle/0023_notifications921.sql
+tests/v88.test.mjs
+tests/v92.test.mjs
+tests/v921.test.mjs
+tests/v93.test.mjs
+worker/backup85.mjs
+worker/notifications85.mjs
+worker/server.mjs
+worker/wire-permissions.mjs
+worker/workflows.mjs
+更新紀錄/README.md
+更新紀錄/UPDATE-v92.1.md
+更新紀錄/UPDATE-v93.md
+更新紀錄/v93-驗收步驟.md
+更新紀錄/v93-差異檔案清單.txt
+
+本包只包含由 v92 更新至 v93 所需的變更檔案，不含完整專案及舊版 ZIP。
