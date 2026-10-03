@@ -1,5 +1,5 @@
 import {backupData85,backupPhotos85} from './backup85.mjs';
-import {notificationPlan85,notificationRulesValid85} from './notifications85.mjs';
+import {notificationClock85,notificationPlan85,notificationRulesValid85} from './notifications85.mjs';
 import webpush from 'web-push';
 import {createECDH} from 'node:crypto';
 import {validateWorkflowState,workflowChangeAllowed,validDate} from './workflows.mjs';
@@ -326,12 +326,16 @@ async function sendPush82(env,subscription,options){
   ('manual:'+crypto.randomUUID())
  );
 
+ const receipt=await env.DB.prepare('SELECT status,attempts,updated_at FROM notification_receipts921 WHERE dedupe_key=?').bind(dedupeKey).first();
+ if(receipt?.status==='sent')return{ok:true,duplicate:true};
+ if(receipt&&Number(receipt.attempts||0)>=3)return{ok:false,duplicate:true,exhausted:true};
  const oldDelivery=await env.DB.prepare(
-  'SELECT id,status,retry_count FROM notification_deliveries WHERE dedupe_key=?'
+  'SELECT id,status,retry_count,last_attempt_at FROM notification_deliveries WHERE dedupe_key=?'
  ).bind(dedupeKey).first();
 
  if(oldDelivery){
-  if(oldDelivery.status==='failed'&&Number(oldDelivery.retry_count||0)<2){
+  const stalePending=oldDelivery.status==='pending'&&Date.parse(oldDelivery.last_attempt_at||0)<Date.now()-10*60*1000;
+  if((oldDelivery.status==='failed'||stalePending)&&Number(oldDelivery.retry_count||0)<2){
    const attemptedAt=new Date().toISOString();
    await env.DB.prepare("UPDATE notification_deliveries SET status='pending',retry_count=retry_count+1,last_attempt_at=?,error_message='' WHERE id=?").bind(attemptedAt,oldDelivery.id).run();
   }else{
@@ -344,6 +348,7 @@ async function sendPush82(env,subscription,options){
 
  const deliveryId=oldDelivery?.id||crypto.randomUUID();
  const createdAt=new Date().toISOString();
+ await env.DB.prepare("INSERT INTO notification_receipts921(dedupe_key,status,attempts,created_at,updated_at) VALUES(?,'pending',1,?,?) ON CONFLICT(dedupe_key) DO UPDATE SET status='pending',attempts=notification_receipts921.attempts+1,updated_at=excluded.updated_at").bind(dedupeKey,createdAt,createdAt).run();
 
  const claim=oldDelivery?null:await env.DB.prepare(
   `INSERT OR IGNORE INTO notification_deliveries(
@@ -351,20 +356,21 @@ async function sendPush82(env,subscription,options){
     rule_id,
     employee_id,
     subscription_id,
-    notification_type,
+    notification_type,category,
     title,
     message,
     target_url,
     status,
     dedupe_key,
     created_at
-   ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`
+   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`
  ).bind(
   deliveryId,
   ruleId,
   employeeId,
   subscription.id,
   notificationType,
+  notificationCategory88(notificationType,options.category),
   title,
   message,
   targetUrl,
@@ -389,7 +395,8 @@ async function sendPush82(env,subscription,options){
     title,
     body:message,
     url:targetUrl,
-    tag:notificationType||undefined
+    tag:dedupeKey,
+    renotify:true
    }),
    {
     TTL:3600,
@@ -410,6 +417,8 @@ async function sendPush82(env,subscription,options){
     sentAt,
     deliveryId
    ),
+
+   env.DB.prepare("UPDATE notification_receipts921 SET status='sent',updated_at=?,completed_at=? WHERE dedupe_key=?").bind(sentAt,sentAt,dedupeKey),
 
    env.DB.prepare(
     `UPDATE push_subscriptions
@@ -450,6 +459,8 @@ async function sendPush82(env,subscription,options){
    deliveryId
   ).run();
 
+  await env.DB.prepare("UPDATE notification_receipts921 SET status='failed',updated_at=? WHERE dedupe_key=?").bind(failedAt,dedupeKey).run();
+
   if(statusCode===404||statusCode===410){
    await env.DB.prepare(
     'DELETE FROM push_subscriptions WHERE id=?'
@@ -467,6 +478,8 @@ async function sendPush82(env,subscription,options){
     failedAt,
     subscription.id
    ).run();
+   const failures=await env.DB.prepare('SELECT failure_count FROM push_subscriptions WHERE id=?').bind(subscription.id).first();
+   if(Number(failures?.failure_count||0)>=5)await env.DB.prepare('UPDATE push_subscriptions SET enabled=0,updated_at=? WHERE id=?').bind(failedAt,subscription.id).run();
   }
 
   return {
@@ -481,17 +494,26 @@ function notificationCategory88(type,preferred=''){
  if(preferred)return String(preferred).slice(0,30);
  return({work:'工作排程',report:'工作回報',wire:'線材提醒',plating:'電鍍提醒',material:'料件紀錄',holiday:'假日提醒',closure:'停班提醒',test:'系統通知',custom:'自訂提醒'})[type]||'其他';
 }
+function notificationSourceName921(value){return({'manual-test':'手動測試','rule-preview':'規則預覽','holiday-preview':'假日模擬','closure-preview':'停班模擬'})[value]||value||'手動測試'}
 async function notificationInboxCreate88(env,employeeId,options){
  const sourceKey=String(options.sourceKey||options.dedupeKey||('manual:'+crypto.randomUUID())).slice(0,300),now=new Date().toISOString(),id=crypto.randomUUID();
  await env.DB.prepare(`INSERT OR IGNORE INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(id,Number(employeeId),notificationCategory88(options.notificationType,options.category),String(options.title||'擎正科技提醒').slice(0,100),String(options.message||'您有一則新的系統通知。').slice(0,500),String(options.targetUrl||'/').slice(0,1000),sourceKey,now).run();
  return sourceKey;
 }
+async function notificationDailyClaim921(env,limit=200){
+ const day=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),now=new Date().toISOString();
+ await env.DB.prepare('INSERT OR IGNORE INTO notification_daily_usage921(day,attempts,updated_at) VALUES(?,0,?)').bind(day,now).run();
+ const result=await env.DB.prepare('UPDATE notification_daily_usage921 SET attempts=attempts+1,updated_at=? WHERE day=? AND attempts<?').bind(now,day,limit).run();
+ return Number(result.meta?.changes||0)===1;
+}
+async function notificationQuota921(env,limit=200){const day=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),row=await env.DB.prepare('SELECT attempts FROM notification_daily_usage921 WHERE day=?').bind(day).first(),used=Number(row?.attempts||0);return{day,limit,used,remaining:Math.max(0,limit-used)}}
 async function notificationDispatch88(env,employeeId,options,budget=null){
  const person=await env.DB.prepare("SELECT e.id,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.id=? AND e.status='active'").bind(Number(employeeId)).first();
  if(!person||person.enabled===0)return{sent:0,failed:0,results:[]};
- const sourceKey=await notificationInboxCreate88(env,employeeId,options),devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1 ORDER BY updated_at DESC').bind(Number(employeeId)).all(),results=[];
+ const sourceKey=await notificationInboxCreate88(env,employeeId,options),devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1 ORDER BY updated_at DESC').bind(Number(employeeId)).all(),results=[],queue=[];
  let deferred=0;
- for(const device of devices.results||[]){if(budget&&budget.remaining<=0){deferred++;continue}if(budget)budget.remaining--;try{results.push(await sendPush82(env,device,{...options,employeeId:Number(employeeId),dedupeKey:sourceKey+':'+device.id}))}catch(error){results.push({ok:false,error:error?.message||String(error)})}}
+ for(const device of devices.results||[]){const dedupeKey=sourceKey+':'+device.id;let receipt=await env.DB.prepare('SELECT status,attempts FROM notification_receipts921 WHERE dedupe_key=?').bind(dedupeKey).first();if(!receipt&&options.legacyDedupePattern){const legacy=await env.DB.prepare("SELECT sent_at FROM notification_deliveries WHERE status='sent' AND dedupe_key LIKE ? LIMIT 1").bind(options.legacyDedupePattern).first();if(legacy){const stamp=legacy.sent_at||new Date().toISOString();await env.DB.prepare("INSERT OR IGNORE INTO notification_receipts921(dedupe_key,status,attempts,created_at,updated_at,completed_at) VALUES(?,'sent',1,?,?,?)").bind(dedupeKey,stamp,stamp,stamp).run();receipt={status:'sent',attempts:1}}}if(receipt?.status==='sent'){results.push({ok:true,duplicate:true});continue}if(Number(receipt?.attempts||0)>=3){results.push({ok:false,duplicate:true,exhausted:true});continue}if(budget&&budget.remaining<=0){deferred++;continue}if(!await notificationDailyClaim921(env)){deferred++;continue}if(budget)budget.remaining--;queue.push({device,dedupeKey})}
+ for(let index=0;index<queue.length;index+=4){const batch=queue.slice(index,index+4);results.push(...await Promise.all(batch.map(async item=>{try{return await sendPush82(env,item.device,{...options,employeeId:Number(employeeId),dedupeKey:item.dedupeKey})}catch(error){return{ok:false,error:error?.message||String(error)}}})))}
  return{sent:results.filter(x=>x.ok).length,failed:results.filter(x=>!x.ok&&!x.duplicate).length,deferred,results};
 }
 export async function pushTestApi82(request,env){
@@ -534,12 +556,13 @@ export async function pushTestApi82(request,env){
    all?'目前全員都沒有已開啟的通知裝置':'這位員工目前沒有已開啟的通知裝置'
   );
 
-  const results=[],testId=crypto.randomUUID();
-  for(const subscription of subscriptions)results.push(await sendPush82(env,subscription,{employeeId:Number(subscription.employee_id),notificationType:'test',title,message,targetUrl,dedupeKey:'test:'+testId+':'+subscription.employee_id+':'+subscription.id}));
+  const results=[],testId=crypto.randomUUID(),queue=[];
+  for(const subscription of subscriptions){if(await notificationDailyClaim921(env))queue.push(subscription);else results.push({ok:false,deferred:true,deviceId:subscription.id,deviceLabel:subscription.device_label||'未命名裝置',employeeName:subscription.employee_name||targetEmployee?.name||''})}
+  for(let index=0;index<queue.length;index+=4)results.push(...await Promise.all(queue.slice(index,index+4).map(async subscription=>{const result=await sendPush82(env,subscription,{employeeId:Number(subscription.employee_id),notificationType:'test',category:'系統測試',title,message,targetUrl,dedupeKey:'test:'+testId+':'+subscription.employee_id+':'+subscription.id});return{...result,deviceId:subscription.id,deviceLabel:subscription.device_label||'未命名裝置',employeeName:subscription.employee_name||targetEmployee?.name||''}})));
 
   const sent=results.filter(x=>x.ok).length;
   const failed=results.length-sent;
-  await env.DB.prepare('INSERT INTO notification_test_audit92(id,actor_id,actor_name,target_employee,title,message,device_count,sent_count,failed_count,source_page,user_agent,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(testId,employee.id,employee.name,all?'全員':targetEmployee.name,title,message,results.length,sent,failed,sourcePage,String(request.headers.get('user-agent')||'').slice(0,500),new Date().toISOString()).run();
+  await env.DB.prepare('INSERT INTO notification_test_audit92(id,actor_id,actor_name,target_employee,title,message,device_count,sent_count,failed_count,source_page,user_agent,created_at,results_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(testId,employee.id,employee.name,all?'全員':targetEmployee.name,title,message,results.length,sent,failed,sourcePage,String(request.headers.get('user-agent')||'').slice(0,500),new Date().toISOString(),JSON.stringify(results.map(x=>({deviceId:x.deviceId||'',deviceLabel:x.deviceLabel||'',employeeName:x.employeeName||'',ok:!!x.ok,deferred:!!x.deferred,error:x.error||''})))).run();
 
   return json({
    employeeName:all?'全員':targetEmployee.name,
@@ -681,12 +704,17 @@ export async function pushSubscriptionApi82(request,env){
 }
 export async function notificationLogApi85(request,env){
  const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
+ if(request.method==='POST'){
+  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
+  try{const input=await boundedJSON(request,4096),ruleId=String(input.ruleId||''),ids=[...new Set((input.employeeIds||[]).map(Number).filter(Number.isSafeInteger))];check(ruleId&&ids.length&&ids.length<=100,'請選擇要補發的人員');const state=JSON.parse((await companyRow(env)).body),rule=(state.notificationRules||[]).find(item=>item.id===ruleId&&item.enabled);check(rule,'找不到已啟用的通知規則');check(!['material','holiday','closure'].includes(rule.type),'此類通知請使用測試預覽確認，不提供舊通知補發');const now=Date.now(),day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all(),people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all(),wanted=new Set(ids.map(String)),plans=notificationPlan85([rule],state,entries.results,reports.results,people.results,now).filter(plan=>wanted.has(String(plan.employeeId))),budget={remaining:32},results=[];check(plans.length,'選擇的人員目前沒有符合這條規則的內容');for(const plan of plans)results.push(await notificationDispatch88(env,plan.employeeId,{...plan,sourceKey:'manual-catchup:'+rule.id+':'+plan.employeeId+':'+day+':'+crypto.randomUUID()},budget));return json({sent:results.reduce((n,x)=>n+x.sent,0),failed:results.reduce((n,x)=>n+x.failed,0),deferred:results.reduce((n,x)=>n+x.deferred,0),people:plans.length})}catch(error){return json({error:error.message||'補發通知失敗'},400)}
+ }
  if(request.method==='GET'&&new URL(request.url).searchParams.get('export')==='1')return notificationExportApi92(request,env);
  if(request.method==='GET'){
-  const rows=await env.DB.prepare('SELECT d.id,d.employee_id,d.subscription_id,d.notification_type,d.title,d.message,d.target_url,d.status,d.dedupe_key,d.retry_count,d.created_at,d.sent_at,d.error_message,e.name AS employee_name,s.device_label,s.user_agent FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN push_subscriptions s ON s.id=d.subscription_id ORDER BY d.created_at DESC LIMIT 500').all(),groups=new Map();
-  for(const row of rows.results||[]){const suffix=row.subscription_id?':'+row.subscription_id:'',key=suffix&&row.dedupe_key.endsWith(suffix)?row.dedupe_key.slice(0,-suffix.length):row.dedupe_key;let group=groups.get(key);if(!group){group={id:key,notification_type:row.notification_type,category:notificationCategory88(row.notification_type),title:row.title,message:row.message,target_url:row.target_url,employee_id:row.employee_id,employee_name:row.employee_name,created_at:row.created_at,devices:[]};groups.set(key,group)}group.devices.push({id:row.id,subscriptionId:row.subscription_id,deviceLabel:row.device_label||'已移除／未命名裝置',userAgent:row.user_agent||'',status:row.status,sentAt:row.sent_at,error:row.error_message,retryCount:Number(row.retry_count||0)});}
+  const query=new URL(request.url).searchParams,page=Math.max(1,Number(query.get('page'))||1),limit=Math.min(1000,Math.max(100,Number(query.get('limit'))||1000)),offset=(page-1)*limit;
+  const rows=await env.DB.prepare('SELECT d.id,d.employee_id,d.subscription_id,d.notification_type,d.category,d.title,d.message,d.target_url,d.status,d.dedupe_key,d.retry_count,d.created_at,d.sent_at,d.error_message,e.name AS employee_name,s.device_label,s.user_agent FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN push_subscriptions s ON s.id=d.subscription_id ORDER BY d.created_at DESC LIMIT ? OFFSET ?').bind(limit,offset).all(),groups=new Map();
+  for(const row of rows.results||[]){const suffix=row.subscription_id?':'+row.subscription_id:'',key=suffix&&row.dedupe_key.endsWith(suffix)?row.dedupe_key.slice(0,-suffix.length):row.dedupe_key;let group=groups.get(key);if(!group){group={id:key,notification_type:row.notification_type,category:notificationCategory88(row.notification_type,row.category),title:row.title,message:row.message,target_url:row.target_url,employee_id:row.employee_id,employee_name:row.employee_name,created_at:row.created_at,devices:[]};groups.set(key,group)}group.devices.push({id:row.id,subscriptionId:row.subscription_id,deviceLabel:row.device_label||'已移除／未命名裝置',userAgent:row.user_agent||'',status:row.status,sentAt:row.sent_at,error:row.error_message,retryCount:Number(row.retry_count||0)});}
   const items=[...groups.values()].filter(group=>group.notification_type!=='test').map(group=>{const sent=group.devices.filter(x=>x.status==='sent').length,failed=group.devices.filter(x=>x.status==='failed').length,pending=group.devices.length-sent-failed;return{...group,sent,failed,pending,status:failed?(sent?'partial':'failed'):pending?'pending':'sent'}});
-  const audits=await env.DB.prepare('SELECT * FROM notification_test_audit92 ORDER BY created_at DESC LIMIT 100').all();return json({items,testAudits:audits.results||[]});
+  const audits=await env.DB.prepare('SELECT * FROM notification_test_audit92 ORDER BY created_at DESC LIMIT 100').all(),quota=await notificationQuota921(env);return json({items,page,hasMore:(rows.results||[]).length===limit,quota,testAudits:(audits.results||[]).map(row=>({...row,source_page:notificationSourceName921(row.source_page),results:(()=>{try{return JSON.parse(row.results_json||'[]')}catch{return[]}})()}))});
  }
  if(request.method!=='DELETE')return json({error:'不支援的操作'},405);
  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
@@ -704,12 +732,12 @@ export async function notificationLogApi85(request,env){
 export async function notificationExportApi92(request,env){
  const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知匯出權限'},403);
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
- const query=new URL(request.url).searchParams,from=query.get('from')||'',to=query.get('to')||'',valid=value=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value));
+ const query=new URL(request.url).searchParams,from=query.get('from')||'',to=query.get('to')||'',valid=value=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;const [y,m,d]=value.split('-').map(Number),date=new Date(Date.UTC(y,m-1,d));return date.getUTCFullYear()===y&&date.getUTCMonth()===m-1&&date.getUTCDate()===d};
  if(!valid(from)||!valid(to)||to<from||Date.parse(to)-Date.parse(from)>366*86400000)return json({error:'請選擇一年內的正確日期範圍'},400);
  const start=new Date(from+'T00:00:00+08:00').toISOString(),end=new Date(to+'T23:59:59.999+08:00').toISOString();
- const rows=await env.DB.prepare("SELECT d.id,d.employee_id,d.subscription_id,d.notification_type,d.title,d.message,d.target_url,d.status,d.dedupe_key,d.retry_count,d.created_at,d.sent_at,d.error_message,e.name AS employee_name,s.device_label,s.user_agent FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN push_subscriptions s ON s.id=d.subscription_id WHERE d.created_at BETWEEN ? AND ? ORDER BY d.created_at,d.employee_id,d.dedupe_key").bind(start,end).all();
+ const rows=await env.DB.prepare("SELECT d.id,d.employee_id,d.subscription_id,d.notification_type,d.category,d.title,d.message,d.target_url,d.status,d.dedupe_key,d.retry_count,d.created_at,d.sent_at,d.error_message,e.name AS employee_name,s.device_label,s.user_agent FROM notification_deliveries d LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN push_subscriptions s ON s.id=d.subscription_id WHERE d.created_at BETWEEN ? AND ? ORDER BY d.created_at,d.employee_id,d.dedupe_key").bind(start,end).all();
  const audits=await env.DB.prepare("SELECT * FROM notification_test_audit92 WHERE created_at BETWEEN ? AND ? ORDER BY created_at").bind(start,end).all();
- return json({from,to,items:(rows.results||[]).filter(row=>row.notification_type!=='test').map(row=>({...row,category:notificationCategory88(row.notification_type),deviceLabel:row.device_label||'已移除／未命名裝置',userAgent:row.user_agent||''})),testAudits:audits.results||[]});
+ return json({from,to,items:(rows.results||[]).filter(row=>row.notification_type!=='test').map(row=>({...row,category:notificationCategory88(row.notification_type,row.category),deviceLabel:row.device_label||'已移除／未命名裝置',userAgent:row.user_agent||''})),testAudits:(audits.results||[]).map(row=>({...row,source_page:notificationSourceName921(row.source_page),results:(()=>{try{return JSON.parse(row.results_json||'[]')}catch{return[]}})()}))});
 }
 function dateAdd90(day,amount){const date=new Date(day+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+amount);return date.toISOString().slice(0,10)}
 function template90(value,values){let output=String(value||'');for(const [key,replacement]of Object.entries(values))output=output.replaceAll('{'+key+'}',String(replacement??''));return output}
@@ -734,7 +762,7 @@ async function previewValues90(type,employee,env){
 export async function notificationPreviewApi90(request,env){const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);if(request.method!=='GET')return json({error:'不支援的操作'},405);try{return json(await previewValues90(new URL(request.url).searchParams.get('type')||'custom',employee,env))}catch(error){return json({error:error.message||'無法產生實際預覽'},503)}}
 export async function notificationSourceStatusApi90(request,env){const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);if(request.method!=='GET')return json({error:'不支援的操作'},405);const day=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),rows=await env.DB.prepare('SELECT source_key,status,effective_date,detail,checked_at,changed_at FROM notification_source_state90 ORDER BY source_key').all();return json({items:(rows.results||[]).map(row=>row.source_key.startsWith('closure:')&&!closureDateActive901({effectiveDate:row.effective_date},day)?{...row,status:'unknown',effective_date:''}:row)})}
 async function ruleRecipients90(env,rule){const rows=await env.DB.prepare("SELECT e.id,e.name,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all(),selected=new Set((rule.recipientIds||[]).map(String));return(rows.results||[]).filter(p=>p.enabled!==0&&(rule.recipientMode!=='selected'||selected.has(String(p.id))))}
-async function runHolidayRules90(env,rules,now){
+async function runHolidayRules90(env,rules,now,budget=null,suppressed=new Map()){
  const clock=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(now)),parts=Object.fromEntries(clock.map(x=>[x.type,x.value])),day=parts.year+'-'+parts.month+'-'+parts.day,time=parts.hour+':'+parts.minute,tomorrow=dateAdd90(day,1),eligible=rules.filter(x=>x.enabled&&x.type==='holiday'&&time>=x.time);
  if(!eligible.length)return;
  const checkedAt=new Date(now).toISOString(),sourceKey='holiday:government-calendar';let data;
@@ -747,40 +775,62 @@ async function runHolidayRules90(env,rules,now){
   return;
  }
  const holiday=data.dates?.[tomorrow];if(!namedGovernmentHoliday60(holiday))return;
- for(const rule of eligible)for(const person of await ruleRecipients90(env,rule)){const values={人員:person.name,日期:day,通知名稱:rule.name,假日名稱:holiday.name,假日日期:tomorrow};await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'holiday',category:rule.category||'假日提醒',title:template90(rule.title,values),message:template90(rule.message,values),targetUrl:'/?notificationDay='+tomorrow+'#schedule',sourceKey:'holiday:'+rule.id+':'+tomorrow+':'+person.id})}
+ for(const rule of eligible)for(const person of await ruleRecipients90(env,rule)){const blocked=suppressed.get(rule.id);if(blocked&&(blocked.has('*')||blocked.has(String(person.id))))continue;const values={人員:person.name,日期:day,通知名稱:rule.name,假日名稱:holiday.name,假日日期:tomorrow};await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'holiday',category:rule.category||'假日提醒',title:template90(rule.title,values),message:template90(rule.message,values),targetUrl:'/?notificationDay='+tomorrow+'#schedule',sourceKey:'holiday:'+rule.id+':'+tomorrow+':'+person.id},budget)}
 }
 async function cleanupStaleClosure901(env,clock=Date.now()){const day=new Date(clock).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});await env.DB.prepare("DELETE FROM notification_inbox88 WHERE category='停班提醒' AND target_url LIKE '/?notificationDay=%' AND substr(target_url,19,10)<?").bind(day).run();await env.DB.prepare("UPDATE notification_source_state90 SET status='unknown',source_id='',effective_date='',detail=json_set(CASE WHEN json_valid(detail) THEN detail ELSE '{}' END,'$.stale',1),changed_at='' WHERE effective_date<>'' AND effective_date<?").bind(day).run()}
-async function runClosureRules90(env,rules,clock=Date.now()){
+async function runClosureRules90(env,rules,clock=Date.now(),budget=null,suppressed=new Map()){
  const day=new Date(clock).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
  await env.DB.prepare("DELETE FROM notification_inbox88 WHERE category='停班提醒' AND target_url LIKE '/?notificationDay=%' AND substr(target_url,19,10)<?").bind(day).run();
+ const checks=new Map();
  for(const rule of rules.filter(x=>x.enabled&&x.type==='closure')){
-  const city=rule.city||'高雄市',district=rule.district||'左營區',key='closure:'+city+':'+district,now=new Date(clock).toISOString(),previous=await env.DB.prepare('SELECT * FROM notification_source_state90 WHERE source_key=?').bind(key).first();let result;
-  try{result=await fetchClosureStatus90(city,district)}catch(error){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({city,district,error:error.message||String(error)}),now).run();continue}
-  if(!closureDateActive901(result,day)){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({...result,city,district,stale:true}),now).run();continue}
-  const changed=closureStateChanged902(result,previous),detail=JSON.stringify({...result,city,district});
-  await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET status=excluded.status,source_id=excluded.source_id,effective_date=excluded.effective_date,detail=excluded.detail,checked_at=excluded.checked_at,changed_at=CASE WHEN excluded.status<>notification_source_state90.status OR excluded.source_id<>notification_source_state90.source_id OR excluded.effective_date<>notification_source_state90.effective_date THEN excluded.changed_at ELSE notification_source_state90.changed_at END").bind(key,result.status,result.sourceId,result.effectiveDate,detail,now,changed?now:(previous?.changed_at||'')).run();
+  const city=rule.city||'高雄市',district=rule.district||'左營區',key='closure:'+city+':'+district,now=new Date(clock).toISOString();let checkResult=checks.get(key);
+  if(!checkResult){const previous=await env.DB.prepare('SELECT * FROM notification_source_state90 WHERE source_key=?').bind(key).first();let result;try{result=await fetchClosureStatus90(city,district)}catch(error){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({city,district,error:error.message||String(error)}),now).run();checks.set(key,{skip:true});continue}if(!closureDateActive901(result,day)){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({...result,city,district,stale:true}),now).run();checks.set(key,{skip:true});continue}const changed=closureStateChanged902(result,previous),detail=JSON.stringify({...result,city,district});await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET status=excluded.status,source_id=excluded.source_id,effective_date=excluded.effective_date,detail=excluded.detail,checked_at=excluded.checked_at,changed_at=CASE WHEN excluded.status<>notification_source_state90.status OR excluded.source_id<>notification_source_state90.source_id OR excluded.effective_date<>notification_source_state90.effective_date THEN excluded.changed_at ELSE notification_source_state90.changed_at END").bind(key,result.status,result.sourceId,result.effectiveDate,detail,now,changed?now:(previous?.changed_at||'')).run();checkResult={result,changed,previous};checks.set(key,checkResult)}
+  if(checkResult.skip)continue;const {result,changed,previous}=checkResult;
   if(!changed||result.status==='unknown'||result.status==='open'&&previous?.status!=='closed')continue;
-  for(const person of await ruleRecipients90(env,rule)){const values={人員:person.name,日期:result.effectiveDate,通知名稱:rule.name,縣市:city,行政區:district,停班日期:result.effectiveDate,停班狀態:result.status==='closed'?'停止上班':'恢復上班',公告時間:result.announcedAt||''};await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'closure',category:rule.category||'停班提醒',title:template90(rule.title,values),message:template90(rule.message,values),targetUrl:'/?notificationDay='+encodeURIComponent(result.effectiveDate)+'#schedule',sourceKey:'closure:'+rule.id+':'+result.effectiveDate+':'+result.sourceId+':'+result.status+':'+person.id})}
+  for(const person of await ruleRecipients90(env,rule)){const blocked=suppressed.get(rule.id);if(blocked&&(blocked.has('*')||blocked.has(String(person.id))))continue;const values={人員:person.name,日期:result.effectiveDate,通知名稱:rule.name,縣市:city,行政區:district,停班日期:result.effectiveDate,停班狀態:result.status==='closed'?'停止上班':'恢復上班',公告時間:result.announcedAt||''};await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'closure',category:rule.category||'停班提醒',title:template90(rule.title,values),message:template90(rule.message,values),targetUrl:'/?notificationDay='+encodeURIComponent(result.effectiveDate)+'#schedule',sourceKey:'closure:'+rule.id+':'+result.effectiveDate+':'+result.sourceId+':'+result.status+':'+person.id},budget)}
  }
 }
+async function notificationRuleSuppressions921(env,rules,now){
+ const {day,time}=notificationClock85(now),result=new Map(),stamp=new Date(now).toISOString();
+ for(const rule of rules){const recipients=(rule.recipientIds||[]).map(String).sort(),fingerprint=JSON.stringify({enabled:rule.enabled,type:rule.type,time:rule.time,firstDays:rule.firstDays,repeatDays:rule.repeatDays,target:rule.target,startDate:rule.startDate||'',city:rule.city||'',district:rule.district||'',materialCategories:rule.materialCategories||[]}),old=await env.DB.prepare('SELECT * FROM notification_rule_state921 WHERE rule_id=?').bind(rule.id).first();let suppressDay=old?.suppress_day||'',suppressed=[];try{suppressed=JSON.parse(old?.suppressed_ids||'[]')}catch{}
+  if(old){let previous=[];try{previous=JSON.parse(old.recipient_ids||'[]')}catch{}const added=recipients.filter(id=>!previous.includes(id));if(day!==suppressDay)suppressed=[];if(time>=rule.time){if(old.fingerprint!==fingerprint)suppressed=['*'];else suppressed=[...new Set([...suppressed,...added])];if(suppressed.length)suppressDay=day}}
+  await env.DB.prepare("INSERT INTO notification_rule_state921(rule_id,fingerprint,recipient_ids,suppress_day,suppressed_ids,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(rule_id) DO UPDATE SET fingerprint=excluded.fingerprint,recipient_ids=excluded.recipient_ids,suppress_day=excluded.suppress_day,suppressed_ids=excluded.suppressed_ids,updated_at=excluded.updated_at").bind(rule.id,fingerprint,JSON.stringify(recipients),suppressDay,JSON.stringify(suppressed),stamp).run();
+  if(suppressDay===day&&suppressed.length)result.set(rule.id,new Set(suppressed));
+ }
+ return result;
+}
+async function notificationInitialRecipients921(env,rules,plans,now){
+ const {day,time}=notificationClock85(now),allowed=new Map();
+ for(const rule of rules.filter(item=>item.enabled&&time>=item.time&&!['material','holiday','closure'].includes(item.type))){let row=await env.DB.prepare('SELECT eligible_ids FROM notification_rule_run921 WHERE rule_id=? AND day=?').bind(rule.id,day).first();if(!row){const ids=[...new Set(plans.filter(plan=>plan.ruleId===rule.id).map(plan=>String(plan.employeeId)))];await env.DB.prepare('INSERT OR IGNORE INTO notification_rule_run921(rule_id,day,eligible_ids,checked_at) VALUES(?,?,?,?)').bind(rule.id,day,JSON.stringify(ids),new Date(now).toISOString()).run();row={eligible_ids:JSON.stringify(ids)}}let ids=[];try{ids=JSON.parse(row.eligible_ids||'[]')}catch{}allowed.set(rule.id,new Set(ids))}
+ return allowed;
+}
+async function retryNotifications921(env,budget){
+ const cutoff=new Date(Date.now()-10*60*1000).toISOString(),rows=await env.DB.prepare("SELECT d.*,s.endpoint,s.p256dh,s.auth,s.enabled,s.failure_count FROM notification_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE s.enabled=1 AND ((d.status='failed' AND d.retry_count<2) OR (d.status='pending' AND COALESCE(NULLIF(d.last_attempt_at,''),d.created_at)<?)) ORDER BY d.created_at LIMIT 32").bind(cutoff).all();
+ for(const row of rows.results||[]){if(budget.remaining<=0)break;if(!await notificationDailyClaim921(env))break;budget.remaining--;await sendPush82(env,row,{employeeId:row.employee_id,ruleId:row.rule_id,notificationType:row.notification_type,category:row.category,title:row.title,message:row.message,targetUrl:row.target_url,dedupeKey:row.dedupe_key})}
+}
+async function cleanupNotificationHistory921(env,now=Date.now()){
+ const clock=typeof now==='number'?now:Date.parse(now),safe=Number.isFinite(clock)?clock:Date.now(),logs=new Date(safe-90*86400000).toISOString(),receipts=new Date(safe-400*86400000).toISOString(),usage=new Date(safe-14*86400000).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+ await env.DB.batch([env.DB.prepare('DELETE FROM notification_deliveries WHERE created_at<?').bind(logs),env.DB.prepare('DELETE FROM notification_test_audit92 WHERE created_at<?').bind(logs),env.DB.prepare('DELETE FROM notification_receipts921 WHERE updated_at<?').bind(receipts),env.DB.prepare('DELETE FROM notification_daily_usage921 WHERE day<?').bind(usage),env.DB.prepare('DELETE FROM notification_rule_run921 WHERE day<?').bind(usage)]);
+}
 export async function runNotifications85(env,now=Date.now()){
+ await cleanupNotificationHistory921(env,now);
  const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[];if(!rules.some(r=>r.enabled))return;
  notificationRulesValid85(rules);
  const day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
  const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all();
  const people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
  for(const person of people.results){await employeePermissions(env,person);const cap=rule=>rule.type==='work'||rule.type==='report'?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationCaps85=Object.fromEntries(rules.map(r=>[r.id,!cap(r)||permitted(person,cap(r))]));}
- const budget={remaining:32};
- for(const plan of notificationPlan85(rules,state,entries.results,reports.results,people.results,now)){if(!people.results.find(p=>p.id===plan.employeeId)?.notificationCaps85[plan.ruleId])continue;
+ const budget={remaining:32};await retryNotifications921(env,budget);const suppressed=await notificationRuleSuppressions921(env,rules,now),plans=notificationPlan85(rules,state,entries.results,reports.results,people.results,now),initialRecipients=await notificationInitialRecipients921(env,rules,plans,now);
+ for(const plan of plans){if(!people.results.find(p=>p.id===plan.employeeId)?.notificationCaps85[plan.ruleId])continue;const initial=initialRecipients.get(plan.ruleId);if(initial&&!initial.has(String(plan.employeeId)))continue;const blocked=suppressed.get(plan.ruleId);if(blocked&&(blocked.has('*')||blocked.has(String(plan.employeeId))))continue;
   try{await notificationDispatch88(env,plan.employeeId,{...plan,sourceKey:plan.dedupeKey},budget)}catch(error){console.error('單筆通知失敗',plan.notificationType,plan.employeeId,error?.message||String(error))}
  }
- try{await runHolidayRules90(env,rules,now)}catch(error){console.error('國定假日通知檢查失敗',error?.message||String(error))}
- try{await runClosureRules90(env,rules,now)}catch(error){console.error('停班通知檢查失敗',error?.message||String(error))}
+ try{await runHolidayRules90(env,rules,now,budget,suppressed)}catch(error){console.error('國定假日通知檢查失敗',error?.message||String(error))}
+ try{await runClosureRules90(env,rules,now,budget,suppressed)}catch(error){console.error('停班通知檢查失敗',error?.message||String(error))}
 }
 async function materialNotification88(env,employee,form){
  try{
   const state=JSON.parse((await companyRow(env)).body),configured=(state.notificationRules||[]).filter(r=>r.enabled&&r.type==='material'&&(!r.materialCategories?.length||r.materialCategories.includes(String(form.get('category')||''))));
-  const rules=configured.length?configured:[{id:'material-default88',type:'material',name:'料件紀錄通知',title:'{類型}紀錄通知',message:'{登記人}新增了 {案件名稱}的{類型}紀錄。',category:'料件紀錄',recipientMode:'auto',recipientIds:[],excludeActor:true,target:'material-record'}];
+  const rules=configured;if(!rules.length)return;
   const category=String(form.get('category')||''),projectName=String(form.get('projectName')||'').trim(),title=String(form.get('title')||'').trim(),id=String(form.get('id')||''),day=String(form.get('day')||'');
   const active=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
   for(const rule of rules){const chosen=new Set((rule.recipientIds||[]).map(String)),targets=(active.results||[]).filter(p=>p.enabled!==0&&(rule.recipientMode==='selected'?chosen.has(String(p.id)):['supervisor','warehouse'].includes(p.role))&&(!(rule.excludeActor!==false)||Number(p.id)!==Number(employee.id)));

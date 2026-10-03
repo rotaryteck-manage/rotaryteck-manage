@@ -37,6 +37,8 @@ test('work and custom plans include useful content, category, dedupe key and exa
 
 test('new material record creates an in-app notification for warehouse staff without notifying the actor',async()=>{
  const {db,env}=fixture(),form=new FormData();
+ const material={id:'material-test',enabled:true,type:'material',category:'料件紀錄',name:'料件通知',title:'{類型}紀錄通知',message:'{登記人}新增了 {案件名稱}的{類型}紀錄。',time:'00:00',firstDays:0,repeatDays:0,target:'material-record',recipientMode:'auto',recipientIds:[],materialCategories:['收料','出貨','送貨'],excludeActor:true};
+ db.prepare('INSERT INTO company_state(company_id,body,revision,updated_at) VALUES(?,?,0,?)').run('warehouse-main',JSON.stringify({projects:[],logs:[],notificationRules:[material]}),'now');
  for(const [key,value] of Object.entries({id:'mat88',revision:'0',day:'2026-10-02',title:'螺絲',projectName:'FAA',category:'收料',quantity:'1'}))form.set(key,value);
  const response=await worker.fetch(new Request('https://local.test/api/schedule-material-upload',{method:'POST',headers:{Authorization:'Bearer boss',origin:'https://local.test'},body:form}),env);
  assert.equal(response.status,200);
