@@ -3,12 +3,12 @@
 // v94.1: this file is intentionally loaded last.  Older workflow-ui code used
 // to replace the replenishment screen after wire.js had already installed the
 // new one, which made the v94 controls disappear in production.
-openWireRestock=function(history=false){
+openWireRestock=function(history=false,noticeRounds=null){
  history=history===true;
  const manager=canDo('wire.restock'),entries=[];
  for(const r of wireReels().filter(r=>wireType(r.wireId))){
   if(history){for(const c of r.restockHistory||[])entries.push({r,c});if(r.restock&&!restockActive(r,Date.now()+serverClockOffset44))entries.push({r,c:r.restock});}
-  else if(restockActive(r,Date.now()+serverClockOffset44))entries.push({r,c:r.restock||{}});
+  else if(restockActive(r,Date.now()+serverClockOffset44)&&(!noticeRounds||(r.status==='low'&&!r.restock?.ordered&&!r.restock?.received&&wireNoticeMatch944(r,noticeRounds))))entries.push({r,c:r.restock||{}});
  }
  const reported=entry=>entry.c?.reported?.time||'';
  if(!history)entries.sort((a,b)=>reported(b).localeCompare(reported(a))||String(b.c?.id||'').localeCompare(String(a.c?.id||'')));
@@ -17,16 +17,18 @@ openWireRestock=function(history=false){
   if(v)return '<span>'+esc(time44(v.time)+'｜'+v.actor)+'</span>'+(!history&&manager?'<button type="button" class="mini-action" data-restock="'+r.id+'" data-action="'+(key==='ordered'?'undoOrder':'undoReceive')+'" '+(key==='ordered'&&c.received?'disabled title="請先撤銷已入庫"':'')+'>撤銷</button>':'')+(key==='received'&&!history?'<small class="retention-hint">＊'+esc(time44(Date.parse(v.time)+7*86400000))+' 自動移至補貨歷史</small>':'');
   return !history&&manager?'<label><input type="checkbox" data-restock="'+r.id+'" data-action="'+action+'" '+(key==='ordered'&&c.received?'disabled':'')+'> '+(key==='ordered'?'已訂購':'已入庫')+'</label>':'—';
  }
- wireModal(history?'補貨歷史':wt('restockList'),
+ wireModal(history?'補貨歷史':noticeRounds?'通知待訂購名單':wt('restockList'),
   '<div class="wire-restock-head941"><strong>'+(history?'歷史紀錄 '+entries.length+' 筆':'待處理 '+entries.length+' 捆')+'</strong><div class="wire-tools">'+
+  (!history&&noticeRounds?'<button type="button" id="restock-all944">查看全部補貨</button>':'')+
   (!history&&manager&&entries.length?'<button type="button" class="danger-button" id="wire-restock-delete941">刪除補貨紀錄</button>':'')+
   (!history&&manager?'<button type="button" id="restock-bulk">批量操作</button>':'')+
   '<button type="button" id="restock-toggle">'+(history?'返回補貨名單':'補貨歷史')+'</button>'+
   (canDo('admin.export')?'<button type="button" id="restock-export">匯出補貨歷史</button>':'')+'</div></div>'+
   '<div id="restock-view44" data-history="'+history+'"></div><div class="ledger-scroll"><table class="ledger-table restock-table"><thead><tr>'+(!history&&manager?'<th class="wire-restock-select94"></th>':'')+'<th>線材／顏色</th><th>狀態</th><th>已訂購</th><th>已入庫</th>'+(history?'<th>操作歷史</th>':'')+'</tr></thead><tbody>'+entries.map(({r,c})=>'<tr data-restock-row="'+esc(r.id)+'">'+(!history&&manager?'<td><input type="checkbox" data-restock-select941="'+esc(r.id)+'" aria-label="選擇 '+esc(wireType(r.wireId).name+' '+r.color)+'"></td>':'')+'<td>'+esc(wireType(r.wireId).name+'｜'+r.color)+'</td><td><span class="wire-status '+(history?'enough':r.status)+'">'+esc(history?(c.received?'已入庫':'已結束'):wt(r.status))+'</span></td><td>'+cell(r,c,'ordered')+'</td><td>'+cell(r,c,'received')+'</td>'+(history?'<td><details><summary>查看</summary>'+(c.events||[]).map(e=>'<p>'+esc(({low:'標記需補貨',order:'已訂購',receive:'已入庫',undoOrder:'撤銷訂購',undoReceive:'撤銷入庫',deleteRestock:'刪除補貨紀錄'})[e.action]||e.action)+'｜'+time44(e.time)+'｜'+e.actor+'</p>').join('')+'</details></td>':'')+'</tr>').join('')+'</tbody></table></div>'+(!entries.length?'<p>目前沒有符合的紀錄</p>':''));
+ $('#restock-all944')?.addEventListener('click',()=>openWireRestock(false));
  $('#restock-bulk')?.addEventListener('click',()=>openRestockBulk46());
  $('#restock-toggle').onclick=()=>openWireRestock(!history);
- document.querySelectorAll('[data-restock]').forEach(b=>b.onclick=()=>{if(b.type==='checkbox')b.checked=false;restockAction(b.dataset.restock,b.dataset.action,()=>openWireRestock(history));});
+ document.querySelectorAll('[data-restock]').forEach(b=>b.onclick=()=>{if(b.type==='checkbox')b.checked=false;restockAction(b.dataset.restock,b.dataset.action,()=>openWireRestock(history,noticeRounds));});
  $('#restock-export')?.addEventListener('click',exportRestock44);
  $('#wire-restock-delete941')?.addEventListener('click',async()=>{
   const ids=[...document.querySelectorAll('[data-restock-select941]:checked')].map(x=>x.dataset.restockSelect941);
@@ -34,7 +36,7 @@ openWireRestock=function(history=false){
   if(!await confirmAction('確定刪除已選的 '+ids.length+' 筆補貨紀錄？\n線材、照片及裁線紀錄都會保留。'))return;
   const next=structuredClone(state),details=[];
   try{for(const id of ids){const index=next.wireReels.findIndex(x=>x.id===id),old=next.wireReels[index];if(!old)continue;details.push((wireType(old.wireId)?.name||'')+'｜'+old.color);next.wireReels[index]=restockTransition(old,'deleteRestock',currentUser,actionTime44());}
-  await wireCommit(next,'刪除補貨紀錄','',details.join('、'));openWireRestock(false);toast('已刪除 '+details.length+' 筆補貨紀錄');}catch(error){openWireRestock(false);toast(typeof failedSaveMessage!=='undefined'&&failedSaveMessage?failedSaveMessage:(error.message||'刪除失敗'));}
+  await wireCommit(next,'刪除補貨紀錄','',details.join('、'));openWireRestock(false,noticeRounds);toast('已刪除 '+details.length+' 筆補貨紀錄');}catch(error){openWireRestock(false,noticeRounds);toast(typeof failedSaveMessage!=='undefined'&&failedSaveMessage?failedSaveMessage:(error.message||'刪除失敗'));}
  });
 };
 
@@ -52,7 +54,8 @@ function notificationRoute941(){
  if(activeManagementPage().id!==target)return false;
  let opened=false;
  if(target==='wire'){
-  openWireRestock(false);
+  let rounds=null;try{const parsed=JSON.parse(q.get('notificationWireCriteria')||'null');if(parsed&&/^\d{4}-\d{2}-\d{2}$/.test(parsed.day)&&Number.isInteger(parsed.firstDays)&&parsed.firstDays>=0&&Number.isInteger(parsed.repeatDays)&&parsed.repeatDays>=0)rounds=parsed;}catch{}
+  openWireRestock(false,rounds);
   opened=!!document.querySelector('#modal[open] #restock-view44');
   if(opened&&wire){const row=document.querySelector('[data-restock-row="'+CSS.escape(wire)+'"]');if(row){row.classList.add('notification-focus93');row.scrollIntoView({block:'center'});}else toast('這筆線材已處理或已刪除，已開啟補貨名單。');}
  }else if(project){
@@ -63,7 +66,7 @@ function notificationRoute941(){
   ledgerFilter=overview==='pending'?'sending':'all';ledgerQuery='';openPlatingLedger();opened=!!document.querySelector('#modal[open] #ledger-rows');
  }
  if(!opened)return false;
- for(const key of ['notificationWire','notificationPlatingProject','notificationPlatingShipment','notificationPlatingOverview'])q.delete(key);
+ for(const key of ['notificationWireCriteria','notificationWire','notificationPlatingProject','notificationPlatingShipment','notificationPlatingOverview'])q.delete(key);
  if(section==='restock')q.delete('notificationSection');
  history.replaceState(null,'',url.pathname+url.search+'#'+target);return true;
 }
@@ -82,3 +85,8 @@ for(const event of ['DOMContentLoaded','load','pageshow','hashchange','popstate'
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleNotificationRoute941();});
 scheduleNotificationRoute941();
 document.documentElement.dataset.appVersion='94.2';
+
+function wireNoticeMatch944(r,criteria){
+ const days=Math.floor((Date.parse(criteria.day)-Date.parse(String(r.restock?.reported?.time||'').slice(0,10)))/86400000);
+ return Number.isFinite(days)&&days>=criteria.firstDays&&(!criteria.repeatDays||(days-criteria.firstDays)%criteria.repeatDays===0);
+}
