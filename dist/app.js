@@ -12,7 +12,7 @@ const sum=a=>a.reduce((x,y)=>x+y,0),qty=(o,k)=>o&&Object.hasOwn(o,k)?Number(o[k]
 function persist(){try{localStorage.setItem('project-warehouse-v1',JSON.stringify(state));}catch{toast('瀏覽器無法保存，這次變更僅保留於目前畫面。');}}
 function addAudit(action,detail,location,projectId=''){state.logs??=[];state.logs.unshift({id:crypto.randomUUID(),time:new Date().toISOString(),project:projectId,actor:actor(),action,detail,location});}
 function log(p,action,detail){addAudit(action,detail,'庫房管理 > '+p.name,p.id);persist();}
-let toastTimer;function toast(text){$('#toast').textContent=text;$('#toast').style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').style.display='none',4500);}
+let toastTimer;function toast(text){let box=$('#toast');if(!box){box=document.createElement('div');box.id='toast';box.setAttribute('role','status');box.setAttribute('aria-live','polite');}const dialogs=[...document.querySelectorAll('dialog[open]')];(dialogs.at(-1)||document.body).append(box);box.textContent=text;box.style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>box.style.display='none',4500);}
 function error(text){throw new Error(text);}
 function integer(v,min=0,max=1000000){const n=Number(v);if(!Number.isSafeInteger(n)||n<min||n>max)error(`請輸入 ${min}–${max} 之間的整數。`);return n;}
 function done(text){$('#modal').close();render();toast(text);}

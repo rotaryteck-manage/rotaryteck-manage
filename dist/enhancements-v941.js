@@ -34,7 +34,7 @@ openWireRestock=function(history=false){
   if(!await confirmAction('確定刪除已選的 '+ids.length+' 筆補貨紀錄？\n線材、照片及裁線紀錄都會保留。'))return;
   const next=structuredClone(state),details=[];
   try{for(const id of ids){const index=next.wireReels.findIndex(x=>x.id===id),old=next.wireReels[index];if(!old)continue;details.push((wireType(old.wireId)?.name||'')+'｜'+old.color);next.wireReels[index]=restockTransition(old,'deleteRestock',currentUser,actionTime44());}
-  await wireCommit(next,'刪除補貨紀錄',ids.length===1?details[0]:details.length+' 筆');openWireRestock(false);toast('已刪除 '+details.length+' 筆補貨紀錄');}catch(error){toast(error.message||'刪除失敗');openWireRestock(false);}
+  await wireCommit(next,'刪除補貨紀錄','',details.join('、'));openWireRestock(false);toast('已刪除 '+details.length+' 筆補貨紀錄');}catch(error){openWireRestock(false);toast(typeof failedSaveMessage!=='undefined'&&failedSaveMessage?failedSaveMessage:(error.message||'刪除失敗'));}
  });
 };
 
