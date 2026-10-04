@@ -147,6 +147,31 @@ async function readRecordStorage(env){
  for(const row of result[1].results){records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;}
  return {state:joinRecords(records),records,versions,revision:result[0].results[0].revision};
 }
+function scopedRecordStorageEligible941(changes){
+ const allowed=new Set(['root','projects','cases','platingProjects','wireReels','wireCuts','materialLog','materialLogOrder','log']);
+ return changes.every(c=>{const [kind]=JSON.parse(c.key);if(!allowed.has(kind)||c.deleted)return false;if(recordCollections.includes(kind)&&kind!=='wireCuts'&&c.version===0)return false;return true;});
+}
+async function readScopedRecordStorage941(env,changes){
+ if(!scopedRecordStorageEligible941(changes))return null;
+ const keys=new Set(changes.filter(c=>c.version>0).map(c=>c.key)),projectIds=new Set(),wireReelIds=new Set();
+ for(const c of changes){const [kind,id]=JSON.parse(c.key);if(kind==='projects')projectIds.add(id);if(['materialLog','materialLogOrder'].includes(kind))projectIds.add(JSON.parse(id)[0]);if(kind==='wireCuts'&&c.value?.reelId){wireReelIds.add(c.value.reelId);keys.add(recordKey('wireReels',c.value.reelId));}if(kind==='wireReels'){wireReelIds.add(id);if(c.value?.wireId)keys.add(recordKey('wireTypes',c.value.wireId));}}
+ const queries=[env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1')];
+ if(keys.size)queries.push(env.DB.prepare('SELECT record_key,body,revision FROM state_records WHERE record_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify([...keys])));
+ if(projectIds.size)queries.push(env.DB.prepare("SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]') IN ('materialLog','materialLogOrder') AND json_extract(json_extract(record_key,'$[1]'),'$[0]') IN (SELECT value FROM json_each(?))").bind(JSON.stringify([...projectIds])));
+ if(wireReelIds.size)queries.push(env.DB.prepare("SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]')='wireCuts' AND json_extract(body,'$.reelId') IN (SELECT value FROM json_each(?))").bind(JSON.stringify([...wireReelIds])));
+ const result=await env.DB.batch(queries),records=Object.create(null),versions=Object.create(null);
+ for(const group of result.slice(1))for(const row of group.results){records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;}
+ // A cut points to a reel, and a reel points to a wire type.  Resolve that
+ // second dependency without loading unrelated projects, logs or schedules.
+ const parentKeys=[];for(const [key,value]of Object.entries(records)){const [kind]=JSON.parse(key);if(kind==='wireReels'&&value?.wireId&&!records[recordKey('wireTypes',value.wireId)])parentKeys.push(recordKey('wireTypes',value.wireId));}
+ if(parentKeys.length){const parents=await env.DB.prepare('SELECT record_key,body,revision FROM state_records WHERE record_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify(parentKeys)).all();for(const row of parents.results){records[row.record_key]=JSON.parse(row.body);versions[row.record_key]=row.revision;}}
+ // joinRecords normally uses the complete persisted ordering rows.  This
+ // request never changes ordering, so a local order containing only the
+ // records participating in validation is sufficient and avoids a full DB scan.
+ const changedKinds=new Set(changes.map(c=>JSON.parse(c.key)[0]));for(const name of recordCollections){const ids=Object.keys(records).filter(key=>records[key]!==undefined&&JSON.parse(key)[0]===name).map(key=>JSON.parse(key)[1]);if(ids.length||changedKinds.has(name))records[recordKey('order',name)]=name==='wireCuts'?[]:ids;}
+ const state=joinRecords(records);state.projects??=[];state.logs??=[];
+ return {state,records,versions,revision:result[0].results[0].revision,scoped:true};
+}
 async function companyRow(env){await ensureRecordStorage(env);const data=await readRecordStorage(env);return{body:JSON.stringify(data.state),revision:data.revision};}
 async function boundedJSON(request,maxBytes){
  const reader=request.body?.getReader();check(reader,'缺少儲存資料');let size=0;const chunks=[];
@@ -183,7 +208,11 @@ export async function api(request,env){
   for(let attempt=0;attempt<4;attempt++){
    const committed=await env.DB.prepare('SELECT signature,result FROM state_commits WHERE request_id=?').bind(input.requestId).first();
    if(committed){if(committed.signature!==signature)return json({error:'儲存編號重複，請重新載入'},409);return json(JSON.parse(committed.result));}
-   const current=await readRecordStorage(env);
+   let current=await readScopedRecordStorage941(env,input.changes)||await readRecordStorage(env);
+   // Name/number edits need collection-wide uniqueness checks.  They are much
+   // less frequent than quantity, status and note edits, so keep the strict
+   // full validation path for those operations.
+   if(current.scoped){let requiresFull=false;for(const c of input.changes){const [kind]=JSON.parse(c.key),old=current.records[c.key];if(kind==='cases'&&old&&(old.name!==c.value?.name||Number(old.batch||1)!==Number(c.value?.batch||1)))requiresFull=true;if(kind==='wireReels'&&old&&(old.number!==c.value?.number||old.wireId!==c.value?.wireId))requiresFull=true;}if(requiresFull)current=await readRecordStorage(env);}
    const conflicts=input.changes.filter(c=>(current.versions[c.key]||0)!==c.version);
    if(conflicts.length)return json({error:'你修改的同一筆資料已被其他人更新。請先下載未儲存資料，再重新載入。',code:'RECORD_CONFLICT',keys:conflicts.map(c=>c.key)},409);
    const nextRecords={...current.records};for(const c of input.changes)nextRecords[c.key]=c.deleted?undefined:c.value;
