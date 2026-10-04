@@ -17,7 +17,7 @@ export function restockTransition(reel,action,who,time=new Date().toISOString(),
  else if(action==='receive'){if(!['low','ordered'].includes(r.status)||c.received)throw Error('此筆已入庫');c.received=stamp;r.status='enough';}
  else if(action==='undoReceive'){if(!c.received||!restockActive(r,Date.parse(time)))throw Error('此輪已進入歷史，不能撤銷');delete c.received;r.status=c.ordered?'ordered':'low';}
  else if(action==='undoOrder'){if(!c.ordered||c.received)throw Error('請先撤銷已入庫');delete c.ordered;r.status='low';}
- else if(action==='deleteRestock'){if(!access75(who,'wire.restock')||!['low','ordered'].includes(r.status))throw Error('只有倉管、主管可以刪除待補貨紀錄');delete r.restock;r.status='enough';}
+ else if(action==='deleteRestock'){if(!access75(who,'wire.restock')||!restockActive(r,Date.parse(time)))throw Error('只能刪除補貨名單中的紀錄');delete r.restock;r.status='enough';}
  else throw Error('補貨操作不正確');
  if(r.restock)c.events.push({action,...stamp});return r;
 }

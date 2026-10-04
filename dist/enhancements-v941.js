@@ -33,34 +33,52 @@ openWireRestock=function(history=false){
   if(!ids.length)return toast('請先勾選要刪除的補貨紀錄');
   if(!await confirmAction('確定刪除已選的 '+ids.length+' 筆補貨紀錄？\n線材、照片及裁線紀錄都會保留。'))return;
   const next=structuredClone(state),details=[];
-  for(const id of ids){const old=next.wireReels.find(x=>x.id===id);if(!old)continue;details.push((wireType(old.wireId)?.name||'')+'｜'+old.color);Object.assign(old,restockTransition(old,'deleteRestock',currentUser,actionTime44()));}
-  try{await wireCommit(next,'刪除補貨紀錄',ids.length===1?details[0]:details.length+' 筆');openWireRestock(false);toast('已刪除 '+details.length+' 筆補貨紀錄');}catch(error){toast(error.message||'刪除失敗');openWireRestock(false);}
+  try{for(const id of ids){const index=next.wireReels.findIndex(x=>x.id===id),old=next.wireReels[index];if(!old)continue;details.push((wireType(old.wireId)?.name||'')+'｜'+old.color);next.wireReels[index]=restockTransition(old,'deleteRestock',currentUser,actionTime44());}
+  await wireCommit(next,'刪除補貨紀錄',ids.length===1?details[0]:details.length+' 筆');openWireRestock(false);toast('已刪除 '+details.length+' 筆補貨紀錄');}catch(error){toast(error.message||'刪除失敗');openWireRestock(false);}
  });
 };
 
-let notificationRouteToken941='';
+// v94.2: one router owns these targets; parameters survive slow startup and errors.
+let notificationRouteTimer942=null;
 function notificationRoute941(){
- if(typeof cloudReady!=='undefined'&&!cloudReady)return false;
- const q=new URLSearchParams(location.search),hash=location.hash;
- if(![q.get('notificationWire'),q.get('notificationPlatingProject'),q.get('notificationPlatingOverview')].some(Boolean))return true;
- const token=location.pathname+location.search+hash;if(token===notificationRouteToken941)return true;
- if(q.get('notificationWire')&&hash==='#wire'){
-  notificationRouteToken941=token;const id=q.get('notificationWire');openWireRestock(false);
-  setTimeout(()=>{const row=document.querySelector('[data-restock-row="'+CSS.escape(id)+'"]');if(row){row.classList.add('notification-focus93');row.scrollIntoView({block:'center'});}else toast('這筆線材已處理或已刪除，已開啟補貨名單。');},80);
-  history.replaceState(null,'',location.pathname+'#wire');return true;
+ const url=new URL(location.href),q=url.searchParams;
+ const wire=q.get('notificationWire'),section=q.get('notificationSection'),project=q.get('notificationPlatingProject'),overview=q.get('notificationPlatingOverview');
+ if(!wire&&section!=='restock'&&!project&&!overview)return true;
+ if(typeof cloudReady==='undefined'||!cloudReady||cloudBusy)return false;
+ const target=wire||section==='restock'?'wire':'plating';
+ if(!canDo(target+'.view'))return false;
+ if(location.hash!=='#'+target){location.hash='#'+target;return false;}
+ // Let the management-page render finish before opening its child dialog.
+ if(activeManagementPage().id!==target)return false;
+ let opened=false;
+ if(target==='wire'){
+  openWireRestock(false);
+  opened=!!document.querySelector('#modal[open] #restock-view44');
+  if(opened&&wire){const row=document.querySelector('[data-restock-row="'+CSS.escape(wire)+'"]');if(row){row.classList.add('notification-focus93');row.scrollIntoView({block:'center'});}else toast('這筆線材已處理或已刪除，已開啟補貨名單。');}
+ }else if(project){
+  const shipment=q.get('notificationPlatingShipment'),p=platingFind(project),s=p?.shipments?.find(x=>x.id===shipment);
+  if(s){editPlatingShipment(project,shipment);opened=!!document.querySelector('#modal[open] #plating-fields');}
+  else{ledgerFilter='all';ledgerQuery='';openPlatingLedger();opened=!!document.querySelector('#modal[open] #ledger-rows');if(opened)toast('這筆電鍍紀錄已處理或已刪除，已開啟電鍍總覽。');}
+ }else{
+  ledgerFilter=overview==='pending'?'sending':'all';ledgerQuery='';openPlatingLedger();opened=!!document.querySelector('#modal[open] #ledger-rows');
  }
- if(q.get('notificationPlatingProject')&&hash==='#plating'){
-  notificationRouteToken941=token;const project=q.get('notificationPlatingProject'),shipment=q.get('notificationPlatingShipment'),p=platingFind(project),s=p?.shipments?.find(x=>x.id===shipment);
-  if(s)editPlatingShipment(project,shipment);else{ledgerFilter='all';openPlatingLedger();toast('這筆電鍍紀錄已處理或已刪除，已開啟電鍍總覽。');}
-  history.replaceState(null,'',location.pathname+'#plating');return true;
- }
- if(q.get('notificationPlatingOverview')&&hash==='#plating'){
-  notificationRouteToken941=token;ledgerFilter=q.get('notificationPlatingOverview')==='pending'?'sending':'all';openPlatingLedger();history.replaceState(null,'',location.pathname+'#plating');return true;
- }
- return false;
+ if(!opened)return false;
+ for(const key of ['notificationWire','notificationPlatingProject','notificationPlatingShipment','notificationPlatingOverview'])q.delete(key);
+ if(section==='restock')q.delete('notificationSection');
+ history.replaceState(null,'',url.pathname+url.search+'#'+target);return true;
 }
-function scheduleNotificationRoute941(){let tries=0;const run=()=>{try{if(notificationRoute941()||++tries>=40)return;}catch(error){console.warn('通知跳轉等待中',error);}setTimeout(run,150);};run();}
+function scheduleNotificationRoute941(){
+ clearTimeout(notificationRouteTimer942);
+ notificationRouteTimer942=setTimeout(function run(){
+  notificationRouteTimer942=null;
+  try{if(notificationRoute941())return;}catch(error){console.warn('通知跳轉等待中',error);}
+  notificationRouteTimer942=setTimeout(run,500);
+ },0);
+}
+// Earlier listeners invoke these function bindings, so they now share one timer.
+notificationDeepLink93=scheduleNotificationRoute941;
+notificationPlatingTarget94=scheduleNotificationRoute941;
 for(const event of ['DOMContentLoaded','load','pageshow','hashchange','popstate'])addEventListener(event,scheduleNotificationRoute941);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleNotificationRoute941();});
-
-document.documentElement.dataset.appVersion='94.1';
+scheduleNotificationRoute941();
+document.documentElement.dataset.appVersion='94.2';

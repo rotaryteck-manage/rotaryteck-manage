@@ -33,7 +33,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v
  '<script src="enhancements-v921.js?v=921" defer></script>'+
  '<script src="enhancements-v93.js?v=93" defer></script>'+
  '<script src="enhancements-v94.js?v=94" defer></script>'+
- '<script src="enhancements-v941.js?v=941" defer></script>'+
+ '<script src="enhancements-v941.js?v=942" defer></script>'+
  '<link rel="stylesheet" href="controls-v85.css?v=85">'+
  '<link rel="stylesheet" href="enhancements-v86.css?v=87">'+
  '<link rel="stylesheet" href="enhancements-v88.css?v=90">'+
@@ -45,7 +45,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v67.js?v
  '<link rel="stylesheet" href="enhancements-v921.css?v=921">'+
  '<link rel="stylesheet" href="enhancements-v93.css?v=93">'+
  '<link rel="stylesheet" href="enhancements-v94.css?v=94">'+
- '<link rel="stylesheet" href="enhancements-v941.css?v=941">'+
+ '<link rel="stylesheet" href="enhancements-v941.css?v=942">'+
  '<link rel="stylesheet" href="mobile-form-v84.css?v=84">'+
  '</head>'
 );
