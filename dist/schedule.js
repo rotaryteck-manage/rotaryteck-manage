@@ -1,5 +1,5 @@
 'use strict';
-let scheduleTab56='daily',scheduleAnchor56=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'}),scheduleData56={entries:[],reports:[],people:[]},scheduleToken56=0;
+let scheduleTab56='daily',scheduleAnchor56=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'}),scheduleData56={entries:[],reports:[],people:[]},scheduleToken56=0,scheduleLoadedRange56='';
 const scheduleWeek56=day=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10)};
 const scheduleShift56=(day,n)=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
 const scheduleMonth56=day=>day.slice(0,7)+'-01';
@@ -10,6 +10,13 @@ const scheduleInk56=color=>{const rgb=color.slice(1).match(/../g).map(x=>parseIn
 const scheduleWeekDays56=start=>Array.from({length:7},(_,i)=>scheduleShift56(start,i));
 function scheduleRender56(){
  const main=$('main');if(!main||location.hash!=='#schedule'||!canDo('schedule.view'))return;
+ const from=scheduleTab56==='weekly'?scheduleWeek56(scheduleAnchor56):scheduleShift56(scheduleMonth56(scheduleAnchor56),-7),to=scheduleTab56==='weekly'?scheduleShift56(scheduleWeek56(scheduleAnchor56),6):scheduleShift56(scheduleMonth56(scheduleAnchor56),41);
+ const range=scheduleTab56+':'+from+':'+to,existing=$('.schedule-workspace');
+ // After a confirmed save, keep the visible calendar while fetching its fresh
+ // revisions. A new month/tab still renders its own loading state.
+ if(existing&&scheduleLoadedRange56===range&&existing.querySelector('#schedule-content56')){
+  scheduleFetch56(from,to,range,true);return;
+ }
  $('.schedule-workspace')?.remove();const section=document.createElement('section');section.className='workspace schedule-workspace';section.dataset.uiArea='schedule';
  section.innerHTML='<div class="schedule-head"><div><h1>工作排程</h1><p>每週安排與每日工作回報</p></div><div class="schedule-tabs"><button type="button" data-schedule-tab="daily">每日排程</button><button type="button" data-schedule-tab="weekly">每週排程</button></div></div><div class="schedule-toolbar"><div class="schedule-period-controls"><button type="button" data-schedule-shift="-1">上一期</button><strong id="schedule-period56"></strong><button type="button" data-schedule-shift="1">下一期</button><button type="button" data-schedule-today>今天</button></div><div class="schedule-action-controls"><button type="button" class="primary" data-schedule-new>新增排程</button><button type="button" data-schedule-copy>複製上週</button><button type="button" data-schedule-image>複製排程</button></div></div><div id="schedule-content56" aria-live="polite">正在載入排程…</div>';
  main.append(section);section.querySelectorAll('[data-schedule-tab]').forEach(b=>{b.classList.toggle('selected',b.dataset.scheduleTab===scheduleTab56);b.onclick=()=>{scheduleTab56=b.dataset.scheduleTab;scheduleRender56()}});
@@ -21,8 +28,16 @@ function scheduleRender56(){
  else if(canDo('schedule.note')){const noteButton=document.createElement('button');noteButton.type='button';noteButton.dataset.scheduleNote='';noteButton.textContent='新增備註';noteButton.onclick=()=>scheduleNoteDialog61();section.querySelector('.schedule-action-controls').append(noteButton)}
  section.querySelector('[data-schedule-copy]').hidden=!canDo('schedule.copy')||scheduleTab56!=='weekly';section.querySelector('[data-schedule-copy]').onclick=scheduleCopy56;
  section.querySelector('[data-schedule-image]').hidden=scheduleTab56!=='weekly';section.querySelector('[data-schedule-image]').onclick=scheduleImage56;
- const from=scheduleTab56==='weekly'?scheduleWeek56(scheduleAnchor56):scheduleShift56(scheduleMonth56(scheduleAnchor56),-7),to=scheduleTab56==='weekly'?scheduleShift56(scheduleWeek56(scheduleAnchor56),6):scheduleShift56(scheduleMonth56(scheduleAnchor56),41);
- const token=++scheduleToken56;apiFetch('/api/schedule?from='+from+'&to='+to).then(async r=>{const data=await r.json();if(!r.ok)throw Error(data.error);if(token!==scheduleToken56)return;scheduleData56=data;scheduleDraw56()}).catch(e=>{if(token===scheduleToken56){const target=$('#schedule-content56');if(target)target.textContent=e.message}});
+ scheduleFetch56(from,to,range,false);
+}
+function scheduleFetch56(from,to,range,retain){
+ const token=++scheduleToken56,section=$('.schedule-workspace'),content=section?.querySelector('#schedule-content56');
+ let status=section?.querySelector('.schedule-sync56');
+ if(retain&&section&&content){
+  if(!status){status=document.createElement('p');status.className='schedule-sync56';content.before(status)}
+  status.textContent='正在同步最新排程…';status.setAttribute('role','status');section.style.pointerEvents='none';
+ }
+ apiFetch('/api/schedule?from='+from+'&to='+to).then(async r=>{const data=await r.json();if(!r.ok)throw Error(data.error||'排程載入失敗');if(token!==scheduleToken56||!section?.isConnected)return;scheduleData56=data;scheduleLoadedRange56=range;section.style.pointerEvents='';status?.remove();scheduleDraw56()}).catch(e=>{if(token!==scheduleToken56||!section?.isConnected)return;if(retain&&status){section.style.pointerEvents='';status.textContent='同步失敗：'+e.message+'。請重新整理確認最新資料。'}else if(content)content.textContent=e.message});
 }
 function scheduleLabel63(entry){let contents=[];try{const v=JSON.parse(entry.category||'');if(Array.isArray(v))contents=v.filter(x=>typeof x==='string'&&x.trim())}catch{}return '【'+String(entry.title||'')+'】'+(contents.length?' _ ('+contents.join('、')+')':'')}
 function scheduleGroup64(row){const entries=row.entries;return entries.length?{start:entries.reduce((d,e)=>e.day<d?e.day:d,entries[0].day),end:entries.reduce((d,e)=>e.end_day>d?e.end_day:d,entries[0].end_day),color:entries[0].color}:null}
