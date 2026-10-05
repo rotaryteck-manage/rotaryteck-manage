@@ -5,6 +5,7 @@ dist/cloud.js
 dist/enhancements-v102.css
 dist/enhancements-v72.js
 dist/enhancements-v88.js
+dist/enhancements-v903.js
 dist/enhancements-v943.js
 dist/enhancements-v944.js
 dist/enhancements-v945.js
@@ -14,6 +15,7 @@ drizzle/0024_leave_notifications102.sql
 tests/v102.test.mjs
 tests/v941.test.mjs
 worker/backup85.mjs
+worker/notifications85.mjs
 worker/records-export.mjs
 worker/schedule.mjs
 worker/server.mjs

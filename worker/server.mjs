@@ -38,6 +38,7 @@ export function validatePlating(projects=[]){
 export function validate(s,previous={}){
  if(s.notificationRules!==undefined)notificationRulesValid85(s.notificationRules);
  if(s.notificationVersion90!==undefined)check(s.notificationVersion90===1,'通知版本標記不正確');
+ if(s.notificationVersion102!==undefined)check(s.notificationVersion102===1,'假別通知版本標記不正確');
  check(object(s)&&Array.isArray(s.projects),'專案資料格式不正確');
  validatePlating(s.platingProjects);validateWire(s);validateWorkflowState(s);
  if(s.platingVendors!==undefined)check(Array.isArray(s.platingVendors)&&s.platingVendors.length<=200&&s.platingVendors.every(v=>typeof v==='string'&&v.trim()===v&&v.length>0&&v.length<=100)&&new Set(s.platingVendors.map(v=>v.toLowerCase())).size===s.platingVendors.length,'電鍍廠商選項不正確');
@@ -551,7 +552,9 @@ async function notificationDispatch88(env,employeeId,options,budget=null){
 }
 
 function leaveRecord102(row){if(!row)return null;let people=[];try{people=JSON.parse(row.people||'[]')}catch{}return{...row,people};}
-function leaveMessage102(record,action,actor){const names=record.people.map(p=>p.name).join('、'),time=record.start_at.replace('T',' ')+' 至 '+record.end_at.replace('T',' '),verb=action==='create'?'登記':action==='edit'?'異動':'取消';return names+'｜'+record.reason+'｜'+time+'｜'+verb+'人：'+actor;}
+export function defaultLeaveRule102(){return{id:'leave-default102',type:'leave',category:'假別紀錄',name:'假別紀錄即時通知',title:'請假{動作}',message:'{人員}｜{假別}｜{開始時間} 至 {結束時間}｜操作人：{操作人}',time:'00:00',startDate:'',firstDays:0,repeatDays:0,target:'leave-record',recipientMode:'auto',recipientIds:[],enabled:true};}
+function leaveRules102(state){return(state.notificationRules||[]).filter(r=>r.type==='leave').length?(state.notificationRules||[]).filter(r=>r.type==='leave'&&r.enabled):state.notificationVersion102===1?[]:[defaultLeaveRule102()];}
+function leaveContent102(template,record,action,actor,rule){const values={人員:record.people.map(p=>p.name).join('、'),假別:record.reason,開始時間:record.start_at.replace('T',' '),結束時間:record.end_at.replace('T',' '),動作:action==='create'?'登記':action==='edit'?'異動':'取消',操作人:actor,通知名稱:rule.name,日期:record.start_at.slice(0,10)};return template90(template,values);}
 async function leaveManagers102(env){
  const rows=await env.DB.prepare("SELECT id,account_user_id,email,name,role,status,last_login_at FROM employees WHERE status='active'").all(),ids=[];
  for(const row of rows.results||[]){const person=await employeePermissions(env,{...row});if(person.role==='supervisor'||person.permissions?.includes('admin.settings')||person.permissions?.includes('admin.employees'))ids.push(Number(person.id));}
@@ -559,18 +562,22 @@ async function leaveManagers102(env){
 }
 async function enqueueLeaveNotifications102(env,input,oldRow,newRow,actor){
  const marker=await env.DB.prepare('SELECT leave_id FROM leave_notification_records102 WHERE leave_id=?').bind(input.id).first();if(!marker)return[];
+ const state=JSON.parse((await companyRow(env)).body),rules=leaveRules102(state);if(!rules.length)return[];
  const old=leaveRecord102(oldRow),next=leaveRecord102(newRow),base=next||old;if(!base)return[];
  const managerIds=new Set(await leaveManagers102(env)),oldIds=new Set((old?.people||[]).map(p=>Number(p.id))),newIds=new Set((next?.people||[]).map(p=>Number(p.id))),personIds=new Set([...oldIds,...newIds]),recipientIds=new Set([...personIds,...managerIds]),revision=next?.revision||((old?.revision||0)+1),now=new Date().toISOString(),statements=[],keys=[];
  for(const recipientId of recipientIds){
   const manager=managerIds.has(recipientId),removed=input.method==='DELETE'||(!newIds.has(recipientId)&&oldIds.has(recipientId)),action=input.method==='DELETE'||removed?'delete':old?'edit':'create',record=removed?old:base;if(!record)continue;
-  const personal=record.people.find(p=>Number(p.id)===recipientId),shown=manager?record:{...record,people:personal?[personal]:record.people},eventKey=['leave102',input.id,revision,action,recipientId].join(':'),targetUrl='/?notificationDay='+encodeURIComponent(record.start_at.slice(0,10))+'&notificationSection=leave&notificationLeave='+encodeURIComponent(input.id)+'#schedule',payload={notificationType:'leave',category:'假別紀錄',title:action==='create'?'請假登記':action==='edit'?'請假異動':'請假取消',message:leaveMessage102(shown,action,actor),targetUrl,sourceKey:eventKey,dedupeKey:eventKey};
-  keys.push(eventKey);statements.push(env.DB.prepare("INSERT OR IGNORE INTO leave_notification_events102(event_key,leave_id,recipient_id,payload,status,attempts,last_error,created_at,updated_at) VALUES(?,?,?,?,'pending',0,'',?,?)").bind(eventKey,input.id,recipientId,JSON.stringify(payload),now,now));
+  const personal=record.people.find(p=>Number(p.id)===recipientId),shown=manager?record:{...record,people:personal?[personal]:record.people},targetUrl='/?notificationDay='+encodeURIComponent(record.start_at.slice(0,10))+'&notificationSection=leave&notificationLeave='+encodeURIComponent(input.id)+'#schedule';
+  for(const rule of rules){const eventKey=['leave102',rule.id,input.id,revision,action,recipientId].join(':'),payload={ruleId:rule.id,notificationType:'leave',category:rule.category||'假別紀錄',title:leaveContent102(rule.title,shown,action,actor,rule),message:leaveContent102(rule.message,shown,action,actor,rule),targetUrl,sourceKey:eventKey,dedupeKey:eventKey};
+   keys.push(eventKey);statements.push(env.DB.prepare("INSERT OR IGNORE INTO leave_notification_events102(event_key,leave_id,recipient_id,payload,status,attempts,last_error,created_at,updated_at) VALUES(?,?,?,?,'pending',0,'',?,?)").bind(eventKey,input.id,recipientId,JSON.stringify(payload),now,now));}
  }
  if(statements.length)await env.DB.batch(statements);return keys;
 }
 async function processLeaveNotification102(env,eventKey){
  const row=await env.DB.prepare("SELECT * FROM leave_notification_events102 WHERE event_key=? AND status='pending' AND attempts<3").bind(eventKey).first();if(!row)return;
- const now=new Date().toISOString();try{const result=await notificationDispatch88(env,row.recipient_id,JSON.parse(row.payload));const done=!result.failed&&!result.deferred;await env.DB.prepare("UPDATE leave_notification_events102 SET status=?,attempts=attempts+1,last_error=?,updated_at=? WHERE event_key=?").bind(done?'sent':'pending',done?'':'通知裝置暫時無法接收',now,eventKey).run();}catch(error){await env.DB.prepare("UPDATE leave_notification_events102 SET attempts=attempts+1,last_error=?,updated_at=? WHERE event_key=?").bind(String(error?.message||error).slice(0,500),now,eventKey).run();}
+ const payload=JSON.parse(row.payload),state=JSON.parse((await companyRow(env)).body),active=leaveRules102(state).some(rule=>rule.id===payload.ruleId);
+ if(!active){await env.DB.prepare("UPDATE leave_notification_events102 SET status='cancelled',updated_at=? WHERE event_key=?").bind(new Date().toISOString(),eventKey).run();return;}
+ const now=new Date().toISOString();try{const result=await notificationDispatch88(env,row.recipient_id,payload);const done=!result.failed&&!result.deferred;await env.DB.prepare("UPDATE leave_notification_events102 SET status=?,attempts=attempts+1,last_error=?,updated_at=? WHERE event_key=?").bind(done?'sent':'pending',done?'':'通知裝置暫時無法接收',now,eventKey).run();}catch(error){await env.DB.prepare("UPDATE leave_notification_events102 SET attempts=attempts+1,last_error=?,updated_at=? WHERE event_key=?").bind(String(error?.message||error).slice(0,500),now,eventKey).run();}
 }
 export async function runLeaveNotifications102(env){const rows=await env.DB.prepare("SELECT event_key FROM leave_notification_events102 WHERE status='pending' AND attempts<3 ORDER BY created_at LIMIT 20").all();for(const row of rows.results||[])await processLeaveNotification102(env,row.event_key);return rows.results?.length||0;}
 export async function scheduleApiWithLeaveNotifications102(request,env,employee,ctx){
@@ -843,6 +850,7 @@ async function previewValues90(type,employee,env){
   return{available:true,note:'預覽使用 '+employee.name+' 今日的實際'+(type==='report'?'待回報':'排程')+'資料。',values:{...base,數量:own.length,工作清單:list.join('、'),工作名稱:own.map(e=>e.title).join('、'),工作內容:own.map(entryContent90).filter(Boolean).join('、')},targetDate:day};
  }
  if(type==='material'){const row=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='material' ORDER BY created_at DESC LIMIT 1").first();if(!row)return{available:false,note:'目前沒有可預覽的料件資料。',values:base,targetDate:day};return{available:true,note:'預覽使用最近一筆料件資料。',values:{...base,案件名稱:row.project_name||'',料件名稱:row.title,類型:row.category,登記人:row.author_name||employee.name},targetDate:row.day};}
+ if(type==='leave')return{available:true,note:'這是示意預覽，不會補發舊請假紀錄。實際通知只在新增、修改或取消新版請假紀錄時發送。',values:{...base,人員:employee.name,假別:'特休',開始時間:day+' 08:30',結束時間:day+' 17:30',動作:'登記',操作人:employee.name},targetDate:day};
  const state=JSON.parse((await companyRow(env)).body);
  if(type==='wire'){const reels=(state.wireReels||[]).filter(x=>x.status==='low'&&!x.restock?.ordered&&!x.restock?.received),reel=reels[0];if(!reel)return{available:false,note:'目前沒有可預覽的待補線材。',values:base,targetDate:day};return{available:true,note:'預覽統計目前尚未訂購的線材；正式發送另依提醒天數與發送紀錄篩選。',values:{...base,數量:reels.length,線材名稱:(state.wireTypes||[]).find(x=>x.id===reel.wireId)?.name||'',逾期天數:Math.max(0,Math.floor((Date.parse(day)-Date.parse(String(reel.restock?.reported?.time||day).slice(0,10)))/86400000))},targetDate:day};}
  if(type==='plating'){const project=(state.platingProjects||[]).find(p=>!p.archived&&(p.shipments||[]).some(s=>s.sent&&!s.returned)),shipment=project?.shipments?.find(s=>s.sent&&!s.returned);if(!shipment)return{available:false,note:'目前沒有可預覽的待回貨電鍍資料。',values:base,targetDate:day};return{available:true,note:'預覽使用目前待回貨電鍍資料。',values:{...base,數量:1,案件名稱:project.name,電鍍內容:shipment.note||('第'+shipment.number+'次送鍍'),逾期天數:Math.max(0,Math.floor((Date.parse(day)-Date.parse(shipment.sent))/86400000))},targetDate:day};}
@@ -1007,7 +1015,7 @@ export function stateChangeAllowed(before,after,e){
    if(prev.materialLogs===undefined)delete p.materialLogs;else p.materialLogs=structuredClone(prev.materialLogs);
   }
  }
- if(permitted(e,'admin.settings'))for(const key of ['appearance','siteText','adminText','wireText','platingText','contentDraft','contentPublished','adminOrder','managementOrder','uiOrder','scheduleText','auditSecurity','adminLayout','appIconSettings','adminSectionOrder','notificationRules','notificationVersion90']){delete a[key];delete b[key];}
+ if(permitted(e,'admin.settings'))for(const key of ['appearance','siteText','adminText','wireText','platingText','contentDraft','contentPublished','adminOrder','managementOrder','uiOrder','scheduleText','auditSecurity','adminLayout','appIconSettings','adminSectionOrder','notificationRules','notificationVersion90','notificationVersion102']){delete a[key];delete b[key];}
  if(permitted(e,'warehouse.purge'))a.deletedProjects=(a.deletedProjects||[]).filter(x=>(b.deletedProjects||[]).some(n=>n.project?.id===x.project?.id)||(b.projects||[]).some(n=>n.id===x.project?.id));
  if(permitted(e,'warehouse.restore')){
   for(const p of b.projects||[])if(!(a.projects||[]).some(x=>x.id===p.id)){const deleted=(a.deletedProjects||[]).find(x=>x.project?.id===p.id);if(deleted&&stableJSON(deleted.project)===stableJSON(p)){a.projects.splice(Math.min(deleted.index??a.projects.length,a.projects.length),0,structuredClone(p));a.deletedProjects=a.deletedProjects.filter(x=>x!==deleted);}}

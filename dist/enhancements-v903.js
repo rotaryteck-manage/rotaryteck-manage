@@ -4,6 +4,7 @@
 function notificationRuleTiming903(rule){
  const time=String(rule.time||'09:00');
  if(rule.type==='material')return '新增後立即發送';
+ if(rule.type==='leave')return '新請假登記、異動或取消後立即發送';
  if(rule.type==='closure')return '官方公告確認後立即發送（每 5 分鐘檢查）';
  if(rule.type==='holiday')return '放假前一天 '+time;
  if(rule.type==='work'||rule.type==='report')return '每日 '+time;
@@ -39,7 +40,7 @@ notificationRulePreview89=async function(id){
 const notificationRuleDialogBefore903=notificationRuleDialog81;
 notificationRuleDialog81=async function(id=''){
  await notificationRuleDialogBefore903(id);const form=$('#dialog-form');if(!form?.elements?.type)return;
- const sync=()=>{const type=form.elements.type.value;if(type==='holiday'&&(!id||form.elements.time.value==='17:00'))form.elements.time.value='18:00';const start=form.querySelector('[data-start88]'),time=form.querySelector('[data-time88]');if(start)start.hidden=type!=='custom';if(time)time.hidden=type==='material'||type==='closure'};
+ const sync=()=>{const type=form.elements.type.value;if(type==='holiday'&&(!id||form.elements.time.value==='17:00'))form.elements.time.value='18:00';const start=form.querySelector('[data-start88]'),time=form.querySelector('[data-time88]');if(start)start.hidden=type!=='custom';if(time)time.hidden=type==='material'||type==='closure'||type==='leave'};
  form.elements.type.addEventListener('change',()=>queueMicrotask(sync));sync();
 };
 

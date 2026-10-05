@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import {database} from './helpers/d1.mjs';
 import {migrations85} from './helpers/migrations85.mjs';
 import {builtinProfiles} from '../worker/wire-permissions.mjs';
-import {scheduleApiWithLeaveNotifications102} from '../worker/server.mjs';
+import {scheduleApiWithLeaveNotifications102,defaultLeaveRule102} from '../worker/server.mjs';
+import {notificationRulesValid85} from '../worker/notifications85.mjs';
 import {recordsExportApi} from '../worker/records-export.mjs';
 
 function fixture(){
@@ -34,6 +35,33 @@ test('only leave records created after 10.2v generate create, edit and cancel no
  assert.equal((await send({...leave,revision:1,reason:'病假'})).status,200);assert.equal(db.prepare('SELECT count(*) n FROM notification_inbox88').get().n,4);
  assert.equal((await send({kind:'leave',id:leave.id,revision:2},'DELETE')).status,200);assert.equal(db.prepare('SELECT count(*) n FROM notification_inbox88').get().n,6);
  const rows=db.prepare('SELECT employee_id,category,title,message,target_url,source_key FROM notification_inbox88 ORDER BY created_at,id').all();assert.deepEqual([...new Set(rows.slice(0,2).map(x=>x.employee_id))].sort(),[1,2]);assert.ok(rows.every(x=>x.category==='假別紀錄'&&x.target_url.includes('notificationLeave=new-leave')));assert.ok(rows.some(x=>x.title==='請假登記')&&rows.some(x=>x.title==='請假異動')&&rows.some(x=>x.title==='請假取消'));assert.equal(new Set(rows.map(x=>x.source_key)).size,6);
+});
+
+test('leave notification setting defaults, pause and customized content affect real deliveries',async()=>{
+ const {db,send}=fixture(),first={kind:'leave',id:'initial',revision:0,start:'2026-10-08T08:30',end:'2026-10-08T17:30',people:['2'],reason:'特休'};
+ const rule=defaultLeaveRule102();assert.doesNotThrow(()=>notificationRulesValid85([rule]));
+ assert.throws(()=>notificationRulesValid85([{...rule,recipientMode:'selected',recipientIds:['3']}]),/當事人及主管/);
+ assert.throws(()=>notificationRulesValid85([rule,{...rule,id:'duplicate'}]),/只能設定一項/);
+ assert.equal((await send(first)).status,200);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_inbox88').get().n,2);
+ const put=(name,value)=>db.prepare('INSERT INTO state_records(record_key,body,revision) VALUES(?,?,1) ON CONFLICT(record_key) DO UPDATE SET body=excluded.body,revision=revision+1').run(JSON.stringify(['root',name]),JSON.stringify(value));
+ put('notificationRules',[{...rule,enabled:false}]);put('notificationVersion102',1);
+ assert.equal((await send({...first,id:'paused'})).status,200);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_inbox88').get().n,2);
+ put('notificationRules',[{...rule,title:'假別：{動作}',message:'{人員}的{假別}｜{操作人}',enabled:true}]);
+ assert.equal((await send({...first,id:'customized'})).status,200);
+ const rows=db.prepare("SELECT employee_id,title,message FROM notification_inbox88 WHERE source_key LIKE '%:customized:%'").all();
+ assert.deepEqual(rows.map(x=>x.employee_id).sort(),[1,2]);
+ assert.ok(rows.every(x=>x.title==='假別：登記'&&x.message.includes('特休｜主管')));
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_inbox88 WHERE employee_id=3').get().n,0);
+});
+
+test('leave setting is visible with immediate default and no backfill in admin',()=>{
+ const ui=fs.readFileSync(new URL('../dist/enhancements-v88.js',import.meta.url),'utf8');
+ assert.match(ui,/leave:'假別紀錄即時通知'/);
+ assert.match(ui,/notificationVersion102=1/);
+ assert.match(ui,/只通知這筆請假的當事人及主管/);
+ assert.match(ui,/既有紀錄不補發|過去紀錄不補發/);
 });
 
 test('10.2v photo links use an in-page dialog and leave notification opens the exact record',()=>{
