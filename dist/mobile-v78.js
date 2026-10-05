@@ -1,5 +1,6 @@
 'use strict';
 const mobileQuery78=matchMedia('(max-width:700px)');
+const mobileMaterialOrder78=(a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||''))||String(a.id||'').localeCompare(String(b.id||''));
 function mobileRows78(day){
  const entries=scheduleData56.entries||[],rows=[];
  const jobs=entries.some(e=>e.kind==='daily'&&e.day<=day&&(e.end_day||e.day)>=day);
@@ -10,6 +11,7 @@ function mobileRows78(day){
 
  entries
  .filter(e=>e.kind==='material'&&e.day===day)
+ .sort(mobileMaterialOrder78)
  .forEach(e=>{
   const materialType=({
    收料:'receipt',
@@ -44,7 +46,7 @@ function mobileCalendar78(){
  const root=$('#schedule-content56');if(!root||scheduleTab56!=='daily')return;root.querySelector('.mobile-calendar78')?.remove();if(!mobileQuery78.matches)return;
  const cells=[...root.querySelectorAll('.schedule-calendar-day67[data-day]')],today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'}),month=cells.find(c=>!c.classList.contains('schedule-adjacent70'))?.dataset.day.slice(0,7)||scheduleAnchor56.slice(0,7);
  const grid=document.createElement('div');grid.className='mobile-calendar78';grid.setAttribute('aria-label','每日排程月曆');
- grid.innerHTML=['日','一','二','三','四','五','六'].map(s=>'<div class="mobile-weekday78">'+s+'</div>').join('')+cells.map(c=>{const day=c.dataset.day,rows=mobileRows78(day),off=c.classList.contains('schedule-holiday60'),holiday=holidayName60(day);return '<section class="mobile-day78 '+(off?'off78 ':'')+(day.slice(0,7)!==month?'adjacent78 ':'')+(day===today?'today78 ':'')+(day===scheduleAnchor56?'selected78':'')+'" data-mobile-day="'+day+'"><button type="button" class="mobile-date78" aria-label="'+day+' 當日內容" aria-pressed="'+(day===scheduleAnchor56)+'">'+(Number(day.slice(5,7))+'/'+Number(day.slice(8)))+'</button><div class="mobile-slots79">'+rows.map(e=>'<button type="button" class="mobile-entry78 mobile-'+e.section+'79 '+(e.materialType?'mobile-material-'+e.materialType+'79':'')+'" data-mobile-section="'+e.section+'" '+(e.materialId?'data-mobile-material-id="'+e.materialId+'"':'')+' title="'+esc(e.title)+'">'+esc(e.title)+'</button>').join('')+'</div><span class="mobile-holiday78" title="'+esc(holiday)+'">'+esc(holiday)+'</span></section>';}).join('');
+ grid.innerHTML=['日','一','二','三','四','五','六'].map(s=>'<div class="mobile-weekday78">'+s+'</div>').join('')+cells.map(c=>{const day=c.dataset.day,rows=mobileRows78(day),off=c.classList.contains('schedule-holiday60'),holiday=holidayName60(day);return '<section class="mobile-day78 '+(off?'off78 ':'')+(day.slice(0,7)!==month?'adjacent78 ':'')+(day===today?'today78 ':'')+(day===scheduleAnchor56?'selected78':'')+'" data-mobile-day="'+day+'"><button type="button" class="mobile-date78" aria-label="'+day+' 當日內容" aria-pressed="'+(day===scheduleAnchor56)+'">'+(Number(day.slice(5,7))+'/'+Number(day.slice(8)))+'</button>'+(holiday?'<span class="mobile-holiday78 '+(holiday.includes('補假')?'is-makeup103':'')+'" title="'+esc(holiday)+'">'+esc(holiday)+'</span>':'')+'<div class="mobile-slots79">'+rows.map(e=>'<button type="button" class="mobile-entry78 mobile-'+e.section+'79 '+(e.materialType?'mobile-material-'+e.materialType+'79':'')+'" data-mobile-section="'+e.section+'" '+(e.materialId?'data-mobile-material-id="'+e.materialId+'"':'')+' title="'+esc(e.title)+'">'+esc(e.title)+'</button>').join('')+'</div></section>';}).join('');
  root.append(grid);grid.querySelectorAll('.mobile-day78').forEach(cell=>{cell.querySelector('.mobile-date78').onclick=()=>mobileDay78(cell.dataset.mobileDay);cell.querySelectorAll('[data-mobile-section]').forEach(b=>b.onclick=()=>mobileOpen79(cell.dataset.mobileDay,b.dataset.mobileSection,b.dataset.mobileMaterialId||''));});requestAnimationFrame(mobileFitMaterialText78);
 }
 function mobileFitMaterialText78(){
@@ -71,7 +73,7 @@ function mobileTools78(){
 }
 const drawBefore78=scheduleDraw56;scheduleDraw56=function(){drawBefore78();mobileCalendar78();mobileTools78();};
 const renderBefore78=scheduleRender56;scheduleRender56=function(){renderBefore78();mobileTools78();};
-const decorateBefore78=scheduleDecorate60;scheduleDecorate60=function(){decorateBefore78();if(mobileQuery78.matches&&$('.mobile-calendar78')){document.querySelectorAll('.mobile-day78').forEach(c=>{const d=c.dataset.mobileDay;c.classList.toggle('off78',!!holidayData60(d)?.off||[0,6].includes(new Date(d+'T00:00:00Z').getUTCDay()));const name=holidayName60(d);let label=c.querySelector('.mobile-holiday78');if(name&&!label){label=document.createElement('span');label.className='mobile-holiday78';c.querySelector('.mobile-date78').after(label);}if(label){label.textContent=name;label.title=name;}});}};
+ const decorateBefore78=scheduleDecorate60;scheduleDecorate60=function(){decorateBefore78();if(mobileQuery78.matches&&$('.mobile-calendar78')){document.querySelectorAll('.mobile-day78').forEach(c=>{const d=c.dataset.mobileDay;c.classList.toggle('off78',!!holidayData60(d)?.off||[0,6].includes(new Date(d+'T00:00:00Z').getUTCDay()));const name=holidayName60(d);let label=c.querySelector('.mobile-holiday78');if(name&&!label){label=document.createElement('span');label.className='mobile-holiday78';c.querySelector('.mobile-date78').after(label);}if(label){if(!name){label.remove();return}label.textContent=name;label.title=name;label.classList.toggle('is-makeup103',name.includes('補假'))}});}};
 mobileQuery78.addEventListener('change',()=>{if(location.hash==='#schedule'){mobileCalendar78();mobileTools78();}});
 
 function mobileIcon79(text){

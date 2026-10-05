@@ -25,6 +25,11 @@ async function scheduleOptionsRead60(env){
  try{const row=await env.DB.prepare('SELECT items,contents FROM schedule_options WHERE id=1').first();return row?{items:JSON.parse(row.items),contents:JSON.parse(row.contents)}:scheduleDefaults60;}
  catch(error){if(!/no such table.*schedule_options/i.test(String(error)))throw error;return scheduleOptions60(env)}
 }
+async function scheduleLeavesRead72(env,from,to){
+ const query=()=>env.DB.prepare('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id').bind(to+'T23:59:59',from+'T00:00').all();
+ try{return await query()}
+ catch(error){if(!/no such table.*schedule_leave72/i.test(String(error)))throw error;await scheduleLeaveTable72(env);return query()}
+}
 async function scheduleApiCore71(request,env,employee){
  try{
   const url=new URL(request.url),method=request.method;
@@ -38,19 +43,22 @@ async function scheduleApiCore71(request,env,employee){
   if(method==='GET'&&url.searchParams.get('view')==='text')return scheduleExtra71(request,env,employee,null);
   if(method==='GET'){
    const from=url.searchParams.get('from'),to=url.searchParams.get('to');if(!scheduleDate(from)||!scheduleDate(to)||to<from||Date.parse(to)-Date.parse(from)>370*86400000)return scheduleJSON({error:'日期範圍不正確'},400);
-   const rows=await env.DB.prepare('SELECT id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE day<=? AND end_day>=? ORDER BY day,id').bind(to,from).all();
-   const reports=await env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,updated_at,work_title,work_content FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all();
+   // These independent reads can run together instead of waiting for four
+   // separate round trips before the calendar can be assembled.
+   const [rows,reports,people,weeklyNotes]=await Promise.all([
+    env.DB.prepare('SELECT id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,project_name,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids,receipt_photo_key,receipt_photo_name,item_photo_key,item_photo_name FROM schedule_entries WHERE day<=? AND end_day>=? ORDER BY day,id').bind(to,from).all(),
+    env.DB.prepare('SELECT id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,updated_at,work_title,work_content FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY created_at,id').bind(from,to).all(),
+    env.DB.prepare("SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,e.id),e.id").all(),
+    env.DB.prepare('SELECT week_start,body,updated_at,author_name FROM schedule_weekly_notes WHERE week_start BETWEEN ? AND ? ORDER BY week_start').bind(from,to).all()
+   ]);
    // Count photos only for records in the requested calendar range. The old
    // unfiltered GROUP BY scanned every photo in the database on every reload.
-   const [reportPhotoCounts,materialPhotoCounts]=await Promise.all([
+   const [reportPhotoCounts,materialPhotoCounts,leaves,options]=await Promise.all([
     reports.results.length?env.DB.prepare('SELECT p.report_id,COUNT(*) AS extra_count FROM schedule_report_photos p JOIN schedule_reports r ON r.id=p.report_id WHERE r.day BETWEEN ? AND ? GROUP BY p.report_id').bind(from,to).all():{results:[]},
-    rows.results.some(e=>e.kind==='material')?env.DB.prepare("SELECT p.material_id,COUNT(*) AS extra_count FROM schedule_material_photos p JOIN schedule_entries e ON e.id=p.material_id WHERE e.kind='material' AND e.day BETWEEN ? AND ? GROUP BY p.material_id").bind(from,to).all():{results:[]}
+    rows.results.some(e=>e.kind==='material')?env.DB.prepare("SELECT p.material_id,COUNT(*) AS extra_count FROM schedule_material_photos p JOIN schedule_entries e ON e.id=p.material_id WHERE e.kind='material' AND e.day BETWEEN ? AND ? GROUP BY p.material_id").bind(from,to).all():{results:[]},
+    scheduleLeavesRead72(env,from,to),scheduleOptionsRead60(env)
    ]),reportPhotoCountMap=new Map(reportPhotoCounts.results.map(x=>[x.report_id,Number(x.extra_count)||0])),materialPhotoCountMap=new Map(materialPhotoCounts.results.map(x=>[x.material_id,Number(x.extra_count)||0]));
-   const people=await env.DB.prepare("SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,e.id),e.id").all();
-   const weeklyNotes=await env.DB.prepare('SELECT week_start,body,updated_at,author_name FROM schedule_weekly_notes WHERE week_start BETWEEN ? AND ? ORDER BY week_start').bind(from,to).all();
-   let leaves;try{leaves=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id').bind(to+'T23:59:59',from+'T00:00').all()}
-   catch(error){if(!/no such table.*schedule_leave72/i.test(String(error)))throw error;await scheduleLeaveTable72(env);leaves=await env.DB.prepare('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id').bind(to+'T23:59:59',from+'T00:00').all()}
-   return scheduleJSON({leaves:(scheduleAllowed(employee,'schedule.leave.view')?leaves.results:[]).map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results.map(e=>({  ...e,  assignee:e.assignee_ids&&e.assignee_ids!=='[]'?JSON.stringify(JSON.parse(e.assignee_ids).map((id,index)=>people.results.find(p=>String(p.id)===String(id))?.name||JSON.parse(e.assignee||'[]')[index]||('已離職人員 #'+id))):e.assignee,photo_count:e.kind==='material'   ?(e.item_photo_key?1:0)+(materialPhotoCountMap.get(e.id)||0)   :0 })),weeklyNotes:weeklyNotes.results,people:people.results.filter(p=>p.status==='active').map(p=>({id:p.id,name:p.name})),options:await scheduleOptionsRead60(env),reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':'',photo_count:(r.photo_key?1:0)+(reportPhotoCountMap.get(r.id)||0)}))});
+   return scheduleJSON({leaves:(scheduleAllowed(employee,'schedule.leave.view')?leaves.results:[]).map(e=>({...e,people:JSON.parse(e.people)})),entries:rows.results.map(e=>({  ...e,  assignee:e.assignee_ids&&e.assignee_ids!=='[]'?JSON.stringify(JSON.parse(e.assignee_ids).map((id,index)=>people.results.find(p=>String(p.id)===String(id))?.name||JSON.parse(e.assignee||'[]')[index]||('已離職人員 #'+id))):e.assignee,photo_count:e.kind==='material'   ?(e.item_photo_key?1:0)+(materialPhotoCountMap.get(e.id)||0)   :0 })),weeklyNotes:weeklyNotes.results,people:people.results.filter(p=>p.status==='active').map(p=>({id:p.id,name:p.name})),options,reports:reports.results.map(r=>({...r,photo_key:r.photo_key?'present':'',photo_count:(r.photo_key?1:0)+(reportPhotoCountMap.get(r.id)||0)}))});
   }
   if(request.headers.get('origin')!==url.origin)return scheduleJSON({error:'來源驗證失敗'},403);
   if(method!=='POST'&&method!=='DELETE')return scheduleJSON({error:'不支援的操作'},405);

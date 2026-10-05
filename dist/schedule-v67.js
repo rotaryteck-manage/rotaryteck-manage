@@ -1,4 +1,5 @@
 'use strict';
+const scheduleMaterialOrder67=(a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||''))||String(a.id||'').localeCompare(String(b.id||''));
 // The daily calendar is an index: open the assigned work or conversation to see details.
 const scheduleDrawBefore67=scheduleDraw56;
 scheduleDraw56=function(){
@@ -6,7 +7,7 @@ scheduleDraw56=function(){
  const root=$('#schedule-content56');if(!root)return;
  const month=scheduleMonth56(scheduleAnchor56),first=new Date(month+'T00:00:00Z'),count=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate(),offset=first.getUTCDay(),entries=scheduleData56.entries||[],reports=scheduleData56.reports||[];
  root.innerHTML='<div class="schedule-calendar schedule-calendar67">'+['日','一','二','三','四','五','六'].map(x=>'<div class="schedule-calendar-heading">'+x+'</div>').join('')+Array.from({length:Math.ceil((offset+count)/7)*7},(_,i)=>{
-  const day=scheduleShift56(month,i-offset),weekday=new Date(day+'T00:00:00Z').getUTCDay(),special=entries.filter(e=>e.kind==='special'&&e.day<=day&&e.end_day>=day),jobs=entries.filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),manual=entries.filter(e=>e.kind==='material'&&e.day===day),reported=reports.some(r=>r.day===day);
+  const day=scheduleShift56(month,i-offset),weekday=new Date(day+'T00:00:00Z').getUTCDay(),special=entries.filter(e=>e.kind==='special'&&e.day<=day&&e.end_day>=day),jobs=entries.filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),manual=entries.filter(e=>e.kind==='material'&&e.day===day).sort(scheduleMaterialOrder67),reported=reports.some(r=>r.day===day);
   return '<div class="schedule-calendar-day schedule-calendar-day67 '+(day.slice(0,7)!==month.slice(0,7)?'schedule-adjacent70 ':'')+([0,6].includes(weekday)?'weekend':'')+'" data-day="'+day+'"><header>'+(day.slice(0,7)!==month.slice(0,7)?day.slice(5).replace('-','/'):day.slice(8))+'｜'+['日','一','二','三','四','五','六'][weekday]+(special.length?' · '+special.map(e=>scheduleEsc56(e.title)).join('、'):'')+'</header><div class="schedule-calendar-links67">'+(jobs.length||reported?'<button type="button" class="schedule-day-link67" data-day-jobs="'+day+'">工作紀錄</button>':'')+manual.map(e=>'<button type="button" class="schedule-day-link67 schedule-day-material67 schedule-material-'+({收料:"receipt",出貨:"outgoing",送貨:"delivery"}[e.category]||"receipt")+'67" data-day-material-id="'+scheduleEsc56(e.id)+'" data-day-material-date="'+day+'" title="'+scheduleEsc56(e.project_name||'未指定案件')+'">'+scheduleEsc56((e.project_name||'')+(e.title||''))+'</button>').join('')+'</div></div>'
  }).join('')+'</div>';
  root.querySelectorAll('[data-day-jobs]').forEach(b=>b.onclick=()=>scheduleDayRecord56(b.dataset.dayJobs,'jobs'));
@@ -17,7 +18,7 @@ scheduleDraw56=function(){
 };
 
 scheduleDayRecord56=function(day,section='jobs',materialId='',materialSource='all'){
- const entries=scheduleData56.entries||[],jobs=entries.filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),reports=(scheduleData56.reports||[]).filter(r=>r.day===day).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at))||String(a.id).localeCompare(b.id)),materials=entries.filter(e=>materialSource!=='legacy'&&e.kind==='material'&&e.day===day&&(!materialId||e.id===materialId)),legacy=materialId||materialSource==='current'?[]:scheduleMaterial56().filter(e=>e.day===day);
+ const entries=scheduleData56.entries||[],jobs=entries.filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day),reports=(scheduleData56.reports||[]).filter(r=>r.day===day).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at))||String(a.id).localeCompare(b.id)),materials=entries.filter(e=>materialSource!=='legacy'&&e.kind==='material'&&e.day===day&&(!materialId||e.id===materialId)).sort(scheduleMaterialOrder67),legacy=materialId||materialSource==='current'?[]:scheduleMaterial56().filter(e=>e.day===day);
  let body='',title='';
  if(section==='jobs'){
   title='工作紀錄';const known=(scheduleData56.people||[]).map(p=>p.name),names=[...new Set([...known,...jobs.flatMap(scheduleAssignees56)])].filter(n=>jobs.some(e=>scheduleAssignees56(e).includes(n)));
