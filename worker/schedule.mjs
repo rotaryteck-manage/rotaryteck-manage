@@ -618,6 +618,7 @@ export async function schedulePhotoUpload(request,env,employee){try{return await
 
 // Local wall times are entered and displayed in Asia/Taipei; end is exclusive.
 async function scheduleLeaveTable72(env){await env.DB.prepare('CREATE TABLE IF NOT EXISTS schedule_leave72 (id TEXT PRIMARY KEY,start_at TEXT NOT NULL,end_at TEXT NOT NULL,people TEXT NOT NULL,reason TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,author_name TEXT NOT NULL,updated_at TEXT NOT NULL)').run();
+ await env.DB.prepare('CREATE TABLE IF NOT EXISTS leave_notification_records102 (leave_id TEXT PRIMARY KEY,created_at TEXT NOT NULL)').run();
  const columns=await env.DB.prepare('PRAGMA table_info(schedule_leave72)').all();
  if(!columns.results.some(c=>c.name==='reason_note')){try{await env.DB.prepare("ALTER TABLE schedule_leave72 ADD COLUMN reason_note TEXT NOT NULL DEFAULT ''").run()}catch(e){const latest=await env.DB.prepare('PRAGMA table_info(schedule_leave72)').all();if(!latest.results.some(c=>c.name==='reason_note'))throw e;}}
 }
@@ -632,7 +633,7 @@ async function scheduleLeave72(request,env,employee,input){
  if(request.method==='POST'){
   input.reasonNote=input.reason==='其他'&&typeof input.reasonNote==='string'?input.reasonNote.trim():'';
   if(input.reason==='其他'&&(!input.reasonNote||input.reasonNote.length>200))return scheduleJSON({error:'請填寫其他原因（最多 200 字）'},400);
-  if(!leaveTime72(input.start)||!leaveTime72(input.end)||input.end<=input.start||Date.parse(input.end+'+08:00')-Date.parse(input.start+'+08:00')>366*86400000||!['事假','病假','公假','其他'].includes(input.reason)||!Array.isArray(input.people)||!input.people.length||input.people.length>100||new Set(input.people).size!==input.people.length)return scheduleJSON({error:'請選擇人員、原因及正確的起訖時間（最長一年）'},400);
+  if(!leaveTime72(input.start)||!leaveTime72(input.end)||input.end<=input.start||Date.parse(input.end+'+08:00')-Date.parse(input.start+'+08:00')>366*86400000||!['事假','病假','公假','特休','其他'].includes(input.reason)||!Array.isArray(input.people)||!input.people.length||input.people.length>100||new Set(input.people).size!==input.people.length)return scheduleJSON({error:'請選擇人員、原因及正確的起訖時間（最長一年）'},400);
   const rows=await env.DB.prepare("SELECT id,name FROM employees WHERE status='active'").all(),active=new Map(rows.results.map(x=>[String(x.id),x]));
   if(!input.people.every(id=>typeof id==='string'&&active.has(id)))return scheduleJSON({error:'人員名單已更新，請重新開啟表單'},409);
   people=input.people.map(id=>({id,name:active.get(id).name}));
@@ -643,7 +644,9 @@ async function scheduleLeave72(request,env,employee,input){
  const stmt=deleting?env.DB.prepare('DELETE FROM schedule_leave72 WHERE id=? AND revision=?').bind(input.id,input.revision):old?env.DB.prepare('UPDATE schedule_leave72 SET start_at=?,end_at=?,people=?,reason=?,reason_note=?,revision=revision+1,author_name=?,updated_at=? WHERE id=? AND revision=?').bind(input.start,input.end,JSON.stringify(people),input.reason,input.reasonNote,employee.name,now,input.id,input.revision):env.DB.prepare('INSERT OR IGNORE INTO schedule_leave72(id,start_at,end_at,people,reason,reason_note,revision,author_name,updated_at) VALUES(?,?,?,?,?,?,1,?,?)').bind(input.id,input.start,input.end,JSON.stringify(people),input.reason,input.reasonNote,employee.name,now);
  const target=deleting?{start:old.start_at,end:old.end_at,people:JSON.parse(old.people),reason:old.reason,reasonNote:old.reason_note}:{...input,people};
  const body=(deleting?'刪除':old?'修改':'新增')+'請假｜'+target.people.map(x=>x.name).join('、')+'｜'+target.start.replace('T',' ')+' 至 '+target.end.replace('T',' ')+'｜'+target.reason+(target.reason==='其他'&&target.reasonNote?'：'+target.reasonNote:'');
- const results=await env.DB.batch([stmt,env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(crypto.randomUUID(),'daily',target.start.slice(0,10),employee.name,body,now)]);
+ const statements=[stmt,env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(crypto.randomUUID(),'daily',target.start.slice(0,10),employee.name,body,now)];
+ if(!old&&!deleting)statements.push(env.DB.prepare('INSERT OR IGNORE INTO leave_notification_records102(leave_id,created_at) SELECT ?,? WHERE changes()>0').bind(input.id,now));
+ const results=await env.DB.batch(statements);
  if(!results[0].meta?.changes)return scheduleJSON({error:'資料已變更或完成登記，請重新載入'},409);
  return scheduleJSON({saved:true,deleted:deleting});
 }
