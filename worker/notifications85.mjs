@@ -45,7 +45,7 @@ export function notificationPlan85(rules,state,entries,reports,people,now=Date.n
     const listed=summarized?events:[event],workList=listed.map(e=>e.title+(e.content?'（'+e.content+'）':'')).join('、');const replace=text=>String(text||'').replaceAll('{數量}',String(listed.length)).replaceAll('{日期}',day).replaceAll('{通知名稱}',rule.name||'').replaceAll('{案件名稱}',event.project||'').replaceAll('{料件名稱}',event.title||'').replaceAll('{線材名稱}',rule.type==='wire'?event.title||'':'').replaceAll('{電鍍內容}',rule.type==='plating'?event.title||'':'').replaceAll('{工作名稱}',event.title||'').replaceAll('{工作內容}',event.content||'').replaceAll('{工作清單}',workList).replaceAll('{人員}',person.name).replaceAll('{逾期天數}',String(event.days));
     const targetUrl=rule.target==='work-record'||rule.target==='work-report'?'/?notificationDay='+encodeURIComponent(day)+'&notificationSection=jobs#schedule':rule.target==='wire-restock'?'/?notificationSection=restock&notificationWireCriteria='+encodeURIComponent(JSON.stringify({day,firstDays:rule.firstDays||0,repeatDays:rule.repeatDays||0}))+'#wire':rule.target==='plating-record'?'/?notificationPlatingProject='+encodeURIComponent(String(event.id||'').split(':')[0])+'&notificationPlatingShipment='+encodeURIComponent(String(event.id||'').split(':')[1]||'')+'#plating':rule.target==='plating-overview'?'/?notificationPlatingOverview=all#plating':rule.target==='plating-pending'?'/?notificationPlatingOverview=pending#plating':({'schedule':'/#schedule','warehouse':'/#warehouse','home':'/'})[rule.target]||'/';
     const legacyDedupePattern=['work','report'].includes(rule.type)?'auto:'+rule.id+':'+person.id+':'+rule.type+':'+day+':%:%':(['wire','plating'].includes(rule.type)?'auto:'+rule.id+':'+person.id+':'+rule.type+':%:'+event.legacySignature+':'+period+':%':'');
-    plans.push({...(rule.type==='wire'?{wireCriteria944:{day,firstDays:rule.firstDays||0,repeatDays:rule.repeatDays||0},wireRound944:event.id,wireTemplate944:rule.message.includes('{數量}')?replace(rule.message.replaceAll('{數量}','__WIRE_COUNT944__')):'線材補貨區有 __WIRE_COUNT944__ 筆尚未訂購，請安排訂購。'}:{}),ruleId:rule.id,employeeId:person.id,notificationType:rule.type,category:rule.category||(rule.type==='work'?'工作排程':rule.type==='report'?'工作回報':rule.type==='wire'?'線材提醒':rule.type==='plating'?'電鍍提醒':'自訂提醒'),title:replace(rule.title),message:replace(rule.message),targetUrl,dedupeKey:'auto:'+rule.id+':'+person.id+':'+event.id+':'+period,legacyDedupePattern,eventCount:listed.length});
+    plans.push({...(rule.type==='wire'?{wireCriteria944:{day,firstDays:rule.firstDays||0,repeatDays:rule.repeatDays||0},wireRound944:event.id,wireTemplate944:rule.message.includes('{數量}')?replace(rule.message.replaceAll('{數量}','__WIRE_COUNT944__')):'線材補貨區有 __WIRE_COUNT944__ 筆尚未訂購，請安排訂購。'}:{}),ruleId:rule.id,employeeId:person.id,notificationType:rule.type,category:rule.category||(rule.type==='work'?'工作排程':rule.type==='report'?'工作回報':rule.type==='wire'?'線材提醒':rule.type==='plating'?'電鍍提醒':'自訂提醒'),title:replace(rule.title),message:replace(rule.message),targetUrl:notificationContext945(targetUrl,rule,event.id,{day,firstDays:rule.firstDays||0,repeatDays:rule.repeatDays||0}),dedupeKey:'auto:'+rule.id+':'+person.id+':'+event.id+':'+period,legacyDedupePattern,eventCount:listed.length});
    }
   }
  }
@@ -57,5 +57,53 @@ export function notificationPlan85(rules,state,entries,reports,people,now=Date.n
 export function notificationBatchContent944(plans){
  const first=plans[0];if(first?.notificationType!=='wire')return {message:plans.map(p=>p.message).join('\n')};
  const rounds=[...new Set(plans.map(p=>p.wireRound944).filter(Boolean))];
- return {message:(first.wireTemplate944||'線材補貨區有 __WIRE_COUNT944__ 筆尚未訂購，請安排訂購。').replaceAll('__WIRE_COUNT944__',String(rounds.length)),eventCount:rounds.length,targetUrl:'/?notificationSection=restock&notificationWireCriteria='+encodeURIComponent(JSON.stringify(first.wireCriteria944))+'#wire'};
+ return {message:(first.wireTemplate944||'線材補貨區有 __WIRE_COUNT944__ 筆尚未訂購，請安排訂購。').replaceAll('__WIRE_COUNT944__',String(rounds.length)),eventCount:rounds.length,targetUrl:first.targetUrl||('/?notificationSection=restock&notificationWireCriteria='+encodeURIComponent(JSON.stringify(first.wireCriteria944))+'#wire')};
+}
+
+// Keep immutable notification identity separately from its configurable destination.
+export function notificationContext945(value,rule,event='',criteria=null){
+ if(!['wire','plating'].includes(rule.type))return value;
+ const url=new URL(value,'https://notification.local');
+ url.searchParams.set('notificationRule945',rule.id);
+ url.searchParams.set('notificationType945',rule.type);
+ if(rule.type==='plating'&&event)url.searchParams.set('notificationEvent945',event);
+ if(rule.type==='wire'&&criteria)url.searchParams.set('notificationWireCriteria',JSON.stringify(criteria));
+ return url.pathname+url.search+url.hash;
+}
+export function notificationTarget945(rules,value,context={}){
+ const url=new URL(value,'https://notification.local'),q=url.searchParams;
+ if(url.origin!=='https://notification.local')throw Error('通知連結不正確');
+ let ruleId=context.ruleId||q.get('notificationRule945')||'';
+ const source=context.sourceKey||'';
+ if(!ruleId&&source){const matches=rules.filter(r=>['auto:','batch:','manual-catchup:'].some(prefix=>source.startsWith(prefix+r.id+':')));if(matches.length===1)ruleId=matches[0].id;}
+ let rule=rules.find(r=>r.id===ruleId);
+ const type=rule?.type||(['wire','plating'].includes(context.type)?context.type:'')||q.get('notificationType945')||(q.has('notificationWire')||q.get('notificationSection')==='restock'||url.hash==='#wire'?'wire':q.has('notificationPlatingProject')||q.has('notificationPlatingOverview')||url.hash==='#plating'?'plating':'');
+ const scoped=['wire','plating'].includes(type);
+ let notice='';
+ if(!rule&&!ruleId&&scoped){const candidates=rules.filter(r=>r.type===type);if(candidates.length===1)rule=candidates[0];else if(candidates.length>1)notice='這則舊通知無法辨識原通知規則，已開啟該區總覽。';}
+ let event=q.get('notificationEvent945')||'';
+ if(!event&&rule&&source.startsWith('auto:'+rule.id+':')){
+  const pieces=source.slice(('auto:'+rule.id+':').length).split(':');
+  // employee, project, shipment, period (subscription suffix is removed by API)
+  if(pieces.length===4&&type==='plating')event=pieces[1]+':'+pieces[2];
+ }
+ const project=q.get('notificationPlatingProject')||event.split(':')[0]||'',shipment=q.get('notificationPlatingShipment')||event.split(':')[1]||'';
+ const criteria=q.get('notificationWireCriteria'),wire=q.get('notificationWire'),day=q.get('notificationDay');
+ for(const key of [...q.keys()])if(/^notification(?:Rule945|Type945|Event945|Inbox945|Tag945|Resolve945)$/.test(key))q.delete(key);
+ if(!scoped)return {targetUrl:url.pathname+url.search+url.hash,notice};
+ const target=rule?.target||(notice?(type==='plating'?'plating-overview':'wire-restock'):null);
+ if(target){
+  for(const key of [...q.keys()])if(key.startsWith('notification'))q.delete(key);
+  if(target==='plating-record'){
+   url.hash='#plating';
+   if(project&&shipment){q.set('notificationPlatingProject',project);q.set('notificationPlatingShipment',shipment);}
+   else{q.set('notificationPlatingOverview','all');notice='這則通知沒有指定紀錄資訊，已開啟電鍍總覽。';}
+  }else if(target==='plating-overview'||target==='plating-pending'){url.hash='#plating';q.set('notificationPlatingOverview',target==='plating-pending'?'pending':'all');}
+  else if(target==='wire-restock'){url.hash='#wire';q.set('notificationSection','restock');if(criteria)q.set('notificationWireCriteria',criteria);else if(type==='wire')q.set('notificationWireCriteria',JSON.stringify({day:notificationClock85().day,firstDays:0,repeatDays:0}));if(wire)q.set('notificationWire',wire);}
+  else if(target==='work-record'||target==='work-report'){url.hash='#schedule';q.set('notificationSection','jobs');if(day)q.set('notificationDay',day);}
+  else url.hash=({schedule:'#schedule',warehouse:'#warehouse',home:''})[target]||'';
+ }
+ if(url.hash==='#plating'&&!q.has('notificationPlatingProject')&&!q.has('notificationPlatingOverview'))q.set('notificationPlatingOverview','all');
+ if(url.hash==='#wire'&&!q.has('notificationSection'))q.set('notificationSection','restock');
+ return {targetUrl:url.pathname+url.search+url.hash,notice};
 }

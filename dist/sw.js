@@ -1,4 +1,6 @@
 'use strict';
+self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate',event=>event.waitUntil(clients.claim()));
 
 self.addEventListener('push',event=>{
  let data={};
@@ -33,9 +35,11 @@ self.addEventListener('push',event=>{
 self.addEventListener('notificationclick',event=>{
  event.notification.close();
 
- const target=
-  event.notification.data?.url||
-  '/';
+ const link=new URL(event.notification.data?.url||'/',self.location.origin);
+ if(link.origin!==self.location.origin)return;
+ link.searchParams.set('notificationResolve945','1');
+ if(event.notification.tag)link.searchParams.set('notificationTag945',event.notification.tag);
+ const target=link.pathname+link.search+link.hash;
 
  event.waitUntil((async()=>{
   const windows=await clients.matchAll({

@@ -43,6 +43,7 @@ openWireRestock=function(history=false,noticeRounds=null){
 // v94.2: one router owns these targets; parameters survive slow startup and errors.
 let notificationRouteTimer942=null;
 function notificationRoute941(){
+ if(typeof notificationGate945==='function'&&!notificationGate945())return false;
  const url=new URL(location.href),q=url.searchParams;
  const wire=q.get('notificationWire'),section=q.get('notificationSection'),project=q.get('notificationPlatingProject'),overview=q.get('notificationPlatingOverview');
  if(!wire&&section!=='restock'&&!project&&!overview)return true;
