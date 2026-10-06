@@ -14,7 +14,7 @@ export function notificationRulesValid85(rules){
  for(const r of rules.filter(r=>r?.type==='leave')){
   if(r.recipientMode!=='auto'||r.target!=='leave-record'||r.recipientIds?.length)throw Error('假別通知固定發給當事人及主管，並前往該筆紀錄');
  }
- for(const r of rules){if(!r||typeof r.id!=='string'||!r.id||ids.has(r.id)||!['work','report','wire','plating','material','custom','holiday','closure','leave'].includes(r.type)||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(r.time)||typeof r.enabled!=='boolean'||!['auto','selected'].includes(r.recipientMode)||!Array.isArray(r.recipientIds)||r.recipientIds.some(id=>!/^\d+$/.test(String(id)))||r.recipientMode==='selected'&&!r.recipientIds.length||['wire','plating','custom'].includes(r.type)&&r.recipientMode!=='selected'||!Number.isInteger(r.firstDays)||r.firstDays<0||r.firstDays>365||!Number.isInteger(r.repeatDays)||r.repeatDays<0||r.repeatDays>365||!['work-record','work-report','wire-restock','plating-record','plating-overview','plating-pending','material-record','leave-record','schedule','warehouse','home'].includes(r.target))throw Error('通知規則格式不正確');if(r.type==='custom'&&(!/^\d{4}-\d{2}-\d{2}$/.test(r.startDate||'')||Number.isNaN(Date.parse(r.startDate))))throw Error('自訂提醒日期不正確');if(r.type==='closure'&&([r.city===undefined?'高雄市':r.city,r.district===undefined?'左營區':r.district].some(x=>typeof x!=='string'||!x.trim()||x.length>30)))throw Error('停班地區不正確');if(r.type==='material'&&r.materialCategories!==undefined&&(!Array.isArray(r.materialCategories)||!r.materialCategories.length||r.materialCategories.some(x=>!['收料','出貨','送貨'].includes(x))))throw Error('料件通知類型不正確');if(r.category!==undefined&&(typeof r.category!=='string'||!r.category.trim()||r.category.length>30))throw Error('通知分類不正確');for(const [key,max]of [['name',60],['title',100],['message',500]])if(typeof r[key]!=='string'||!r[key].trim()||r[key].length>max)throw Error('通知文字不完整');ids.add(r.id);}
+ for(const r of rules){if(!r||typeof r.id!=='string'||!r.id||ids.has(r.id)||!['work','report','report-check','wire','plating','material','custom','holiday','closure','leave'].includes(r.type)||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(r.time)||typeof r.enabled!=='boolean'||!['auto','selected'].includes(r.recipientMode)||!Array.isArray(r.recipientIds)||r.recipientIds.some(id=>!/^\d+$/.test(String(id)))||r.recipientMode==='selected'&&!r.recipientIds.length||['report-check','wire','plating','custom'].includes(r.type)&&r.recipientMode!=='selected'||r.type==='report-check'&&r.target!=='work-report'||!Number.isInteger(r.firstDays)||r.firstDays<0||r.firstDays>365||!Number.isInteger(r.repeatDays)||r.repeatDays<0||r.repeatDays>365||!['work-record','work-report','wire-restock','plating-record','plating-overview','plating-pending','material-record','leave-record','schedule','warehouse','home'].includes(r.target))throw Error('通知規則格式不正確');if(r.type==='custom'&&(!/^\d{4}-\d{2}-\d{2}$/.test(r.startDate||'')||Number.isNaN(Date.parse(r.startDate))))throw Error('自訂提醒日期不正確');if(r.type==='closure'&&([r.city===undefined?'高雄市':r.city,r.district===undefined?'左營區':r.district].some(x=>typeof x!=='string'||!x.trim()||x.length>30)))throw Error('停班地區不正確');if(r.type==='material'&&r.materialCategories!==undefined&&(!Array.isArray(r.materialCategories)||!r.materialCategories.length||r.materialCategories.some(x=>!['收料','出貨','送貨'].includes(x))))throw Error('料件通知類型不正確');if(r.category!==undefined&&(typeof r.category!=='string'||!r.category.trim()||r.category.length>30))throw Error('通知分類不正確');for(const [key,max]of [['name',60],['title',100],['message',500]])if(typeof r[key]!=='string'||!r[key].trim()||r[key].length>max)throw Error('通知文字不完整');ids.add(r.id);}
 }
 // Stored rules are validated independently at run time. A malformed legacy rule
 // is reported and skipped, but must not stop unrelated scheduled notifications.
@@ -33,6 +33,27 @@ export function notificationPlan85(rules,state,entries,reports,people,now=Date.n
  const {day,time}=notificationClock85(now),plans=[];const age=date=>Math.floor((Date.parse(day)-Date.parse(String(date||'').slice(0,10)))/86400000);
  for(const rule of rules||[]){
   if(!rule.enabled||time<rule.time)continue;
+  if(rule.type==='report-check'){
+   const peopleById=new Map(people.filter(person=>person.enabled!==0).map(person=>[String(person.id),person]));
+   const assigned=new Map();
+   for(const entry of entries.filter(item=>item.kind==='daily'&&item.day<=day&&(item.end_day||item.day)>=day)){
+    let ids=[];try{ids=JSON.parse(entry.assignee_ids||'[]').map(String)}catch{}
+    for(const id of ids)if(peopleById.has(id)){
+     const current=assigned.get(id)||{person:peopleById.get(id),titles:[]};
+     if(entry.title&&!current.titles.includes(entry.title))current.titles.push(entry.title);
+     assigned.set(id,current);
+    }
+   }
+   if(!assigned.size)continue;
+   const completed=new Set(reports.filter(report=>String(report.body||'').trim()&&(report.photo_key||Number(report.photo_count)>0)).map(report=>String(report.author_id)));
+   const missing=[...assigned.entries()].filter(([id])=>!completed.has(id)).map(([,item])=>item.person.name+'：尚未回報「'+item.titles.join('、')+'」');
+   const completedCount=assigned.size-missing.length;
+   const values={完成數:completedCount,總人數:assigned.size,核對結果:missing.length?missing.join('\n'):'全員皆已完成工作回報。',日期:day,通知名稱:rule.name||'回報核對通知'};
+   const replace=value=>{let output=String(value||'');for(const [key,replacement]of Object.entries(values))output=output.replaceAll('{'+key+'}',String(replacement));return output};
+   const selected=new Set((rule.recipientIds||[]).map(String));
+   for(const person of people.filter(item=>item.enabled!==0&&selected.has(String(item.id))))plans.push({ruleId:rule.id,employeeId:person.id,notificationType:'report-check',category:rule.category||'回報核對',title:replace(rule.title),message:replace(rule.message),targetUrl:'/?notificationDay='+encodeURIComponent(day)+'&notificationSection=jobs#schedule',dedupeKey:'auto:'+rule.id+':'+person.id+':report-check:'+day,eventCount:missing.length,reportCheck:{total:assigned.size,completed:completedCount,missing:missing.length}});
+   continue;
+  }
   const chosen=new Set((rule.recipientIds||[]).map(String));
   for(const person of people){
    if(person.enabled===0||rule.recipientMode==='selected'&&!chosen.has(String(person.id)))continue;
@@ -66,7 +87,7 @@ export function notificationPlan85(rules,state,entries,reports,people,now=Date.n
    }
   }
  }
- const priority={work:1,report:2,holiday:3,closure:3,material:4,wire:5,plating:5,custom:6};
+ const priority={work:1,report:2,'report-check':3,holiday:4,closure:4,material:5,wire:6,plating:6,custom:7};
  return plans.sort((a,b)=>(priority[a.notificationType]||9)-(priority[b.notificationType]||9)||String(a.employeeId).localeCompare(String(b.employeeId)));
 }
 

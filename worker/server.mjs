@@ -39,6 +39,7 @@ export function validate(s,previous={}){
  if(s.notificationRules!==undefined)notificationRulesValid85(s.notificationRules);
  if(s.notificationVersion90!==undefined)check(s.notificationVersion90===1,'通知版本標記不正確');
  if(s.notificationVersion102!==undefined)check(s.notificationVersion102===1,'假別通知版本標記不正確');
+ if(s.notificationVersion105!==undefined)check(s.notificationVersion105===1,'回報核對通知版本標記不正確');
  check(object(s)&&Array.isArray(s.projects),'專案資料格式不正確');
  validatePlating(s.platingProjects);validateWire(s);validateWorkflowState(s);
  if(s.platingVendors!==undefined)check(Array.isArray(s.platingVendors)&&s.platingVendors.length<=200&&s.platingVendors.every(v=>typeof v==='string'&&v.trim()===v&&v.length>0&&v.length<=100)&&new Set(s.platingVendors.map(v=>v.toLowerCase())).size===s.platingVendors.length,'電鍍廠商選項不正確');
@@ -526,7 +527,7 @@ async function sendPush82(env,subscription,options){
 }
 function notificationCategory88(type,preferred=''){
  if(preferred)return String(preferred).slice(0,30);
- return({work:'工作排程',report:'工作回報',wire:'線材提醒',plating:'電鍍提醒',material:'料件紀錄',leave:'假別紀錄',holiday:'假日提醒',closure:'停班提醒',test:'系統通知',custom:'自訂提醒'})[type]||'其他';
+ return({work:'工作排程',report:'工作回報','report-check':'回報核對',wire:'線材提醒',plating:'電鍍提醒',material:'料件紀錄',leave:'假別紀錄',holiday:'假日提醒',closure:'停班提醒',test:'系統通知',custom:'自訂提醒'})[type]||'其他';
 }
 function notificationSourceName921(value){return({'manual-test':'手動測試','rule-preview':'規則預覽','holiday-preview':'假日模擬','closure-preview':'停班模擬'})[value]||value||'手動測試'}
 async function notificationInboxCreate88(env,employeeId,options){
@@ -608,8 +609,8 @@ function notificationPlanGroups103(plans){
 function notificationSelectionId103(group){return String(group[0].employeeId)+':'+notificationHash93(group.map(plan=>plan.dedupeKey).sort().join('|'))}
 async function notificationRulePlans103(env,state,rule,now=Date.now()){
  notificationRulesValid85([rule]);
- const {day}=notificationClock85(now),entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all(),people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
- for(const person of people.results||[]){await employeePermissions(env,person);const cap=rule.type==='work'||rule.type==='report'?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationAllowed103=!cap||permitted(person,cap)}
+ const {day}=notificationClock85(now),entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare("SELECT r.entry_id,r.author_id,r.body,r.photo_key,(SELECT COUNT(*) FROM schedule_report_photos p WHERE p.report_id=r.id) AS photo_count FROM schedule_reports r WHERE r.day=?").bind(day).all(),people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
+ for(const person of people.results||[]){await employeePermissions(env,person);const cap=['work','report','report-check'].includes(rule.type)?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationAllowed103=!cap||permitted(person,cap)}
  const plans=notificationPlan85([rule],state,entries.results||[],reports.results||[],people.results||[],now),suppressed=await notificationRuleSuppressions921(env,[rule],now),initial=await notificationInitialRecipients921(env,[rule],plans,now),allowed=initial.get(rule.id),blocked=suppressed.get(rule.id),byId=new Map((people.results||[]).map(person=>[Number(person.id),person]));
  return{day,people:byId,plans:plans.filter(plan=>byId.get(Number(plan.employeeId))?.notificationAllowed103&&(!allowed||allowed.has(String(plan.employeeId)))&&!(blocked&&(blocked.has('*')||blocked.has(String(plan.employeeId)))))};
 }
@@ -873,6 +874,13 @@ async function previewValues90(type,employee,env){
   const own=(entries.results||[]).filter(e=>entryPeople90(e).includes(String(employee.id))&&(type!=='report'||!done.has(e.id))),list=own.map(e=>e.title+(entryContent90(e)?'（'+entryContent90(e)+'）':''));if(!own.length)return{available:false,note:employee.name+(type==='report'?'今日沒有待回報工作。':'今日沒有安排工作，無法產生實際工作預覽。'),values:base,targetDate:day};
   return{available:true,note:'預覽使用 '+employee.name+' 今日的實際'+(type==='report'?'待回報':'排程')+'資料。',values:{...base,數量:own.length,工作清單:list.join('、'),工作名稱:own.map(e=>e.title).join('、'),工作內容:own.map(entryContent90).filter(Boolean).join('、')},targetDate:day};
  }
+ if(type==='report-check'){
+  const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=? ORDER BY created_at,id").bind(day,day).all(),reports=await env.DB.prepare("SELECT r.author_id,r.body,r.photo_key,(SELECT COUNT(*) FROM schedule_report_photos p WHERE p.report_id=r.id) AS photo_count FROM schedule_reports r WHERE r.day=?").bind(day).all(),people=await env.DB.prepare("SELECT id,name FROM employees WHERE status='active' ORDER BY id").all(),map=new Map((people.results||[]).map(person=>[String(person.id),{...person,titles:[]} ]));
+  for(const entry of entries.results||[])for(const id of entryPeople90(entry)){const item=map.get(id);if(item&&entry.title&&!item.titles.includes(entry.title))item.titles.push(entry.title)}
+  const assigned=[...map.values()].filter(item=>item.titles.length);if(!assigned.length)return{available:false,note:'今天沒有安排工作的人員，正式通知不會發送。',values:base,targetDate:day};
+  const completed=new Set((reports.results||[]).filter(report=>String(report.body||'').trim()&&(report.photo_key||Number(report.photo_count)>0)).map(report=>String(report.author_id))),missing=assigned.filter(item=>!completed.has(String(item.id))),lines=missing.map(item=>item.name+'：尚未回報「'+item.titles.join('、')+'」');
+  return{available:true,note:'依今日實際排程與工作回報核對；同一人有多項工作仍只需一份含文字及照片的回報。',values:{...base,完成數:assigned.length-missing.length,總人數:assigned.length,核對結果:lines.join('\n')||'全員皆已完成工作回報。'},targetDate:day};
+ }
  if(type==='material'){const row=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='material' ORDER BY created_at DESC LIMIT 1").first();if(!row)return{available:false,note:'目前沒有可預覽的料件資料。',values:base,targetDate:day};return{available:true,note:'預覽使用最近一筆料件資料。',values:{...base,案件名稱:row.project_name||'',料件名稱:row.title,類型:row.category,登記人:row.author_name||employee.name},targetDate:row.day};}
  if(type==='leave')return{available:true,note:'這是示意預覽，不會補發舊請假紀錄。實際通知只在新增、修改或取消新版請假紀錄時發送。',values:{...base,人員:employee.name,假別:'特休',開始時間:day+' 08:30',結束時間:day+' 17:30',動作:'登記',操作人:employee.name},targetDate:day};
  const state=JSON.parse((await companyRow(env)).body);
@@ -949,9 +957,9 @@ export async function runNotifications85(env,now=Date.now()){
  const invalid=[];const validRules=notificationValidRules103(rules,(rule,error)=>{invalid.push({id:String(rule?.id||''),error:error?.message||String(error)});console.error('略過格式錯誤的通知規則',rule?.id||'(無編號)',error?.message||String(error))});
  const enabledRules=validRules.filter(rule=>rule.enabled);if(!enabledRules.length)return{checked:true,planned:0,eligible:0,invalidRules:invalid.length,remainingBudget:32};
  const day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
- const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare('SELECT entry_id,author_id FROM schedule_reports WHERE day=?').bind(day).all();
+ const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare("SELECT r.entry_id,r.author_id,r.body,r.photo_key,(SELECT COUNT(*) FROM schedule_report_photos p WHERE p.report_id=r.id) AS photo_count FROM schedule_reports r WHERE r.day=?").bind(day).all();
  const people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
- for(const person of people.results){await employeePermissions(env,person);const cap=rule=>rule.type==='work'||rule.type==='report'?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationCaps85=Object.fromEntries(enabledRules.map(r=>[r.id,!cap(r)||permitted(person,cap(r))]));}
+ for(const person of people.results){await employeePermissions(env,person);const cap=rule=>['work','report','report-check'].includes(rule.type)?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationCaps85=Object.fromEntries(enabledRules.map(r=>[r.id,!cap(r)||permitted(person,cap(r))]));}
  const budget={remaining:32};await retryNotifications921(env,budget);const suppressed=await notificationRuleSuppressions921(env,enabledRules,now),plans=notificationPlan85(enabledRules,state,entries.results,reports.results,people.results,now),initialRecipients=await notificationInitialRecipients921(env,enabledRules,plans,now);
  const dispatchable=plans.filter(plan=>{if(!people.results.find(p=>p.id===plan.employeeId)?.notificationCaps85[plan.ruleId])return false;const initial=initialRecipients.get(plan.ruleId);if(initial&&!initial.has(String(plan.employeeId)))return false;const blocked=suppressed.get(plan.ruleId);return!(blocked&&(blocked.has('*')||blocked.has(String(plan.employeeId))))}),groups=new Map();
  for(const plan of dispatchable){const key=['wire','plating'].includes(plan.notificationType)?plan.ruleId+':'+plan.employeeId+':'+plan.notificationType:plan.dedupeKey;groups.set(key,[...(groups.get(key)||[]),plan])}
@@ -1040,7 +1048,7 @@ export function stateChangeAllowed(before,after,e){
    if(prev.materialLogs===undefined)delete p.materialLogs;else p.materialLogs=structuredClone(prev.materialLogs);
   }
  }
- if(permitted(e,'admin.settings'))for(const key of ['appearance','siteText','adminText','wireText','platingText','contentDraft','contentPublished','adminOrder','managementOrder','uiOrder','scheduleText','auditSecurity','adminLayout','appIconSettings','adminSectionOrder','notificationRules','notificationVersion90','notificationVersion102']){delete a[key];delete b[key];}
+ if(permitted(e,'admin.settings'))for(const key of ['appearance','siteText','adminText','wireText','platingText','contentDraft','contentPublished','adminOrder','managementOrder','uiOrder','scheduleText','auditSecurity','adminLayout','appIconSettings','adminSectionOrder','notificationRules','notificationVersion90','notificationVersion102','notificationVersion105']){delete a[key];delete b[key];}
  if(permitted(e,'warehouse.purge'))a.deletedProjects=(a.deletedProjects||[]).filter(x=>(b.deletedProjects||[]).some(n=>n.project?.id===x.project?.id)||(b.projects||[]).some(n=>n.id===x.project?.id));
  if(permitted(e,'warehouse.restore')){
   for(const p of b.projects||[])if(!(a.projects||[]).some(x=>x.id===p.id)){const deleted=(a.deletedProjects||[]).find(x=>x.project?.id===p.id);if(deleted&&stableJSON(deleted.project)===stableJSON(p)){a.projects.splice(Math.min(deleted.index??a.projects.length,a.projects.length),0,structuredClone(p));a.deletedProjects=a.deletedProjects.filter(x=>x!==deleted);}}

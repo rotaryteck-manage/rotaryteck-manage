@@ -37,7 +37,7 @@ test('10.3v catch-up lists only missing messages, sends selected rows and never 
  }finally{webpush.sendNotification=original}
 });
 
-test('10.4v schedule controls are idempotent, entry resets to today and changed assets bypass cache',()=>{
+test('10.5v schedule controls are idempotent, entry resets to today and changed assets bypass cache',()=>{
  const v71=fs.readFileSync(new URL('../dist/enhancements-v71.js',import.meta.url),'utf8'),v73=fs.readFileSync(new URL('../dist/enhancements-v73.js',import.meta.url),'utf8'),v921=fs.readFileSync(new URL('../dist/enhancements-v921.js',import.meta.url),'utf8'),build=fs.readFileSync(new URL('../build.mjs',import.meta.url),'utf8');
  assert.match(v71,/data-schedule-text71/);assert.match(v71,/existing\.shift/);assert.match(v73,/scheduleAnchor56=new Date/);assert.match(v73,/old\.shift/);assert.match(v921,/今天目前沒有缺漏通知/);assert.match(v921,/selectionIds/);assert.match(v921,/material','holiday','closure','leave/);assert.match(v921,/data-log-rows92/);assert.match(v921,/notification-log-source104/);assert.doesNotMatch(v921,/data-log-rows88/);for(const pattern of [/enhancements-v71\.js\?v=103/,/enhancements-v73\.js\?v=103/,/enhancements-v921\.js\?v=104/,/enhancements-v921\.css\?v=104/,/cloud\.js\?v=104/,/enhancements-v944\.js\?v=104/])assert.match(build,pattern);
 });
