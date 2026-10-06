@@ -20,7 +20,7 @@ names.push('enhancements-v102.css');
 names.push('enhancements-v103.css');
 const types={webmanifest:'application/manifest+json; charset=utf-8',html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml'};
 const assets=Object.fromEntries(names.map(n=>['/'+n,{body:fs.readFileSync('dist/'+n,'utf8'),type:types[n.split('.').pop()]}]));
-assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v=71','schedule-v60.js?v=103').replace('schedule-v67.js?v=79','schedule-v67.js?v=103').replace('mobile-v78.js?v=80','mobile-v78.js?v=103').replace('uploads.js?v=67','uploads.js?v=902').replace('cloud.js?v=29','cloud.js?v=103').replace('enhancements-v71.js?v=71','enhancements-v71.js?v=103').replace('enhancements-v73.js?v=73','enhancements-v73.js?v=103').replace(
+assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v=71','schedule-v60.js?v=103').replace('schedule-v67.js?v=79','schedule-v67.js?v=103').replace('mobile-v78.js?v=80','mobile-v78.js?v=103').replace('uploads.js?v=67','uploads.js?v=902').replace('cloud.js?v=29','cloud.js?v=104').replace('enhancements-v71.js?v=71','enhancements-v71.js?v=103').replace('enhancements-v73.js?v=73','enhancements-v73.js?v=103').replace(
  '</head>',
  '<script src="notifications-v82.js?v=83" defer></script>'+
  '<script src="enhancements-v81.js?v=83" defer></script>'+
@@ -34,14 +34,14 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v904.js?v=904" defer></script>'+
  '<script src="enhancements-v91.js?v=911" defer></script>'+
  '<script src="enhancements-v92.js?v=921" defer></script>'+
- '<script src="enhancements-v921.js?v=103" defer></script>'+
+ '<script src="enhancements-v921.js?v=104" defer></script>'+
  '<script src="enhancements-v93.js?v=93" defer></script>'+
  '<script src="enhancements-v94.js?v=94" defer></script>'+
  '<script src="enhancements-v941.js?v=942" defer></script>'+
- '<script src="enhancements-v943.js?v=943" defer></script>'+
+ '<script src="enhancements-v943.js?v=104" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v943.css?v=943">'+
- '<script src="enhancements-v944.js?v=944" defer></script>'+
- '<script src="enhancements-v945.js?v=945" defer></script>'+
+ '<script src="enhancements-v944.js?v=104" defer></script>'+
+ '<script src="enhancements-v945.js?v=104" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v102.css?v=102">'+
  '<link rel="stylesheet" href="enhancements-v944.css?v=944">'+
  '<link rel="stylesheet" href="controls-v85.css?v=85">'+
@@ -52,7 +52,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<link rel="stylesheet" href="enhancements-v904.css?v=904">'+
  '<link rel="stylesheet" href="enhancements-v91.css?v=911">'+
  '<link rel="stylesheet" href="enhancements-v92.css?v=921">'+
- '<link rel="stylesheet" href="enhancements-v921.css?v=103">'+
+ '<link rel="stylesheet" href="enhancements-v921.css?v=104">'+
  '<link rel="stylesheet" href="enhancements-v93.css?v=93">'+
  '<link rel="stylesheet" href="enhancements-v94.css?v=94">'+
  '<link rel="stylesheet" href="enhancements-v941.css?v=942">'+
