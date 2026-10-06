@@ -21,7 +21,7 @@ function fixture(rules=[rule]){
 }
 
 test('10.3v isolates an invalid stored rule and still runs valid automatic notifications',async()=>{
- const bad={...rule,id:'bad103',time:'錯誤'},invalid=[];assert.deepEqual(notificationValidRules103([bad,rule],(item)=>invalid.push(item.id)).map(item=>item.id),['work103']);assert.deepEqual(invalid,['bad103']);
+ const bad={...rule,id:'bad103',time:'錯誤'},leaveRule={...rule,id:'leave103',type:'leave',target:'leave-record',recipientMode:'auto',recipientIds:[]},invalid=[];assert.deepEqual(notificationValidRules103([bad,leaveRule,rule],(item)=>invalid.push(item.id)).map(item=>item.id),['leave103','work103']);assert.deepEqual(invalid,['bad103']);
  const {env}=fixture([bad,rule]),original=webpush.sendNotification;let sent=0;webpush.sendNotification=async()=>{sent++};
  try{const result=await runNotifications85(env,new Date().toISOString());assert.equal(result.invalidRules,1);assert.equal(sent,1)}finally{webpush.sendNotification=original}
 });

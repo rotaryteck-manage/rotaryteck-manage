@@ -19,12 +19,12 @@ export function notificationRulesValid85(rules){
 // Stored rules are validated independently at run time. A malformed legacy rule
 // is reported and skipped, but must not stop unrelated scheduled notifications.
 export function notificationValidRules103(rules,onInvalid=()=>{}){
- const valid=[],ids=new Set(),leave=false;
+ const valid=[],ids=new Set();let hasLeave=false;
  for(const rule of Array.isArray(rules)?rules:[]){
   try{
    if(ids.has(rule?.id))throw Error('通知規則編號重複');
-   if(rule?.type==='leave'&&leave)throw Error('假別通知只能設定一項');
-   notificationRulesValid85([rule]);ids.add(rule.id);if(rule.type==='leave')leave=true;valid.push(rule);
+   if(rule?.type==='leave'&&hasLeave)throw Error('假別通知只能設定一項');
+   notificationRulesValid85([rule]);ids.add(rule.id);if(rule.type==='leave')hasLeave=true;valid.push(rule);
   }catch(error){onInvalid(rule,error)}
  }
  return valid;
