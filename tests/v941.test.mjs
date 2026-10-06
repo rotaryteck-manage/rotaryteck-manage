@@ -24,7 +24,7 @@ test('v94.1 handles notification navigation after app startup and PWA resume',()
 test('v94.1 exposes a visible cloud-save state and scoped server reads',()=>{
  const cloud=read('dist/cloud.js'),server=read('worker/server.mjs');
  assert.match(cloud,/正在上傳雲端，請勿重複操作/);
- assert.match(cloud,/10\.5v/);
+ assert.match(cloud,/10\.6v/);
  assert.match(server,/readScopedRecordStorage941/);
  assert.match(server,/json_extract\(body,'\$\.reelId'\)/);
 });

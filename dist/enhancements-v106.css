@@ -1,0 +1,13 @@
+#modal #dialog-form>.modal-foot[data-work-record-footer106]{
+ justify-content:space-between;
+ flex-wrap:nowrap;
+}
+#modal #dialog-form>.modal-foot[data-work-record-footer106] #schedule-add-report,
+#modal #dialog-form>.modal-foot[data-work-record-footer106] #cancel-modal{
+ flex:0 0 auto;
+ margin:0;
+}
+@media(max-width:420px){
+ #modal #dialog-form>.modal-foot[data-work-record-footer106]{gap:8px;}
+ #modal #dialog-form>.modal-foot[data-work-record-footer106] button{padding-left:10px;padding-right:10px;}
+}

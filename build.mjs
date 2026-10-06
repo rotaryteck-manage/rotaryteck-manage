@@ -18,6 +18,7 @@ names.push('enhancements-v943.js','enhancements-v943.css');
 names.push('enhancements-v944.js','enhancements-v944.css','enhancements-v945.js');
 names.push('enhancements-v102.css');
 names.push('enhancements-v103.css');
+names.push('enhancements-v106.js','enhancements-v106.css');
 const types={webmanifest:'application/manifest+json; charset=utf-8',html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml'};
 const assets=Object.fromEntries(names.map(n=>['/'+n,{body:fs.readFileSync('dist/'+n,'utf8'),type:types[n.split('.').pop()]}]));
 assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v=71','schedule-v60.js?v=103').replace('schedule-v67.js?v=79','schedule-v67.js?v=103').replace('mobile-v78.js?v=80','mobile-v78.js?v=103').replace('uploads.js?v=67','uploads.js?v=902').replace('cloud.js?v=29','cloud.js?v=104').replace('enhancements-v71.js?v=71','enhancements-v71.js?v=103').replace('enhancements-v73.js?v=73','enhancements-v73.js?v=103').replace(
@@ -58,6 +59,8 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<link rel="stylesheet" href="enhancements-v941.css?v=942">'+
  '<link rel="stylesheet" href="mobile-form-v84.css?v=84">'+
  '<link rel="stylesheet" href="enhancements-v103.css?v=103">'+
+ '<script src="enhancements-v106.js?v=106" defer></script>'+
+ '<link rel="stylesheet" href="enhancements-v106.css?v=106">'+
  '</head>'
 );
 fs.mkdirSync('dist/server',{recursive:true});
