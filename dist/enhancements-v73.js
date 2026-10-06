@@ -25,7 +25,7 @@ scheduleDraw56=function(){scheduleDrawBefore73();
 };
 let scheduleWasActive73=false;
 const scheduleRenderBefore73=scheduleRender56;
-scheduleRender56=function(){const active=location.hash==='#schedule';if(active&&!scheduleWasActive73)scheduleTab56='daily';scheduleWasActive73=active;scheduleRenderBefore73();if(scheduleTab56==='weekly'&&canDo('schedule.dedupe')){const bar=$('.schedule-action-controls');if(bar){const b=document.createElement('button');b.type='button';b.textContent='整理重複排程';b.dataset.dedupe73='';b.onclick=dedupeWeek73;bar.append(b)}}};
+scheduleRender56=function(){const active=location.hash==='#schedule';if(active&&!scheduleWasActive73){scheduleTab56='daily';scheduleAnchor56=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'})}scheduleWasActive73=active;scheduleRenderBefore73();const bar=$('.schedule-action-controls'),old=[...(bar?.querySelectorAll('[data-dedupe73]')||[])];let b=old.shift();old.forEach(x=>x.remove());if(scheduleTab56==='weekly'&&canDo('schedule.dedupe')&&bar){if(!b){b=document.createElement('button');b.type='button';b.textContent='整理重複排程';b.dataset.dedupe73='';bar.append(b)}b.hidden=false;b.onclick=dedupeWeek73}else if(b)b.hidden=true};
 async function dedupeWeek73(){
  if(scheduleBusy71)return;const week=scheduleWeek56(scheduleAnchor56);scheduleBusy71=true;const close=busyDialog71('正在檢查本週重複排程…');
  try{const r=await apiFetch('/api/schedule?view=dedupe&weekStart='+week),data=await r.json();if(!r.ok)throw Error(data.error);close();

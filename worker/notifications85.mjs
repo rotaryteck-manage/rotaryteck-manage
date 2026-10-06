@@ -16,6 +16,19 @@ export function notificationRulesValid85(rules){
  }
  for(const r of rules){if(!r||typeof r.id!=='string'||!r.id||ids.has(r.id)||!['work','report','wire','plating','material','custom','holiday','closure','leave'].includes(r.type)||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(r.time)||typeof r.enabled!=='boolean'||!['auto','selected'].includes(r.recipientMode)||!Array.isArray(r.recipientIds)||r.recipientIds.some(id=>!/^\d+$/.test(String(id)))||r.recipientMode==='selected'&&!r.recipientIds.length||['wire','plating','custom'].includes(r.type)&&r.recipientMode!=='selected'||!Number.isInteger(r.firstDays)||r.firstDays<0||r.firstDays>365||!Number.isInteger(r.repeatDays)||r.repeatDays<0||r.repeatDays>365||!['work-record','work-report','wire-restock','plating-record','plating-overview','plating-pending','material-record','leave-record','schedule','warehouse','home'].includes(r.target))throw Error('通知規則格式不正確');if(r.type==='custom'&&(!/^\d{4}-\d{2}-\d{2}$/.test(r.startDate||'')||Number.isNaN(Date.parse(r.startDate))))throw Error('自訂提醒日期不正確');if(r.type==='closure'&&([r.city===undefined?'高雄市':r.city,r.district===undefined?'左營區':r.district].some(x=>typeof x!=='string'||!x.trim()||x.length>30)))throw Error('停班地區不正確');if(r.type==='material'&&r.materialCategories!==undefined&&(!Array.isArray(r.materialCategories)||!r.materialCategories.length||r.materialCategories.some(x=>!['收料','出貨','送貨'].includes(x))))throw Error('料件通知類型不正確');if(r.category!==undefined&&(typeof r.category!=='string'||!r.category.trim()||r.category.length>30))throw Error('通知分類不正確');for(const [key,max]of [['name',60],['title',100],['message',500]])if(typeof r[key]!=='string'||!r[key].trim()||r[key].length>max)throw Error('通知文字不完整');ids.add(r.id);}
 }
+// Stored rules are validated independently at run time. A malformed legacy rule
+// is reported and skipped, but must not stop unrelated scheduled notifications.
+export function notificationValidRules103(rules,onInvalid=()=>{}){
+ const valid=[],ids=new Set(),leave=false;
+ for(const rule of Array.isArray(rules)?rules:[]){
+  try{
+   if(ids.has(rule?.id))throw Error('通知規則編號重複');
+   if(rule?.type==='leave'&&leave)throw Error('假別通知只能設定一項');
+   notificationRulesValid85([rule]);ids.add(rule.id);if(rule.type==='leave')leave=true;valid.push(rule);
+  }catch(error){onInvalid(rule,error)}
+ }
+ return valid;
+}
 export function notificationPlan85(rules,state,entries,reports,people,now=Date.now()){
  const {day,time}=notificationClock85(now),plans=[];const age=date=>Math.floor((Date.parse(day)-Date.parse(String(date||'').slice(0,10)))/86400000);
  for(const rule of rules||[]){
