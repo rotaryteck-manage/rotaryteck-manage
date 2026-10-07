@@ -25,4 +25,4 @@ function notificationGate945(){
 }
 const notificationRouteBefore945=notificationRoute941;
 notificationRoute941=function(){const opened=notificationRouteBefore945();if(opened&&notificationNotice945){toast(notificationNotice945);notificationNotice945='';}return opened;};
-document.documentElement.dataset.appVersion='10.7v';
+document.documentElement.dataset.appVersion='10.8v';

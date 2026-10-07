@@ -9,7 +9,7 @@
     "VAPID_PUBLIC_KEY": "BH8dUK_jdUAWRo_GnQBgeiW-240Yd-68iHkF0M9hTcKli795HMaoFqGttnCYq-pYjYmtmcadhNV75QnlsRF18dU",
     "VAPID_SUBJECT": "mailto:ruirui222555@gmail.com"
   },
-  "triggers": {"crons": ["*/5 * * * *"]},
+  "triggers": {"crons": ["*/3 * * * *"]},
   "observability": {
     "enabled": true
   },

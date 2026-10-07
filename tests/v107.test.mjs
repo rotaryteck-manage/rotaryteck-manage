@@ -17,9 +17,9 @@ test('10.7v changes only the daily edit dialog order and initial collapsed state
  assert.match(build,/enhancements-v107\.js\?v=107/);
 });
 
-test('10.7v version label is consistent',()=>{
+test('10.8v version label is consistent',()=>{
  for(const name of ['dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/cloud.js'])
-  assert.match(read(name),/10\.7v/,name);
+  assert.match(read(name),/10\.8v/,name);
 });
 
 test('daily edit opens in stored order, collapses existing cards and restores shared data',()=>{
