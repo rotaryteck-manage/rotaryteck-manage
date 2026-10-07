@@ -44,6 +44,6 @@ test('10.5v admin settings explain recipients, scenarios and multiline display',
  assert.match(css,/white-space:pre-line/);
 });
 
-test('10.8v version label is consistent',()=>{
- for(const file of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js'])assert.match(fs.readFileSync(file,'utf8'),/10\.8v/,file);
+test('10.9v version label is consistent',()=>{
+ for(const file of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js'])assert.match(fs.readFileSync(file,'utf8'),/10\.9v/,file);
 });

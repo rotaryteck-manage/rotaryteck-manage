@@ -12,4 +12,4 @@ function notificationSchedulerStatus108(status){
  line.textContent='最近自動檢查：'+receiptTime(stamp)+' · '+label+(status.status==='ok'?' · 符合 '+Number(status.eligible||0)+' 筆 · 送出 '+Number(status.sent||0)+' 台':'')+(status.error_message?' · '+status.error_message:'');
 }
 
-document.documentElement.dataset.appVersion='10.8v';
+document.documentElement.dataset.appVersion='10.9v';

@@ -1,0 +1,21 @@
+/* 10.9v: keep the notification administration panels inside their card. */
+#notification-admin-root81{
+  flex:1 1 100%;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+
+#notification-admin-root81 .notification-key-status86,
+#notification-admin-root81 .notification-fold86,
+#notification-admin-root81 #notification-rule-list81,
+#notification-admin-root81 .notification-tools94{
+  min-width:0;
+  max-width:100%;
+}
+
+#notification-admin-root81 .notification-tools94 small,
+#notification-admin-root81 .notification-scheduler108{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
