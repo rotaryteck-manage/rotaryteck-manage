@@ -1,0 +1,4 @@
+.header-actions .account-status944{align-items:center}
+.account-stack111{display:inline-flex;flex-direction:column;gap:2px;flex:0 0 auto}
+.account-stack111 small{box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:72px;height:20px;padding:1px 5px;border:1px solid #d6e0d2;border-radius:4px;background:#fff;color:var(--ui-muted,#65776b);font-size:10px;line-height:1;white-space:nowrap}
+@media(max-width:600px){.account-stack111 small{width:64px;height:19px;font-size:9px}}
