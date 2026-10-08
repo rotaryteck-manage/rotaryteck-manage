@@ -31,6 +31,6 @@ test('10.8v renders only a compact scheduler status line in notification setting
  assert.match(build,/enhancements-v108\.js\?v=110/);
 });
 
-test('11.1v version label is consistent',()=>{
- for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/11\.1v/,name);
+test('11.2v version label is consistent',()=>{
+ for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/11\.2v/,name);
 });

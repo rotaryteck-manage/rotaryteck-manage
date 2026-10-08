@@ -69,6 +69,6 @@ test('10.2v photo links use an in-page dialog and leave notification opens the e
  assert.match(photos,/private-photo-viewer102/);assert.match(photos,/schedule-material-photo/);assert.match(photos,/img\[data-material-photo\]/);assert.doesNotMatch(photos,/window\.open\(/);assert.match(css,/::backdrop/);assert.match(css,/100dvh/);assert.match(route,/notificationLeave/);assert.match(route,/leaveRecords72\(day,leave\)/);assert.match(route,/此請假紀錄已取消或不存在/);
 });
 
-test('11.1v version label is consistent',()=>{
- for(const file of ['cloud.js','enhancements-v943.js','enhancements-v944.js','enhancements-v945.js'])assert.match(fs.readFileSync(new URL('../dist/'+file,import.meta.url),'utf8'),/11\.1v/,file);
+test('11.2v version label is consistent',()=>{
+ for(const file of ['cloud.js','enhancements-v943.js','enhancements-v944.js','enhancements-v945.js'])assert.match(fs.readFileSync(new URL('../dist/'+file,import.meta.url),'utf8'),/11\.2v/,file);
 });

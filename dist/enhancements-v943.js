@@ -15,4 +15,4 @@ function legacyNotificationTarget943(value){
  if(!url.search&&url.hash==='#plating')url.searchParams.set('notificationPlatingOverview','all');
  return url.pathname+url.search+url.hash;
 }
-document.documentElement.dataset.appVersion='11.1v';
+document.documentElement.dataset.appVersion='11.2v';

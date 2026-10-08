@@ -1,4 +1,14 @@
 'use strict';
+async function syncPersonalBadge112(){
+ try{
+  const response=await fetch('/api/notification-inbox',{credentials:'same-origin',cache:'no-store'});
+  if(response.status===401){if(self.navigator.clearAppBadge)await self.navigator.clearAppBadge();return;}
+  if(!response.ok)return;
+  const data=await response.json(),count=Math.max(0,Number(data.unread)||0);
+  if(count&&self.navigator.setAppBadge)await self.navigator.setAppBadge(count);
+  else if(!count&&self.navigator.clearAppBadge)await self.navigator.clearAppBadge();
+ }catch{}
+}
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(clients.claim()));
 
@@ -28,7 +38,7 @@ self.addEventListener('push',event=>{
  };
 
  event.waitUntil(
-  self.registration.showNotification(title,options)
+  Promise.all([self.registration.showNotification(title,options),syncPersonalBadge112()])
  );
 });
 
