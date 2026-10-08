@@ -970,20 +970,23 @@ export async function runNotifications85(env,now=Date.now()){
 }
 export async function runScheduledNotifications108(env,scheduledTime=Date.now()){
  const scheduledFor=new Date(scheduledTime).toISOString(),startedAt=new Date().toISOString();
+ await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='failed',error_message='前一次自動檢查逾時，已由下一輪重新檢查' WHERE id=1 AND status='running' AND started_at<?").bind(startedAt,new Date(Date.now()-2*60*1000).toISOString()).run();
  await env.DB.prepare("INSERT INTO notification_scheduler_status108(id,scheduled_for,started_at,completed_at,status,planned,eligible,sent,failed,deferred,error_message) VALUES(1,?,?,'','running',0,0,0,0,0,'') ON CONFLICT(id) DO UPDATE SET scheduled_for=excluded.scheduled_for,started_at=excluded.started_at,status='running',error_message=''").bind(scheduledFor,startedAt).run();
+ let timer;
  try{
-  const result=await runNotifications85(env,scheduledTime),completedAt=new Date().toISOString();
+  const result=await Promise.race([runNotifications85(env,scheduledTime),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('自動檢查超過 45 秒，已中止並等待下一輪')),45000)})]),completedAt=new Date().toISOString();
   await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='ok',planned=?,eligible=?,sent=?,failed=?,deferred=?,error_message='' WHERE id=1").bind(completedAt,Number(result?.planned||0),Number(result?.eligible||0),Number(result?.sent||0),Number(result?.failed||0),Number(result?.deferred||0)).run();
   return result;
  }catch(error){
   const message=String(error?.message||error||'通知排程失敗').slice(0,500);
   await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='failed',error_message=? WHERE id=1").bind(new Date().toISOString(),message).run();
   throw error;
- }
+ }finally{if(timer)clearTimeout(timer)}
 }
 async function notificationSchedulerStatus108(env){
  const row=await env.DB.prepare('SELECT * FROM notification_scheduler_status108 WHERE id=1').first();if(!row)return{status:'never',overdue:true,intervalMinutes:3};
- const stamp=Date.parse(row.completed_at||row.started_at||'');return{...row,intervalMinutes:3,overdue:!Number.isFinite(stamp)||Date.now()-stamp>6*60*1000};
+ const stamp=Date.parse(row.completed_at||row.started_at||''),overdue=!Number.isFinite(stamp)||Date.now()-stamp>6*60*1000;
+ return{...row,status:row.status==='running'&&overdue?'failed':row.status,intervalMinutes:3,overdue,error_message:row.status==='running'&&overdue?'自動檢查逾時，下一輪會重新執行':row.error_message};
 }
 export async function notificationCheckApi94(request,env){
  const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
@@ -993,8 +996,8 @@ export async function notificationCheckApi94(request,env){
  }
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
  try{
-  const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[],clock=notificationClock85(),start=new Date(clock.day+'T00:00:00+08:00').toISOString(),rows=await env.DB.prepare("SELECT rule_id,SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent FROM notification_deliveries WHERE created_at>=? GROUP BY rule_id").bind(start).all(),sent=new Map((rows.results||[]).map(row=>[String(row.rule_id),Number(row.sent||0)])),states=await env.DB.prepare('SELECT rule_id,suppress_day,suppressed_ids FROM notification_rule_state921').all(),suppressed=new Map((states.results||[]).map(row=>[String(row.rule_id),row]));
-  return json({scheduler:await notificationSchedulerStatus108(env),items:rules.map(rule=>{const delivered=sent.get(String(rule.id))||0,row=suppressed.get(String(rule.id));let blocked=[];try{blocked=JSON.parse(row?.suppressed_ids||'[]')}catch{}const skipped=row?.suppress_day===clock.day&&blocked.includes('*');return{id:rule.id,status:!rule.enabled?'disabled':delivered?'sent':skipped?'skipped':clock.time<rule.time?'scheduled':'waiting',sent:delivered,time:rule.time};})});
+  const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[],clock=notificationClock85(),start=new Date(clock.day+'T00:00:00+08:00').toISOString(),rows=await env.DB.prepare("SELECT rule_id,SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent,SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed FROM notification_deliveries WHERE created_at>=? GROUP BY rule_id").bind(start).all(),delivery=new Map((rows.results||[]).map(row=>[String(row.rule_id),{sent:Number(row.sent||0),failed:Number(row.failed||0)}])),states=await env.DB.prepare('SELECT rule_id,suppress_day,suppressed_ids FROM notification_rule_state921').all(),suppressed=new Map((states.results||[]).map(row=>[String(row.rule_id),row])),scheduler=await notificationSchedulerStatus108(env);
+  return json({scheduler,items:rules.map(rule=>{const counts=delivery.get(String(rule.id))||{sent:0,failed:0},row=suppressed.get(String(rule.id));let blocked=[];try{blocked=JSON.parse(row?.suppressed_ids||'[]')}catch{}const skipped=row?.suppress_day===clock.day&&blocked.includes('*'),schedulerFailed=scheduler.status==='failed'||scheduler.overdue;return{id:rule.id,status:!rule.enabled?'disabled':counts.sent?'sent':skipped?'skipped':clock.time<rule.time?'scheduled':counts.failed?'failed':schedulerFailed?'check-failed':'no-match',sent:counts.sent,time:rule.time};})});
  }catch(error){return json({error:'無法讀取今日通知狀態'},503)}
 }
 async function materialNotification88(env,employee,form){

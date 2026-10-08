@@ -40,7 +40,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v92.js?v=921" defer></script>'+
  '<script src="enhancements-v921.js?v=104" defer></script>'+
  '<script src="enhancements-v93.js?v=93" defer></script>'+
- '<script src="enhancements-v94.js?v=94" defer></script>'+
+ '<script src="enhancements-v94.js?v=110" defer></script>'+
  '<script src="enhancements-v941.js?v=942" defer></script>'+
  '<script src="enhancements-v943.js?v=104" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v943.css?v=943">'+
@@ -65,7 +65,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v106.js?v=106" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v106.css?v=106">'+
  '<script src="enhancements-v107.js?v=107" defer></script>'+
- '<script src="enhancements-v108.js?v=108" defer></script>'+
+ '<script src="enhancements-v108.js?v=110" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v109.css?v=109">'+
  '</head>'
 );

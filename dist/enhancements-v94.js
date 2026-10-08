@@ -22,7 +22,7 @@ notificationTestDialog82=async function(){
 
 async function notificationRuleStatuses94(){
  const box=$('#notification-rule-list81');if(!box)return;
- try{const response=await apiFetch('/api/notification-check94'),data=await response.json();if(!response.ok)throw Error(data.error);const map=new Map((data.items||[]).map(x=>[String(x.id),x])),labels={disabled:'已停用',sent:'今日已發送',skipped:'今日已略過',scheduled:'今日等待發送',waiting:'等待檢查／沒有符合項目'};
+ try{const response=await apiFetch('/api/notification-check94'),data=await response.json();if(!response.ok)throw Error(data.error);const map=new Map((data.items||[]).map(x=>[String(x.id),x])),labels={disabled:'已停用',sent:'今日已發送',skipped:'今日已略過',scheduled:'等待設定時間',failed:'發送失敗', 'check-failed':'自動檢查失敗','no-match':'沒有符合項目',waiting:'沒有符合項目'};
   box.querySelectorAll('.notification-rule-row88').forEach(row=>{const id=row.querySelector('[data-notification-edit81]')?.dataset.notificationEdit81,item=map.get(String(id));if(!item)return;let badge=row.querySelector('.notification-today94');if(!badge){badge=document.createElement('small');badge.className='notification-today94';row.querySelector('div')?.append(badge)}badge.textContent=(labels[item.status]||item.status)+(item.status==='scheduled'?' · '+item.time:item.sent?' · '+item.sent+' 台':'')});if(typeof notificationSchedulerStatus108==='function')notificationSchedulerStatus108(data.scheduler);
  }catch(error){console.warn('通知狀態讀取失敗',error)}
 }
