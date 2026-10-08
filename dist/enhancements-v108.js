@@ -19,4 +19,4 @@ function notificationNextCheck111(now=Date.now()){
 }
 setInterval(()=>{const line=document.querySelector('.notification-scheduler108');if(line){const value=notificationNextCheck111();line.textContent=line.textContent.replace(/下次預計檢查：\d{2}:\d{2}/,'下次預計檢查：'+value)}},30000);
 
-document.documentElement.dataset.appVersion='11.2v';
+document.documentElement.dataset.appVersion='11.3v';

@@ -1,0 +1,7 @@
+@media(max-width:700px){
+ .header-account904 .account-menu901{flex:0 0 72px!important;width:72px!important;min-width:72px!important}
+ .header-account904 #current-role{position:relative!important;box-sizing:border-box!important;display:grid!important;grid-template-rows:1fr 1fr!important;align-items:center!important;justify-items:center!important;width:72px!important;min-width:72px!important;max-width:72px!important;height:40px!important;min-height:40px!important;padding:3px 10px 3px 5px!important;overflow:visible!important;text-overflow:clip!important;white-space:normal!important;line-height:1!important}
+ .header-account904 #current-role .account-name113{display:block;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:800;line-height:17px}
+ .header-account904 #current-role .account-role113{display:block;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:500;line-height:11px}
+ .header-account904 #current-role .account-arrow113{position:absolute;right:3px;top:50%;font-size:8px;line-height:1;transform:translateY(-50%)}
+}

@@ -15,12 +15,12 @@ function accountSyncStatus111(){
  if(!stack){
   const old=tools.querySelector('small'),button=tools.querySelector('.refresh944');
   stack=document.createElement('span');stack.className='account-stack111';
-  stack.innerHTML='<small class="account-version111">11.2v</small><small class="account-sync111">'+syncClock111()+'</small>';
+  stack.innerHTML='<small class="account-version111">11.3v</small><small class="account-sync111">'+syncClock111()+'</small>';
   if(old)old.replaceWith(stack);else tools.prepend(stack);
   if(button)tools.append(button);
  }
  const version=stack.querySelector('.account-version111'),sync=stack.querySelector('.account-sync111'),stamp=syncClock111();
- if(version.textContent!=='11.2v')version.textContent='11.2v';
+ if(version.textContent!=='11.3v')version.textContent='11.3v';
  if(sync.textContent!==stamp)sync.textContent=stamp;
 }
 
@@ -68,4 +68,4 @@ const startCloudBefore111=startCloud;
 startCloud=async function(){const result=await startCloudBefore111.apply(this,arguments);if(cloudReady){lastSuccessfulSync111=Date.now();accountSyncStatus111()}return result};
 addEventListener('load',accountSyncStatus111);accountSyncStatus111();
 
-document.documentElement.dataset.appVersion='11.2v';
+document.documentElement.dataset.appVersion='11.3v';
