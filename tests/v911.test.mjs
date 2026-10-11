@@ -20,6 +20,6 @@ test('v91.1 vertically centres a single line in copied weekly boxes',()=>{
 });
 
 test('v91.1 cache version is refreshed for amended weekly assets',()=>{
- assert.match(build,/enhancements-v91\.js\?v=911/);
+ assert.match(build,/enhancements-v91\.js\?v=114/);
  assert.match(build,/enhancements-v91\.css\?v=911/);
 });

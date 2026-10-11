@@ -17,7 +17,8 @@ const request=(path,{method='GET',body,user='staff'}={})=>new Request('https://l
 
 test('notification inbox is private to each employee and supports one or all read states',async()=>{
  const {db,env}=fixture();
- for(const row of [['a',2,'工作排程','工作提醒','FAA（製作）','2026-10-02T01:00:00Z'],['b',2,'料件紀錄','收料通知','FAA','2026-10-02T02:00:00Z'],['c',3,'其他','倉管通知','內容','2026-10-02T03:00:00Z']])db.prepare("INSERT INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) VALUES(?,?,?,?,?,'/',?,?)").run(...row.slice(0,5),'source-'+row[0],row[5]);
+ const current=new Date().toISOString(),earlier=new Date(Date.now()-60000).toISOString();
+ for(const row of [['a',2,'工作排程','工作提醒','FAA（製作）',earlier],['b',2,'料件紀錄','收料通知','FAA',current],['c',3,'其他','倉管通知','內容',current]])db.prepare("INSERT INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) VALUES(?,?,?,?,?,'/',?,?)").run(...row.slice(0,5),'source-'+row[0],row[5]);
  let response=await notificationInboxApi88(request('/api/notification-inbox'),env),data=await response.json();
  assert.equal(response.status,200);assert.equal(data.unread,2);assert.deepEqual(data.items.map(x=>x.id),['b','a']);
  response=await notificationInboxApi88(request('/api/notification-inbox',{method:'PATCH',body:{id:'b'}}),env);data=await response.json();assert.equal(data.unread,1);assert.equal(data.changed,1);
