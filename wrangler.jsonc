@@ -3,7 +3,7 @@
   "name": "rotaryteck-manage",
   "main": "dist/server/index.js",
   "compatibility_date": "2026-09-21",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "keep_vars": true,
   "vars": {
     "VAPID_PUBLIC_KEY": "BH8dUK_jdUAWRo_GnQBgeiW-240Yd-68iHkF0M9hTcKli795HMaoFqGttnCYq-pYjYmtmcadhNV75QnlsRF18dU",

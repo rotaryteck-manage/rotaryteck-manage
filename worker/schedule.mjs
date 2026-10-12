@@ -594,9 +594,11 @@ async function scheduleExtra71(request,env,employee,input){
   const missing=scheduleUnique73(projected,target.results).kept;
   for(const e of missing)statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids) VALUES(?,'weekly',?,?,?,?,?,?,?,0,'',?,?,?,?,1,?,?)").bind(crypto.randomUUID(),e.day,e.end_day,e.title,e.assignee,e.color,e.note,e.category,String(employee.id),employee.name,now,now,e.sort_index||0,e.assignee_ids||'[]'));
   statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'weekly',week,employee.name,'複製上週排程｜新增 '+missing.length+' 項',now));
+  if(missing.length&&env.audit117)statements.push(...env.audit117({id:crypto.randomUUID(),time:now,actor:employee.name,action:'複製每週排程',category:'weekly',location:'工作排程 > 每週排程',target:week,detail:'複製上週｜新增 '+missing.length+' 項｜'+JSON.stringify(missing)}));
   try{await env.DB.batch(statements)}catch(e){if(await env.DB.prepare('SELECT week FROM schedule_copies71 WHERE week=?').bind(week).first())return scheduleJSON({saved:true,already:true});throw e}return scheduleJSON({saved:true,count:missing.length,already:missing.length===0});
  }
  // SQL-only range splitting is atomic, preserving the dates outside the selected week.
+ const resetAuditBefore117=env.audit117?await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day<=? AND end_day>=?").bind(end,week).all():null;
  statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids) SELECT lower(hex(randomblob(16))),kind,?,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,?,1,sort_index,assignee_ids FROM schedule_entries WHERE kind='weekly' AND day<? AND end_day>?").bind(scheduleShift71(end,1),now,week,end));
  statements.push(env.DB.prepare("DELETE FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=?").bind(week,end));
  statements.push(env.DB.prepare("UPDATE schedule_entries SET end_day=?,revision=revision+1,updated_at=? WHERE kind='weekly' AND day<? AND end_day>=?").bind(scheduleShift71(week,-1),now,week,week));
@@ -604,6 +606,7 @@ async function scheduleExtra71(request,env,employee,input){
  statements.push(env.DB.prepare('DELETE FROM schedule_weekly_notes WHERE week_start=?').bind(week));
  statements.push(env.DB.prepare('DELETE FROM schedule_copies71 WHERE week=?').bind(week));
  statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'weekly',week,employee.name,'重置本週排程｜'+week+' 至 '+end,now));
+ if(env.audit117)statements.push(...env.audit117({id:crypto.randomUUID(),time:now,actor:employee.name,action:'重置每週排程',category:'weekly',location:'工作排程 > 每週排程',target:week,detail:'重置 '+week+' 至 '+end+'｜原安排：'+JSON.stringify(resetAuditBefore117?.results||[])}));
  await env.DB.batch(statements);return scheduleJSON({saved:true});
 }
 
@@ -620,8 +623,8 @@ async function scheduleAudited71(request,env,employee,handler){
  const label=request.method==='DELETE'?'刪除':before.length?'修改':'新增';
  const summary=(input.entries||[input]).filter(x=>x.title||x.body).map(e=>[e.title?'【'+e.title+'】':'',scheduleReadable71(e.category),scheduleReadable71(e.assignee),e.body||'',e.day?'日期 '+e.day:'',e.note||'',e.quantity?'數量 '+e.quantity:'',e.projectName||''].filter(Boolean).join('｜')).join('；');
  const body=label+'紀錄｜'+(summary||before.map(e=>e.title).join('、')||input.kind)+(input.deletions?.length?'｜移除 '+input.deletions.length+' 項':'')+(before.length?'｜修改前：'+before.map(e=>[e.day,e.title,e.category,e.quantity||'',e.author_name].join(' / ')).join('；'):'');
- const log=()=>env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(crypto.randomUUID(),kind,day,employee.name,body,new Date().toISOString());
- const logs=()=>[log(),...ids.map(id=>env.DB.prepare('INSERT OR IGNORE INTO schedule_text_refs71(id) VALUES(?)').bind(id))];
+ const log=id=>env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(id,kind,day,employee.name,body,new Date().toISOString());
+ const logs=()=>{const id=crypto.randomUUID(),time=new Date().toISOString(),detail=body+'｜原資料：'+JSON.stringify(before)+'｜儲存內容：'+JSON.stringify(input);return[log(id),...ids.map(id=>env.DB.prepare('INSERT OR IGNORE INTO schedule_text_refs71(id) VALUES(?)').bind(id)),...(env.audit117?.({id:crypto.randomUUID(),time,actor:employee.name,action:label+(kind==='weekly'?'每週排程':'每日排程'),category:kind,location:'工作排程 > '+(kind==='weekly'?'每週排程':'每日排程'),target:day,detail},id)||[])]};
  const wrap=stmt=>({_native71:stmt,bind(...args){return wrap(stmt.bind(...args))},first:()=>stmt.first(),all:()=>stmt.all(),async run(){const results=await env.DB.batch([stmt,...logs()]);return results[0]}});
  const DB={prepare(sql){const stmt=env.DB.prepare(sql);return /^(INSERT|UPDATE|DELETE)\s/i.test(sql)&&/schedule_(entries|reports|weekly_notes)\b/i.test(sql)?wrap(stmt):stmt},batch:statements=>env.DB.batch([...statements.map(s=>s._native71||s),...logs()])};
  return handler(request,{...env,DB},employee);
