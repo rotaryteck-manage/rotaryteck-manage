@@ -16,4 +16,4 @@ scheduleDayRecord56=function(...args){
  return result;
 };
 
-document.documentElement.dataset.appVersion='11.4v';
+document.documentElement.dataset.appVersion='11.5v';

@@ -9,7 +9,7 @@ function notificationSchedulerStatus108(status){
  line.classList.toggle('error',failed||overdue);
  const next=notificationNextCheck111();
  if(!status||status.status==='never'){line.textContent='自動排程：尚未收到檢查紀錄 · 下次預計檢查：'+next;return}
- const stamp=status.completed_at||status.started_at||status.scheduled_for,label=failed?'失敗':running?'檢查中':overdue?'超過 6 分鐘未更新':'成功';
+ const stamp=(running?status.started_at:status.completed_at)||status.started_at||status.scheduled_for,label=failed?'失敗':running?'檢查中'+(status.phase?'（'+status.phase+'）':''):overdue?'超過 6 分鐘未更新':'成功';
  line.textContent='最近自動檢查：'+receiptTime(stamp)+' · '+label+(status.status==='ok'?' · 符合 '+Number(status.eligible||0)+' 筆 · 送出 '+Number(status.sent||0)+' 台':'')+(status.error_message?' · '+status.error_message:'')+' · 下次預計檢查：'+next;
 }
 
@@ -19,4 +19,4 @@ function notificationNextCheck111(now=Date.now()){
 }
 setInterval(()=>{const line=document.querySelector('.notification-scheduler108');if(line){const value=notificationNextCheck111();line.textContent=line.textContent.replace(/下次預計檢查：\d{2}:\d{2}/,'下次預計檢查：'+value)}},30000);
 
-document.documentElement.dataset.appVersion='11.4v';
+document.documentElement.dataset.appVersion='11.5v';

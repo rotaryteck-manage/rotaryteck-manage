@@ -361,10 +361,11 @@ async function sendPush82(env,subscription,options){
   ('manual:'+crypto.randomUUID())
  );
 
- const receipt=await env.DB.prepare('SELECT status,attempts,updated_at FROM notification_receipts921 WHERE dedupe_key=?').bind(dedupeKey).first();
+ const cached=options.scheduler115;
+ const receipt=cached?cached.receipts.get(dedupeKey):await env.DB.prepare('SELECT status,attempts,updated_at FROM notification_receipts921 WHERE dedupe_key=?').bind(dedupeKey).first();
  if(receipt?.status==='sent')return{ok:true,duplicate:true};
  if(receipt&&Number(receipt.attempts||0)>=3)return{ok:false,duplicate:true,exhausted:true};
- const oldDelivery=await env.DB.prepare(
+ const oldDelivery=cached?cached.deliveries.get(dedupeKey):await env.DB.prepare(
   'SELECT id,status,retry_count,last_attempt_at FROM notification_deliveries WHERE dedupe_key=?'
  ).bind(dedupeKey).first();
 
@@ -383,9 +384,10 @@ async function sendPush82(env,subscription,options){
 
  const deliveryId=oldDelivery?.id||crypto.randomUUID();
  const createdAt=new Date().toISOString();
- await env.DB.prepare("INSERT INTO notification_receipts921(dedupe_key,status,attempts,created_at,updated_at) VALUES(?,'pending',1,?,?) ON CONFLICT(dedupe_key) DO UPDATE SET status='pending',attempts=notification_receipts921.attempts+1,updated_at=excluded.updated_at").bind(dedupeKey,createdAt,createdAt).run();
+ const receiptWrite=env.DB.prepare("INSERT INTO notification_receipts921(dedupe_key,status,attempts,created_at,updated_at) VALUES(?,'pending',1,?,?) ON CONFLICT(dedupe_key) DO UPDATE SET status='pending',attempts=notification_receipts921.attempts+1,updated_at=excluded.updated_at").bind(dedupeKey,createdAt,createdAt);
+ if(!cached||oldDelivery)await receiptWrite.run();
 
- const claim=oldDelivery?null:await env.DB.prepare(
+ const deliveryWrite=oldDelivery?null:env.DB.prepare(
   `INSERT OR IGNORE INTO notification_deliveries(
     id,
     rule_id,
@@ -412,7 +414,9 @@ async function sendPush82(env,subscription,options){
   'pending',
   dedupeKey,
   createdAt
- ).run();
+ );
+ const claim=deliveryWrite?(cached?(await env.DB.batch([receiptWrite,deliveryWrite,...(options.inbox115?[notificationInboxStatement115(env,employeeId,options)]:[])]))[1]:await deliveryWrite.run()):null;
+ if(cached&&oldDelivery&&options.inbox115)await notificationInboxStatement115(env,employeeId,options).run();
  if(claim&&claim.meta?.changes!==1)return {ok:false,duplicate:true};
 
  try{
@@ -535,6 +539,9 @@ async function notificationInboxCreate88(env,employeeId,options){
  await env.DB.prepare(`INSERT OR IGNORE INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(id,Number(employeeId),notificationCategory88(options.notificationType,options.category),String(options.title||'擎正科技提醒').slice(0,100),String(options.message||'您有一則新的系統通知。').slice(0,500),String(options.targetUrl||'/').slice(0,1000),sourceKey,now).run();
  return sourceKey;
 }
+function notificationInboxStatement115(env,employeeId,options){
+ return env.DB.prepare('INSERT OR IGNORE INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) VALUES(?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),Number(employeeId),notificationCategory88(options.notificationType,options.category),String(options.title||'擎正科技提醒').slice(0,100),String(options.message||'您有一則新的系統通知。').slice(0,500),String(options.targetUrl||'/').slice(0,1000),String(options.sourceKey||options.dedupeKey).slice(0,300),new Date().toISOString());
+}
 async function notificationDailyClaim921(env,limit=200){
  const day=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),now=new Date().toISOString();
  await env.DB.prepare('INSERT OR IGNORE INTO notification_daily_usage921(day,attempts,updated_at) VALUES(?,0,?)').bind(day,now).run();
@@ -542,14 +549,31 @@ async function notificationDailyClaim921(env,limit=200){
  return Number(result.meta?.changes||0)===1;
 }
 async function notificationQuota921(env,limit=200){const day=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),row=await env.DB.prepare('SELECT attempts FROM notification_daily_usage921 WHERE day=?').bind(day).first(),used=Number(row?.attempts||0);return{day,limit,used,remaining:Math.max(0,limit-used)}}
+async function notificationDailyClaim115(env){
+ const day=notificationClock85().day,now=new Date().toISOString();
+ const row=await env.DB.prepare('INSERT INTO notification_daily_usage921(day,attempts,updated_at) VALUES(?,1,?) ON CONFLICT(day) DO UPDATE SET attempts=attempts+1,updated_at=excluded.updated_at WHERE attempts<200 RETURNING attempts').bind(day,now).first();
+ return!!row;
+}
+async function notificationSchedulerCache115(env,people,plans){
+ const devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE enabled=1 ORDER BY updated_at DESC').all(),byPerson=new Map();
+ for(const device of devices.results||[]){const list=byPerson.get(Number(device.employee_id))||[];list.push(device);byPerson.set(Number(device.employee_id),list)}
+ const keys=[...new Set(plans.flatMap(plan=>(byPerson.get(Number(plan.employeeId))||[]).map(device=>plan.dedupeKey+':'+device.id)))];
+ const rows=await env.DB.batch([
+  env.DB.prepare('SELECT * FROM notification_receipts921 WHERE dedupe_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify(keys)),
+  env.DB.prepare('SELECT * FROM notification_deliveries WHERE dedupe_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify(keys))
+ ]);
+ return{people:new Map(people.map(person=>[Number(person.id),person])),devices:byPerson,receipts:new Map((rows[0].results||[]).map(row=>[row.dedupe_key,row])),deliveries:new Map((rows[1].results||[]).map(row=>[row.dedupe_key,row]))};
+}
 async function notificationDispatch88(env,employeeId,options,budget=null){
- const person=await env.DB.prepare("SELECT e.id,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.id=? AND e.status='active'").bind(Number(employeeId)).first();
+ const cached=budget?.scheduler115;
+ const person=cached?cached.people.get(Number(employeeId)):await env.DB.prepare("SELECT e.id,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.id=? AND e.status='active'").bind(Number(employeeId)).first();
  if(!person||person.enabled===0)return{sent:0,failed:0,results:[]};
- const sourceKey=await notificationInboxCreate88(env,employeeId,options),devices=await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1 ORDER BY updated_at DESC').bind(Number(employeeId)).all(),results=[],queue=[];
+ const sourceKey=cached?String(options.sourceKey||options.dedupeKey).slice(0,300):await notificationInboxCreate88(env,employeeId,options),devices=cached?{results:cached.devices.get(Number(employeeId))||[]}:await env.DB.prepare('SELECT * FROM push_subscriptions WHERE employee_id=? AND enabled=1 ORDER BY updated_at DESC').bind(Number(employeeId)).all(),results=[],queue=[];
+ if(cached&&!devices.results.length)await notificationInboxStatement115(env,employeeId,{...options,sourceKey}).run();
  let deferred=0;
- for(const device of devices.results||[]){const dedupeKey=sourceKey+':'+device.id,receipt=await env.DB.prepare('SELECT status,attempts FROM notification_receipts921 WHERE dedupe_key=?').bind(dedupeKey).first();if(receipt?.status==='sent'){results.push({ok:true,duplicate:true});continue}if(Number(receipt?.attempts||0)>=3){results.push({ok:false,duplicate:true,exhausted:true});continue}if(budget&&budget.remaining<=0){deferred++;continue}if(!await notificationDailyClaim921(env)){deferred++;continue}if(budget)budget.remaining--;queue.push({device,dedupeKey})}
- for(let index=0;index<queue.length;index+=4){const batch=queue.slice(index,index+4);results.push(...await Promise.all(batch.map(async item=>{try{return await sendPush82(env,item.device,{...options,employeeId:Number(employeeId),dedupeKey:item.dedupeKey})}catch(error){return{ok:false,error:error?.message||String(error)}}})))}
- return{sent:results.filter(x=>x.ok).length,failed:results.filter(x=>!x.ok&&!x.duplicate).length,deferred,results};
+ for(const device of devices.results||[]){if(budget?.signal?.aborted)throw budget.signal.reason;const dedupeKey=sourceKey+':'+device.id,receipt=cached?cached.receipts.get(dedupeKey):await env.DB.prepare('SELECT status,attempts FROM notification_receipts921 WHERE dedupe_key=?').bind(dedupeKey).first();if(receipt?.status==='sent'){results.push({ok:true,duplicate:true});continue}if(Number(receipt?.attempts||0)>=3){results.push({ok:false,duplicate:true,exhausted:true});continue}if(budget&&budget.remaining<=0){deferred++;continue}if(!(cached?await notificationDailyClaim115(env):await notificationDailyClaim921(env))){deferred++;continue}if(budget)budget.remaining--;queue.push({device,dedupeKey})}
+ for(let index=0;index<queue.length;index+=4){if(budget?.signal?.aborted)throw budget.signal.reason;const batch=queue.slice(index,index+4);results.push(...await Promise.all(batch.map(async item=>{try{return await sendPush82(env,item.device,{...options,sourceKey,inbox115:!!cached,employeeId:Number(employeeId),dedupeKey:item.dedupeKey,scheduler115:cached})}catch(error){return{ok:false,error:error?.message||String(error)}}})))}
+ return{sent:results.filter(x=>x.ok&&(!cached||!x.duplicate)).length,failed:results.filter(x=>!x.ok&&!x.duplicate).length,deferred,results};
 }
 
 function leaveRecord102(row){if(!row)return null;let people=[];try{people=JSON.parse(row.people||'[]')}catch{}return{...row,people};}
@@ -915,7 +939,7 @@ async function runClosureRules90(env,rules,clock=Date.now(),budget=null,suppress
  const checks=new Map();
  for(const rule of rules.filter(x=>x.enabled&&x.type==='closure')){
   const city=rule.city||'高雄市',district=rule.district||'左營區',key='closure:'+city+':'+district,now=new Date(clock).toISOString();let checkResult=checks.get(key);
-  if(!checkResult){const previous=await env.DB.prepare('SELECT * FROM notification_source_state90 WHERE source_key=?').bind(key).first();let result;try{result=await fetchClosureStatus90(city,district)}catch(error){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({city,district,error:error.message||String(error)}),now).run();checks.set(key,{skip:true});continue}if(!closureDateActive901(result,day)){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({...result,city,district,stale:true}),now).run();checks.set(key,{skip:true});continue}const changed=closureStateChanged902(result,previous),detail=JSON.stringify({...result,city,district});await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET status=excluded.status,source_id=excluded.source_id,effective_date=excluded.effective_date,detail=excluded.detail,checked_at=excluded.checked_at,changed_at=CASE WHEN excluded.status<>notification_source_state90.status OR excluded.source_id<>notification_source_state90.source_id OR excluded.effective_date<>notification_source_state90.effective_date THEN excluded.changed_at ELSE notification_source_state90.changed_at END").bind(key,result.status,result.sourceId,result.effectiveDate,detail,now,changed?now:(previous?.changed_at||'')).run();checkResult={result,changed,previous};checks.set(key,checkResult)}
+  if(!checkResult){const previous=await env.DB.prepare('SELECT * FROM notification_source_state90 WHERE source_key=?').bind(key).first();let result;try{result=await fetchClosureStatus90(city,district,fetch,budget?.signal)}catch(error){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({city,district,error:error.message||String(error)}),now).run();checks.set(key,{skip:true});continue}if(!closureDateActive901(result,day)){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({...result,city,district,stale:true}),now).run();checks.set(key,{skip:true});continue}const changed=closureStateChanged902(result,previous),detail=JSON.stringify({...result,city,district});await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET status=excluded.status,source_id=excluded.source_id,effective_date=excluded.effective_date,detail=excluded.detail,checked_at=excluded.checked_at,changed_at=CASE WHEN excluded.status<>notification_source_state90.status OR excluded.source_id<>notification_source_state90.source_id OR excluded.effective_date<>notification_source_state90.effective_date THEN excluded.changed_at ELSE notification_source_state90.changed_at END").bind(key,result.status,result.sourceId,result.effectiveDate,detail,now,changed?now:(previous?.changed_at||'')).run();checkResult={result,changed,previous};checks.set(key,checkResult)}
   if(checkResult.skip)continue;const {result,changed,previous}=checkResult;
   if(!changed||result.status==='unknown'||result.status==='open'&&previous?.status!=='closed')continue;
   for(const person of await ruleRecipients90(env,rule)){const blocked=suppressed.get(rule.id);if(blocked&&(blocked.has('*')||blocked.has(String(person.id))))continue;const values={人員:person.name,日期:result.effectiveDate,通知名稱:rule.name,縣市:city,行政區:district,停班日期:result.effectiveDate,停班狀態:result.status==='closed'?'停止上班':'恢復上班',公告時間:result.announcedAt||''};await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'closure',category:rule.category||'停班提醒',title:template90(rule.title,values),message:template90(rule.message,values),targetUrl:'/?notificationDay='+encodeURIComponent(result.effectiveDate)+'#schedule',sourceKey:'closure:'+rule.id+':'+result.effectiveDate+':'+result.sourceId+':'+result.status+':'+person.id},budget)}
@@ -923,7 +947,8 @@ async function runClosureRules90(env,rules,clock=Date.now(),budget=null,suppress
 }
 async function notificationRuleSuppressions921(env,rules,now){
  const {day,time}=notificationClock85(now),result=new Map(),stamp=new Date(now).toISOString();
- for(const rule of rules){const recipients=(rule.recipientIds||[]).map(String).sort(),fingerprint=JSON.stringify({enabled:rule.enabled,type:rule.type,time:rule.time,firstDays:rule.firstDays,repeatDays:rule.repeatDays,target:rule.target,startDate:rule.startDate||'',city:rule.city||'',district:rule.district||'',materialCategories:rule.materialCategories||[]}),old=await env.DB.prepare('SELECT * FROM notification_rule_state921 WHERE rule_id=?').bind(rule.id).first();let suppressDay=old?.suppress_day||'',suppressed=[];try{suppressed=JSON.parse(old?.suppressed_ids||'[]')}catch{}
+ const rows=await env.DB.prepare('SELECT * FROM notification_rule_state921').all(),byId=new Map((rows.results||[]).map(row=>[row.rule_id,row])),writes=[];
+ for(const rule of rules){const recipients=(rule.recipientIds||[]).map(String).sort(),fingerprint=JSON.stringify({enabled:rule.enabled,type:rule.type,time:rule.time,firstDays:rule.firstDays,repeatDays:rule.repeatDays,target:rule.target,startDate:rule.startDate||'',city:rule.city||'',district:rule.district||'',materialCategories:rule.materialCategories||[]}),old=byId.get(rule.id);let suppressDay=old?.suppress_day||'',suppressed=[];try{suppressed=JSON.parse(old?.suppressed_ids||'[]')}catch{}
   if(old){let previous=[];try{previous=JSON.parse(old.recipient_ids||'[]')}catch{}const added=recipients.filter(id=>!previous.includes(id));if(day!==suppressDay)suppressed=[];if(time>=rule.time){
     if(old.fingerprint!==fingerprint){
      const changedAt=Date.parse(rule.updatedAt||'');const changed=Number.isFinite(changedAt)?notificationClock85(changedAt):null;
@@ -933,14 +958,17 @@ async function notificationRuleSuppressions921(env,rules,now){
     }else suppressed=[...new Set([...suppressed,...added])];
     if(suppressed.length)suppressDay=day;
    }}
-  await env.DB.prepare("INSERT INTO notification_rule_state921(rule_id,fingerprint,recipient_ids,suppress_day,suppressed_ids,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(rule_id) DO UPDATE SET fingerprint=excluded.fingerprint,recipient_ids=excluded.recipient_ids,suppress_day=excluded.suppress_day,suppressed_ids=excluded.suppressed_ids,updated_at=excluded.updated_at").bind(rule.id,fingerprint,JSON.stringify(recipients),suppressDay,JSON.stringify(suppressed),stamp).run();
+  writes.push({id:rule.id,fingerprint,recipients:JSON.stringify(recipients),suppressDay,suppressed:JSON.stringify(suppressed),stamp});
   if(suppressDay===day&&suppressed.length)result.set(rule.id,new Set(suppressed));
  }
+ if(writes.length)await env.DB.prepare("INSERT INTO notification_rule_state921(rule_id,fingerprint,recipient_ids,suppress_day,suppressed_ids,updated_at) SELECT json_extract(value,'$.id'),json_extract(value,'$.fingerprint'),json_extract(value,'$.recipients'),json_extract(value,'$.suppressDay'),json_extract(value,'$.suppressed'),json_extract(value,'$.stamp') FROM json_each(?) WHERE 1 ON CONFLICT(rule_id) DO UPDATE SET fingerprint=excluded.fingerprint,recipient_ids=excluded.recipient_ids,suppress_day=excluded.suppress_day,suppressed_ids=excluded.suppressed_ids,updated_at=excluded.updated_at").bind(JSON.stringify(writes)).run();
  return result;
 }
 async function notificationInitialRecipients921(env,rules,plans,now){
  const {day,time}=notificationClock85(now),allowed=new Map();
- for(const rule of rules.filter(item=>item.enabled&&time>=item.time&&!['material','holiday','closure'].includes(item.type))){let row=await env.DB.prepare('SELECT eligible_ids FROM notification_rule_run921 WHERE rule_id=? AND day=?').bind(rule.id,day).first();if(!row){const ids=[...new Set(plans.filter(plan=>plan.ruleId===rule.id).map(plan=>String(plan.employeeId)))];await env.DB.prepare('INSERT OR IGNORE INTO notification_rule_run921(rule_id,day,eligible_ids,checked_at) VALUES(?,?,?,?)').bind(rule.id,day,JSON.stringify(ids),new Date(now).toISOString()).run();row={eligible_ids:JSON.stringify(ids)}}let ids=[];try{ids=JSON.parse(row.eligible_ids||'[]')}catch{}allowed.set(rule.id,new Set(ids))}
+ const rows=await env.DB.prepare('SELECT rule_id,eligible_ids FROM notification_rule_run921 WHERE day=?').bind(day).all(),byId=new Map((rows.results||[]).map(row=>[row.rule_id,row])),writes=[];
+ for(const rule of rules.filter(item=>item.enabled&&time>=item.time&&!['material','holiday','closure','leave'].includes(item.type))){let row=byId.get(rule.id);if(!row){const ids=[...new Set(plans.filter(plan=>plan.ruleId===rule.id).map(plan=>String(plan.employeeId)))];writes.push({id:rule.id,ids:JSON.stringify(ids)});row={eligible_ids:JSON.stringify(ids)}}let ids=[];try{ids=JSON.parse(row.eligible_ids||'[]')}catch{}allowed.set(rule.id,new Set(ids))}
+ if(writes.length)await env.DB.prepare("INSERT OR IGNORE INTO notification_rule_run921(rule_id,day,eligible_ids,checked_at) SELECT json_extract(value,'$.id'),?,json_extract(value,'$.ids'),? FROM json_each(?)").bind(day,new Date(now).toISOString(),JSON.stringify(writes)).run();
  return allowed;
 }
 async function retryNotifications921(env,budget){
@@ -951,42 +979,74 @@ async function cleanupNotificationHistory921(env,now=Date.now()){
  const clock=typeof now==='number'?now:Date.parse(now),safe=Number.isFinite(clock)?clock:Date.now(),logs=new Date(safe-90*86400000).toISOString(),receipts=new Date(safe-400*86400000).toISOString(),usage=new Date(safe-14*86400000).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
  await env.DB.batch([env.DB.prepare('DELETE FROM notification_deliveries WHERE created_at<?').bind(logs),env.DB.prepare('DELETE FROM notification_test_audit92 WHERE created_at<?').bind(logs),env.DB.prepare('DELETE FROM notification_receipts921 WHERE updated_at<?').bind(receipts),env.DB.prepare('DELETE FROM notification_daily_usage921 WHERE day<?').bind(usage),env.DB.prepare('DELETE FROM notification_rule_run921 WHERE day<?').bind(usage)]);
 }
-export async function runNotifications85(env,now=Date.now()){
+async function notificationPhase115(env,context,phase,details={}){
+ if(context?.signal?.aborted)throw context.signal.reason;
+ if(!context)return;
+ await env.DB.prepare("INSERT INTO notification_diagnostics115(id,run_id,scheduled_for,phase,updated_at,details) VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET phase=excluded.phase,updated_at=excluded.updated_at,details=excluded.details WHERE notification_diagnostics115.run_id=excluded.run_id OR notification_diagnostics115.scheduled_for<excluded.scheduled_for").bind(context.runId,new Date(context.now).toISOString(),phase,new Date().toISOString(),JSON.stringify(details)).run();
+}
+async function notificationState115(env){
+ const ready=await env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1').first();
+ if(!ready){const legacy=await legacyCompanyRow(env);return legacy?JSON.parse(legacy.body):{notificationRules:[]}}
+ const result=await env.DB.prepare("SELECT record_key,body FROM state_records WHERE body IS NOT NULL AND (record_key=? OR json_extract(record_key,'$[0]') IN ('wireTypes','wireReels','platingProjects') OR (json_extract(record_key,'$[0]')='order' AND json_extract(record_key,'$[1]') IN ('wireTypes','wireReels','platingProjects')))").bind(recordKey('root','notificationRules')).all(),records=Object.create(null);
+ for(const row of result.results||[])records[row.record_key]=JSON.parse(row.body);
+ return joinRecords(records);
+}
+export async function runNotifications85(env,now=Date.now(),context=null){
+ await notificationPhase115(env,context,'讀取通知設定');
  await cleanupNotificationHistory921(env,now);
- const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[];if(!rules.some(r=>r.enabled))return{checked:true,planned:0,eligible:0,remainingBudget:32};
+ const state=context?await notificationState115(env):JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[];if(!rules.some(r=>r.enabled))return{checked:true,planned:0,eligible:0,remainingBudget:32};
  const invalid=[];const validRules=notificationValidRules103(rules,(rule,error)=>{invalid.push({id:String(rule?.id||''),error:error?.message||String(error)});console.error('略過格式錯誤的通知規則',rule?.id||'(無編號)',error?.message||String(error))});
  const enabledRules=validRules.filter(rule=>rule.enabled);if(!enabledRules.length)return{checked:true,planned:0,eligible:0,invalidRules:invalid.length,remainingBudget:32};
  const day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
  const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(day,day).all(),reports=await env.DB.prepare("SELECT r.entry_id,r.author_id,r.body,r.photo_key,(SELECT COUNT(*) FROM schedule_report_photos p WHERE p.report_id=r.id) AS photo_count FROM schedule_reports r WHERE r.day=?").bind(day).all();
- const people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'").all();
- for(const person of people.results){await employeePermissions(env,person);const cap=rule=>['work','report','report-check'].includes(rule.type)?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationCaps85=Object.fromEntries(enabledRules.map(r=>[r.id,!cap(r)||permitted(person,cap(r))]));}
- const delivery={sent:0,failed:0,deferred:0},budget={remaining:32};await retryNotifications921(env,budget);const suppressed=await notificationRuleSuppressions921(env,enabledRules,now),plans=notificationPlan85(enabledRules,state,entries.results,reports.results,people.results,now),initialRecipients=await notificationInitialRecipients921(env,enabledRules,plans,now);
+ if(!context)await ensurePermissions(env);
+ const people=await env.DB.prepare("SELECT e.id,e.name,e.role,COALESCE(n.enabled,1) AS enabled,x.profile_id,p.permissions AS profile_permissions,b.permissions AS builtin_permissions FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id LEFT JOIN app_employee_settings x ON x.employee_id=e.id LEFT JOIN app_permission_profiles p ON p.id=x.profile_id LEFT JOIN app_permission_profiles b ON b.id=e.role WHERE e.status='active'").all();
+ for(const person of people.results){const custom=person.role==='viewer'&&person.profile_id,stored=custom?person.profile_permissions:person.builtin_permissions;person.permissions=stored?JSON.parse(stored):custom?[]:(builtinProfiles.find(p=>p.id===person.role)||builtinProfiles[2]).permissions;const cap=rule=>['work','report','report-check'].includes(rule.type)?'schedule.view':rule.type==='custom'?'':rule.type+'.view';person.notificationCaps85=Object.fromEntries(enabledRules.map(r=>[r.id,!cap(r)||permitted(person,cap(r))]));}
+ const delivery={sent:0,failed:0,deferred:0},budget={remaining:32,signal:context?.signal};const suppressed=await notificationRuleSuppressions921(env,enabledRules,now),plans=notificationPlan85(enabledRules,state,entries.results,reports.results,people.results,now),initialRecipients=await notificationInitialRecipients921(env,enabledRules,plans,now);
  const dispatchable=plans.filter(plan=>{if(!people.results.find(p=>p.id===plan.employeeId)?.notificationCaps85[plan.ruleId])return false;const initial=initialRecipients.get(plan.ruleId);if(initial&&!initial.has(String(plan.employeeId)))return false;const blocked=suppressed.get(plan.ruleId);return!(blocked&&(blocked.has('*')||blocked.has(String(plan.employeeId))))}),groups=new Map();
+ const details={rules:enabledRules.map(rule=>({id:rule.id,planned:plans.filter(p=>p.ruleId===rule.id).length,eligible:dispatchable.filter(p=>p.ruleId===rule.id).length,initialEmpty:initialRecipients.has(rule.id)&&initialRecipients.get(rule.id).size===0,suppressed:suppressed.has(rule.id)})),invalid};
+ await notificationPhase115(env,context,'發送當日通知',details);
+ budget.scheduler115=await notificationSchedulerCache115(env,people.results,plans.filter(plan=>!['wire','plating'].includes(plan.notificationType)));
  for(const plan of dispatchable){const key=['wire','plating'].includes(plan.notificationType)?plan.ruleId+':'+plan.employeeId+':'+plan.notificationType:plan.dedupeKey;groups.set(key,[...(groups.get(key)||[]),plan])}
- for(const group of groups.values()){const plan=group[0];try{const result=await notificationDispatchBatch93(env,plan.employeeId,group,budget);delivery.sent+=Number(result?.sent||0);delivery.failed+=Number(result?.failed||0);delivery.deferred+=Number(result?.deferred||0)}catch(error){delivery.failed++;console.error('單筆通知失敗',plan.notificationType,plan.employeeId,error?.message||String(error))}}
+ for(const group of groups.values()){if(context?.signal?.aborted)throw context.signal.reason;const plan=group[0];try{const useCache=group.length===1&&!['wire','plating'].includes(plan.notificationType),sendBudget=useCache?budget:{remaining:budget.remaining,signal:budget.signal};const result=await notificationDispatchBatch93(env,plan.employeeId,group,sendBudget);budget.remaining=sendBudget.remaining;delivery.sent+=Number(result?.sent||0);delivery.failed+=Number(result?.failed||0);delivery.deferred+=Number(result?.deferred||0)}catch(error){delivery.failed++;console.error('單筆通知失敗',plan.notificationType,plan.employeeId,error?.message||String(error))}}
+ delete budget.scheduler115;
+ await notificationPhase115(env,context,'重試未送達通知',details);
+ await retryNotifications921(env,budget);
+ await notificationPhase115(env,context,'檢查假日與停班公告',details);
  try{await runHolidayRules90(env,enabledRules,now,budget,suppressed)}catch(error){console.error('國定假日通知檢查失敗',error?.message||String(error))}
  try{await runClosureRules90(env,enabledRules,now,budget,suppressed)}catch(error){console.error('停班通知檢查失敗',error?.message||String(error))}
+ await notificationPhase115(env,context,'完成',details);
  return{checked:true,planned:plans.length,eligible:dispatchable.length,invalidRules:invalid.length,remainingBudget:budget.remaining,...delivery};
 }
 export async function runScheduledNotifications108(env,scheduledTime=Date.now()){
  const scheduledFor=new Date(scheduledTime).toISOString(),startedAt=new Date().toISOString();
  await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='failed',error_message='前一次自動檢查逾時，已由下一輪重新檢查' WHERE id=1 AND status='running' AND started_at<?").bind(startedAt,new Date(Date.now()-2*60*1000).toISOString()).run();
  await env.DB.prepare("INSERT INTO notification_scheduler_status108(id,scheduled_for,started_at,completed_at,status,planned,eligible,sent,failed,deferred,error_message) VALUES(1,?,?,'','running',0,0,0,0,0,'') ON CONFLICT(id) DO UPDATE SET scheduled_for=excluded.scheduled_for,started_at=excluded.started_at,status='running',error_message=''").bind(scheduledFor,startedAt).run();
- let timer;
+ let timer;const controller=new AbortController(),context={runId:crypto.randomUUID(),now:scheduledTime,signal:controller.signal};
  try{
-  const result=await Promise.race([runNotifications85(env,scheduledTime),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('自動檢查超過 45 秒，已中止並等待下一輪')),45000)})]),completedAt=new Date().toISOString();
-  await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='ok',planned=?,eligible=?,sent=?,failed=?,deferred=?,error_message='' WHERE id=1").bind(completedAt,Number(result?.planned||0),Number(result?.eligible||0),Number(result?.sent||0),Number(result?.failed||0),Number(result?.deferred||0)).run();
+  const result=await Promise.race([runNotifications85(env,scheduledTime,context),new Promise((_,reject)=>{timer=setTimeout(()=>{const error=Error('自動檢查超過 45 秒，已中止並等待下一輪');controller.abort(error);reject(error)},45000)})]),completedAt=new Date().toISOString();
+  await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='ok',planned=?,eligible=?,sent=?,failed=?,deferred=?,error_message='' WHERE id=1 AND scheduled_for=? AND started_at=?").bind(completedAt,Number(result?.planned||0),Number(result?.eligible||0),Number(result?.sent||0),Number(result?.failed||0),Number(result?.deferred||0),scheduledFor,startedAt).run();
   return result;
  }catch(error){
   const message=String(error?.message||error||'通知排程失敗').slice(0,500);
-  await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='failed',error_message=? WHERE id=1").bind(new Date().toISOString(),message).run();
+  await env.DB.prepare("UPDATE notification_scheduler_status108 SET completed_at=?,status='failed',error_message=? WHERE id=1 AND scheduled_for=? AND started_at=?").bind(new Date().toISOString(),message,scheduledFor,startedAt).run();
   throw error;
  }finally{if(timer)clearTimeout(timer)}
 }
 async function notificationSchedulerStatus108(env){
  const row=await env.DB.prepare('SELECT * FROM notification_scheduler_status108 WHERE id=1').first();if(!row)return{status:'never',overdue:true,intervalMinutes:3};
- const stamp=Date.parse(row.completed_at||row.started_at||''),overdue=!Number.isFinite(stamp)||Date.now()-stamp>6*60*1000;
- return{...row,status:row.status==='running'&&overdue?'failed':row.status,intervalMinutes:3,overdue,error_message:row.status==='running'&&overdue?'自動檢查逾時，下一輪會重新執行':row.error_message};
+ const stamp=Date.parse(row.status==='running'?row.started_at:row.completed_at||row.started_at||''),overdue=!Number.isFinite(stamp)||Date.now()-stamp>(row.status==='running'?60000:6*60*1000);
+ const diagnostic=await env.DB.prepare('SELECT phase,scheduled_for FROM notification_diagnostics115 WHERE id=1').first(),phase=diagnostic?.scheduled_for===row.scheduled_for?diagnostic.phase:'';
+ return{...row,phase,status:row.status==='running'&&overdue?'failed':row.status,intervalMinutes:3,overdue,error_message:row.status==='running'&&overdue?'自動檢查逾時'+(phase?'（'+phase+'）':'')+'，下一輪會重新執行':row.error_message};
+}
+async function notificationRuleDiagnostics115(env,state,rules,clock){
+ const rows=await env.DB.batch([
+  env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?").bind(clock.day,clock.day),
+  env.DB.prepare('SELECT entry_id,author_id,body,photo_key,(SELECT COUNT(*) FROM schedule_report_photos p WHERE p.report_id=r.id) AS photo_count FROM schedule_reports r WHERE day=?').bind(clock.day),
+  env.DB.prepare("SELECT e.id,e.name,COALESCE(n.enabled,1) AS enabled,(SELECT COUNT(*) FROM push_subscriptions s WHERE s.employee_id=e.id AND s.enabled=1) AS devices FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active'"),
+  env.DB.prepare('SELECT rule_id,eligible_ids FROM notification_rule_run921 WHERE day=?').bind(clock.day)
+ ]),valid=notificationValidRules103(rules),invalid=new Set(rules.filter(r=>!valid.some(v=>v.id===r.id)).map(r=>r.id)),plans=notificationPlan85(valid,state,rows[0].results,rows[1].results,rows[2].results),initial=new Map(rows[3].results.map(r=>[r.rule_id,JSON.parse(r.eligible_ids||'[]')]));
+ return new Map(rules.map(rule=>{const matching=plans.filter(p=>p.ruleId===rule.id),ids=initial.get(rule.id);let reason=invalid.has(rule.id)?'invalid':!matching.length?'no-match':ids&&matching.every(p=>!ids.includes(String(p.employeeId)))?'initial-blocked':matching.every(p=>!rows[2].results.find(person=>person.id===p.employeeId)?.devices)?'no-device':'pending';return[rule.id,{reason,planned:matching.length}]}));
 }
 export async function notificationCheckApi94(request,env){
  const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
@@ -997,7 +1057,8 @@ export async function notificationCheckApi94(request,env){
  if(request.method!=='GET')return json({error:'不支援的操作'},405);
  try{
   const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[],clock=notificationClock85(),start=new Date(clock.day+'T00:00:00+08:00').toISOString(),rows=await env.DB.prepare("SELECT rule_id,SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent,SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed FROM notification_deliveries WHERE created_at>=? GROUP BY rule_id").bind(start).all(),delivery=new Map((rows.results||[]).map(row=>[String(row.rule_id),{sent:Number(row.sent||0),failed:Number(row.failed||0)}])),states=await env.DB.prepare('SELECT rule_id,suppress_day,suppressed_ids FROM notification_rule_state921').all(),suppressed=new Map((states.results||[]).map(row=>[String(row.rule_id),row])),scheduler=await notificationSchedulerStatus108(env);
-  return json({scheduler,items:rules.map(rule=>{const counts=delivery.get(String(rule.id))||{sent:0,failed:0},row=suppressed.get(String(rule.id));let blocked=[];try{blocked=JSON.parse(row?.suppressed_ids||'[]')}catch{}const skipped=row?.suppress_day===clock.day&&blocked.includes('*'),schedulerFailed=scheduler.status==='failed'||scheduler.overdue;return{id:rule.id,status:!rule.enabled?'disabled':counts.sent?'sent':skipped?'skipped':clock.time<rule.time?'scheduled':counts.failed?'failed':schedulerFailed?'check-failed':'no-match',sent:counts.sent,time:rule.time};})});
+  const diagnostics=await notificationRuleDiagnostics115(env,state,rules,clock);
+  return json({scheduler,items:rules.map(rule=>{const counts=delivery.get(String(rule.id))||{sent:0,failed:0},row=suppressed.get(String(rule.id));let blocked=[];try{blocked=JSON.parse(row?.suppressed_ids||'[]')}catch{}const skipped=row?.suppress_day===clock.day&&blocked.includes('*'),schedulerFailed=scheduler.status==='failed'||scheduler.overdue,diagnostic=diagnostics.get(rule.id),eventDriven=['material','leave','holiday','closure'].includes(rule.type);return{id:rule.id,status:!rule.enabled?'disabled':counts.sent?'sent':skipped?'skipped':clock.time<rule.time?'scheduled':counts.failed?'failed':schedulerFailed?'check-failed':eventDriven?'waiting-event':diagnostic?.reason||'no-match',sent:counts.sent,time:rule.time,planned:diagnostic?.planned||0};})});
  }catch(error){return json({error:'無法讀取今日通知狀態'},503)}
 }
 async function materialNotification88(env,employee,form){

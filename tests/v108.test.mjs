@@ -28,9 +28,9 @@ test('10.8v renders only a compact scheduler status line in notification setting
  const ctx=vm.createContext({document:{querySelector:()=>tools,documentElement:{dataset:{}}},receiptTime:value=>value,console,Intl,Date,setInterval:()=>0});
  vm.runInContext(js,ctx);ctx.notificationSchedulerStatus108({status:'ok',overdue:false,completed_at:'2026-10-07T10:21:01Z',eligible:2,sent:1});
  assert.match(line.textContent,/最近自動檢查/);assert.match(line.textContent,/符合 2 筆/);assert.match(line.textContent,/送出 1 台/);
- assert.match(build,/enhancements-v108\.js\?v=110/);
+ assert.match(build,/enhancements-v108\.js\?v=115/);
 });
 
-test('11.4v version label is consistent',()=>{
- for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/11\.4v/,name);
+test('11.5v version label is consistent',()=>{
+ for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/11\.5v/,name);
 });

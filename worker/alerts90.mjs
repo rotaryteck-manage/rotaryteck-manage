@@ -30,10 +30,11 @@ export function closureDateActive901(result,day){
 export function closureStateChanged902(result,previous){
  return result?.status!=='unknown'&&(result?.status!==previous?.status||result?.effectiveDate!==previous?.effective_date);
 }
-export async function fetchClosureStatus90(city='高雄市',district='左營區',fetcher=fetch){
- const response=await fetcher(closureFeed90,{signal:AbortSignal.timeout(9000),headers:{Accept:'application/atom+xml, application/xml, text/xml'}});if(!response.ok)throw Error('官方停班資料暫時無法讀取');const xml=await response.text();if(xml.length>1500000)throw Error('官方停班資料過大');
+export async function fetchClosureStatus90(city='高雄市',district='左營區',fetcher=fetch,parentSignal=null){
+ const deadline=AbortSignal.timeout(20000),signal=parentSignal?AbortSignal.any([parentSignal,deadline]):deadline;
+ const response=await fetcher(closureFeed90,{signal:AbortSignal.any([signal,AbortSignal.timeout(9000)]),headers:{Accept:'application/atom+xml, application/xml, text/xml'}});if(!response.ok)throw Error('官方停班資料暫時無法讀取');const xml=await response.text();if(xml.length>1500000)throw Error('官方停班資料過大');
  let result=parseClosureFeed90(xml,city,district);if(result.status!=='unknown')return result;
  const links=[...xml.matchAll(/(?:href=["']|<link>)(https:\/\/alerts\.ncdr\.nat\.gov\.tw\/[^"'<\s]+)/gi)].map(x=>x[1].replaceAll('&amp;','&')).slice(0,8);
- for(const url of links){try{const detail=await fetcher(url,{signal:AbortSignal.timeout(7000)});if(!detail.ok)continue;const parsed=parseClosureFeed90(await detail.text(),city,district);if(parsed.status!=='unknown'&&(!result.announcedAt||parsed.announcedAt>result.announcedAt))result=parsed}catch{}}
+ for(const url of links){if(signal.aborted)throw signal.reason;try{const detail=await fetcher(url,{signal:AbortSignal.any([signal,AbortSignal.timeout(7000)])});if(!detail.ok)continue;const parsed=parseClosureFeed90(await detail.text(),city,district);if(parsed.status!=='unknown'&&(!result.announcedAt||parsed.announcedAt>result.announcedAt))result=parsed}catch{}}
  return result;
 }
