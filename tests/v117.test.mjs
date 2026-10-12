@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
 import {createECDH,randomBytes} from 'node:crypto';
 import webpush from 'web-push';
 import {database} from './helpers/d1.mjs';
@@ -75,7 +76,7 @@ test('11.7v daily and weekly writes, edits, deletion and copying enter the exist
 });
 
 test('11.7v new styles are scoped; first-save routing, fixed header and names do not alter existing form logic',()=>{
- const css=fs.readFileSync('dist/meetings117.css','utf8'),js=fs.readFileSync('dist/meetings117.js','utf8');assert.ok(css.split('}').filter(x=>x.includes('{')&&!x.includes('@media')).every(x=>x.includes('.meeting-')));assert.match(js,/notificationMeeting/);assert.match(js,/setRangeText\('\('\+person.name\+'\)'/);assert.match(js,/meeting-head-actions117/);assert.match(js,/meetingRefreshAllowedBefore117/);assert.match(js,/已停用/);
+ const css=fs.readFileSync('dist/meetings117.css','utf8'),js=fs.readFileSync('dist/meetings117.js','utf8');new vm.Script(js);assert.ok(css.split('}').filter(x=>x.includes('{')&&!x.includes('@media')).every(x=>x.includes('.meeting-')));assert.match(js,/notificationMeeting/);assert.match(js,/setRangeText\('\('\+person.name\+'\)'/);assert.match(js,/meeting-head-actions117/);assert.match(js,/meetingRefreshAllowedBefore117/);assert.match(js,/已停用/);
 });
 
 test('11.7v signed immediate background sends are authenticated and each recipient runs independently',async()=>{
