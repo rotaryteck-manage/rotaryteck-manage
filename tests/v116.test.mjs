@@ -29,7 +29,7 @@ test('11.6v VAPID uses a verified ES256 signature, exact push-service audience a
 
 test('11.6v provider acceptance, rejection and redirects retain safe delivery semantics',async()=>{
  const {subscription}=device(),options={vapidDetails:{...webpush.generateVAPIDKeys(),subject:'mailto:test@local.test'},TTL:3600,timeout:15000};
- const result=await sendNativePush116(subscription,'測試',options,async(url,request)=>{assert.equal(url,subscription.endpoint);assert.equal(request.redirect,'error');assert.equal(request.headers['Content-Encoding'],'aes128gcm');assert.equal(request.headers.TTL,'3600');assert.ok(request.signal);return new Response(null,{status:201})});assert.equal(result.statusCode,201);
+ const result=await sendNativePush116(subscription,'測試',options,async(url,request)=>{assert.equal(url,subscription.endpoint);assert.equal(request.redirect,'manual');assert.equal(request.headers['Content-Encoding'],'aes128gcm');assert.equal(request.headers.TTL,'3600');assert.ok(request.signal);return new Response(null,{status:201})});assert.equal(result.statusCode,201);
  await assert.rejects(sendNativePush116(subscription,'測試',options,async()=>new Response('expired',{status:410})),error=>error.statusCode===410&&error.body==='expired');
  await assert.rejects(encryptPush116(subscription,'a'.repeat(3994)),/長度限制/);
 });

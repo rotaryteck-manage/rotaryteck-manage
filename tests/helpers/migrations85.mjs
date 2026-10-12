@@ -11,4 +11,7 @@ export function migrations85(db){
    db.exec(statement);
   }
  }
+ // Legacy fixtures describe new events after a historical deployment boundary.
+ // 12.3 tests explicitly set a later cutoff to exercise upgrade safety.
+ db.exec("UPDATE notification_release123 SET cutoff='1970-01-01T00:00:00.000Z' WHERE singleton=1");
 }

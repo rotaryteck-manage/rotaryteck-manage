@@ -37,7 +37,7 @@ export async function sendNativePush116(subscription,payload,options,fetcher=fet
  const endpoint=new URL(subscription.endpoint);
  if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password)throw Error('推播網址不正確');
  const [body,authorization]=await Promise.all([encryptPush116(subscription,payload),pushAuthorization116(endpoint.href,options.vapidDetails)]);
- const response=await fetcher(endpoint.href,{method:'POST',redirect:'error',signal:AbortSignal.timeout(options.timeout||15000),headers:{Authorization:authorization,'Content-Encoding':'aes128gcm','Content-Type':'application/octet-stream',TTL:String(options.TTL||3600),Urgency:'normal'},body});
+ const response=await fetcher(endpoint.href,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(options.timeout||15000),headers:{Authorization:authorization,'Content-Encoding':'aes128gcm','Content-Type':'application/octet-stream',TTL:String(options.TTL||3600),Urgency:'normal'},body});
  if(!response.ok){const error=Error('推播服務回應 HTTP '+response.status);error.statusCode=response.status;error.body=(await response.text()).slice(0,1000);throw error}
  await response.body?.cancel();return{statusCode:response.status};
 }
