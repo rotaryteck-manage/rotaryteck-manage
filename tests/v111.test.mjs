@@ -26,7 +26,7 @@ test('11.6v silently refreshes only after five idle minutes and preserves exact 
 
 test('11.6v stacks equal-size version and last data update boxes',()=>{
  const js=read('dist/enhancements-v111.js'),css=read('dist/enhancements-v111.css'),build=read('build.mjs');
- assert.match(js,/12\.0v/);assert.match(js,/已更新/);
+ assert.match(js,/12\.1v/);assert.match(js,/已更新/);
  assert.match(css,/flex-direction:column/);assert.match(css,/width:72px/);assert.match(css,/height:20px/);
  assert.match(build,/enhancements-v111\.js\?v=111/);assert.match(build,/enhancements-v111\.css\?v=111/);
 });

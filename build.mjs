@@ -41,7 +41,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v903.js?v=903" defer></script>'+
  '<script src="enhancements-v904.js?v=904" defer></script>'+
  '<script src="enhancements-v91.js?v=114" defer></script>'+
- '<script src="enhancements-v92.js?v=921" defer></script>'+
+ '<script src="enhancements-v92.js?v=1211" defer></script>'+
  '<script src="enhancements-v921.js?v=104" defer></script>'+
  '<script src="enhancements-v93.js?v=93" defer></script>'+
  '<script src="enhancements-v94.js?v=115" defer></script>'+
@@ -59,7 +59,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<link rel="stylesheet" href="enhancements-v903.css?v=903">'+
  '<link rel="stylesheet" href="enhancements-v904.css?v=904">'+
  '<link rel="stylesheet" href="enhancements-v91.css?v=911">'+
- '<link rel="stylesheet" href="enhancements-v92.css?v=921">'+
+ '<link rel="stylesheet" href="enhancements-v92.css?v=1211">'+
  '<link rel="stylesheet" href="enhancements-v921.css?v=104">'+
  '<link rel="stylesheet" href="enhancements-v93.css?v=93">'+
  '<link rel="stylesheet" href="enhancements-v94.css?v=94">'+
@@ -76,11 +76,11 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v112.js?v=112" defer></script>'+
  '<script src="enhancements-v113.js?v=113" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v113.css?v=113">'+
- '<script src="meetings117.js?v=120" defer></script>'+
- '<link rel="stylesheet" href="meetings117.css?v=120">'+
+ '<script src="meetings117.js?v=121" defer></script>'+
+ '<link rel="stylesheet" href="meetings117.css?v=121">'+
  '</head>'
 );
 fs.mkdirSync('dist/server',{recursive:true});
 const code=fs.readFileSync('worker/server.mjs','utf8').replace(/^import .*from '\.\/.*';?\n/gm,'').replace("return new Response('Not found',{status:404});","const a=assets[path==='/'?'/index.html':path];if(!a)return new Response('Not found',{status:404});return new Response(a.body,{headers:{'Content-Type':a.type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});");
-fs.writeFileSync('dist/server/index.js',fs.readFileSync('worker/backup85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/alerts90.mjs','utf8').replace(/^export /gm,'')+'\n'+workflows+'\n'+codec+'\n'+fs.readFileSync('worker/wire-permissions.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\nconst assets='+JSON.stringify(assets)+';\n'+fs.readFileSync('worker/schedule.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/records-export.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/holidays.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/meetings117.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/push116.mjs','utf8').replace(/^export /gm,'')+'\n'+code);
+fs.writeFileSync('dist/server/index.js',fs.readFileSync('worker/backup85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications121.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/alerts90.mjs','utf8').replace(/^export /gm,'')+'\n'+workflows+'\n'+codec+'\n'+fs.readFileSync('worker/wire-permissions.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\nconst assets='+JSON.stringify(assets)+';\n'+fs.readFileSync('worker/schedule.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/records-export.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/holidays.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/meetings117.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/push116.mjs','utf8').replace(/^export /gm,'')+'\n'+code);
 console.log('Built authenticated warehouse Worker');

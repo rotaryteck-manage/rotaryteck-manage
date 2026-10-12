@@ -34,3 +34,5 @@ export const meetings117=sqliteTable("meetings117",{id:text("id").primaryKey(),d
 export const meeting_settings117=sqliteTable("meeting_settings117",{id:integer("id").primaryKey(),body:text("body").notNull(),revision:integer("revision").notNull()});
 export const meeting_requests117=sqliteTable("meeting_requests117",{request_id:text("request_id").primaryKey(),signature:text("signature").notNull(),result:text("result").notNull()});
 export const meeting_events117=sqliteTable("meeting_events117",{event_key:text("event_key").primaryKey(),meeting_id:text("meeting_id").notNull(),recipient_id:integer("recipient_id").notNull(),payload:text("payload").notNull(),status:text("status").notNull(),attempts:integer("attempts").notNull(),last_error:text("last_error").notNull(),created_at:text("created_at").notNull(),updated_at:text("updated_at").notNull()});
+
+export const notification_device_scopes121=sqliteTable('notification_device_scopes121',{source_key:text('source_key').primaryKey().notNull(),employee_id:integer('employee_id').notNull(),device_ids:text('device_ids').notNull().default('[]'),created_at:text('created_at').notNull()});

@@ -32,4 +32,4 @@ scheduleEntryDialog56=function(entry){
  return result;
 };
 
-document.documentElement.dataset.appVersion='12.0v';
+document.documentElement.dataset.appVersion='12.1v';
