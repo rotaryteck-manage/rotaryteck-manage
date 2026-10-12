@@ -95,3 +95,18 @@ test('11.7v first-save and each two-device background invocation fit the free 50
  try{const input=f.input(),response=await meetingApiWithServices117(new Request('https://test.local/api/meetings',{method:'POST',headers:{origin:'https://test.local','Content-Type':'application/json'},body:JSON.stringify(input)}),parent.env,f.boss,{waitUntil(t){f.tasks.push(t)}},true);assert.equal(response.status,200);await Promise.all(f.tasks);assert.equal(children.length,3);assert.ok(parent.count()<=42);assert.ok(children.every(n=>n<=42));assert.equal(f.db.prepare("SELECT COUNT(*) n FROM notification_deliveries WHERE status='sent'").get().n,6);
  }finally{globalThis.fetch=original}
 });
+
+test('11.8v selected recipients receive first-save notification; settings and old records remain independent',async()=>{
+ const f=fixture(),settings={...structuredClone(meetingDefaults117),recipientMode:'selected',recipientIds:[3],revision:0,name:'週會通知測試',title:'{人員}｜{通知名稱}',message:'{日期}有{數量}筆'};
+ assert.equal((await f.call(settings,'POST','?view=settings')).status,200);const list=await (await f.call()).json();assert.match(list.notificationAudience,/未出席員工/);
+ assert.equal((await f.call(f.input())).status,200);await Promise.all(f.tasks);assert.deepEqual(f.db.prepare('SELECT employee_id FROM notification_inbox88').all().map(x=>x.employee_id),[3]);
+ const payload=JSON.parse(f.db.prepare('SELECT payload FROM meeting_events117').get().payload);assert.equal(payload.title,'未出席員工｜週會通知測試');assert.match(payload.targetUrl,/notificationMeeting=m117/);
+ assert.equal((await f.call({...settings,recipientMode:'auto',recipientIds:[],revision:1},'POST','?view=settings')).status,200);assert.equal((await f.call({...f.input(),revision:1})).status,200);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,1);
+});
+test('11.8v legacy settings get defaults and invalid recipient/target settings are rejected',async()=>{
+ const f=fixture(),legacy={enabled:true,title:'原標題',message:'原內容',text:meetingDefaults117.text};f.db.prepare('INSERT INTO meeting_settings117(id,body,revision) VALUES(1,?,1)').run(JSON.stringify(legacy));const got=await (await f.call(null,'GET','?view=settings')).json();assert.equal(got.title,'原標題');assert.equal(got.recipientMode,'auto');assert.equal(got.target,'meeting-record');
+ for(const change of [{recipientMode:'selected',recipientIds:[]},{recipientMode:'unknown'},{recipientIds:['bad']},{target:'home'},{deleted:true,enabled:true}])assert.throws(()=>validateMeetingSettings117({...meetingDefaults117,...change}));
+});
+test('11.8v delete and recreate meeting rule never backfills old meetings',async()=>{
+ const f=fixture(),settings={...structuredClone(meetingDefaults117),enabled:false,deleted:true,revision:0};assert.equal((await f.call(settings,'POST','?view=settings')).status,200);await f.call(f.input());assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,0);assert.equal((await f.call({...settings,enabled:true,deleted:false,revision:1},'POST','?view=settings')).status,200);await f.call({...f.input(),revision:1});assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,0);await f.call(f.input('new118'));assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,3);await Promise.all(f.tasks);
+});
