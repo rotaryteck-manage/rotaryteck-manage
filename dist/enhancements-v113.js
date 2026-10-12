@@ -23,4 +23,4 @@ const accountObserver113=new MutationObserver(()=>queueMicrotask(accountIdentity
 accountObserver113.observe(document.body,{childList:true,subtree:true});
 accountMobile113.addEventListener?.('change',accountIdentity113);
 addEventListener('load',accountIdentity113);accountIdentity113();
-document.documentElement.dataset.appVersion='11.5v';
+document.documentElement.dataset.appVersion='11.6v';

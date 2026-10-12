@@ -10,8 +10,8 @@ const read=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
 test('10.8v runs the automatic notification scheduler every three minutes',()=>{
  const config=JSON.parse(read('wrangler.jsonc'));
- assert.deepEqual(config.triggers.crons,['*/3 * * * *']);
- assert.match(read('worker/server.mjs'),/runScheduledNotifications108\(env,event\.scheduledTime/);
+ assert.deepEqual(config.triggers.crons,['*/3 * * * *','1 * * * *']);
+ assert.match(read('worker/server.mjs'),/runScheduledNotifications108\(runtime,event\.scheduledTime/);
 });
 
 test('10.8v records a successful automatic scheduler heartbeat without changing notification rules',async()=>{
@@ -31,6 +31,6 @@ test('10.8v renders only a compact scheduler status line in notification setting
  assert.match(build,/enhancements-v108\.js\?v=115/);
 });
 
-test('11.5v version label is consistent',()=>{
- for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/11\.5v/,name);
+test('11.6v version label is consistent',()=>{
+ for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/11\.6v/,name);
 });
