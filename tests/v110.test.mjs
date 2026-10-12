@@ -19,5 +19,5 @@ test('11.6v separates waiting, no-match, send failure and scheduler failure',()=
 });
 
 test('11.6v version label is consistent',()=>{
- for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/11\.9v/,name);
+ for(const name of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/enhancements-v106.js','dist/enhancements-v107.js','dist/enhancements-v108.js'])assert.match(read(name),/12\.0v/,name);
 });

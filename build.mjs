@@ -76,8 +76,8 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v112.js?v=112" defer></script>'+
  '<script src="enhancements-v113.js?v=113" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v113.css?v=113">'+
- '<script src="meetings117.js?v=119" defer></script>'+
- '<link rel="stylesheet" href="meetings117.css?v=119">'+
+ '<script src="meetings117.js?v=120" defer></script>'+
+ '<link rel="stylesheet" href="meetings117.css?v=120">'+
  '</head>'
 );
 fs.mkdirSync('dist/server',{recursive:true});
