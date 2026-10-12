@@ -17,5 +17,5 @@ test('10.6v moves only the existing work-report button into the fixed modal foot
 
 test('11.6v version label is consistent',()=>{
  for(const name of ['dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js','dist/cloud.js'])
-  assert.match(read(name),/11\.8v/,name);
+  assert.match(read(name),/11\.9v/,name);
 });
