@@ -70,5 +70,5 @@ test('10.2v photo links use an in-page dialog and leave notification opens the e
 });
 
 test('11.6v version label is consistent',()=>{
- for(const file of ['cloud.js','enhancements-v943.js','enhancements-v944.js','enhancements-v945.js'])assert.match(fs.readFileSync(new URL('../dist/'+file,import.meta.url),'utf8'),/12\.1v/,file);
+ for(const file of ['cloud.js','enhancements-v943.js','enhancements-v944.js','enhancements-v945.js'])assert.match(fs.readFileSync(new URL('../dist/'+file,import.meta.url),'utf8'),/12\.2v/,file);
 });
