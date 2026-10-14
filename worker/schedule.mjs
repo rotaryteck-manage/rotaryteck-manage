@@ -1,3 +1,4 @@
+import {leaveMinutes124} from './leave-duration124.mjs';
 function schedulePhotoJobs85(env,keys){return keys.filter(Boolean).map(key=>env.DB.prepare('INSERT OR IGNORE INTO retention_photo_jobs(job) VALUES(?)').bind(JSON.stringify({key})));}
 async function scheduleDiscardPhotos85(env,keys){
  for(const key of keys.filter(Boolean))try{await env.UPLOADS?.delete(key);await env.DB.prepare('DELETE FROM retention_photo_jobs WHERE job=?').bind(JSON.stringify({key})).run();}catch{try{await env.DB.prepare('INSERT OR IGNORE INTO retention_photo_jobs(job) VALUES(?)').bind(JSON.stringify({key})).run();}catch{console.error('photo cleanup deferred; database unavailable');}}
@@ -69,6 +70,7 @@ async function scheduleApiCore71(request,env,employee){
   if(kind==='palette')return schedulePalette73(request,env,employee,input);
   if(kind==='dedupe_week')return scheduleDedupe73(request,env,employee,input);
   if(kind==='leave')return scheduleLeave72(request,env,employee,input);
+  if(kind==='copy_daily')return scheduleCopyDaily124(request,env,employee,input);
   if(['copy_week','reset_week','text_delete'].includes(kind))return scheduleExtra71(request,env,employee,input);
   if(kind==='options'){
    if(method!=='POST'||!scheduleAllowed(employee,'schedule.options'))return scheduleJSON({error:'沒有管理工作選單的權限'},403);
@@ -614,7 +616,7 @@ async function scheduleExtra71(request,env,employee,input){
 async function scheduleAudited71(request,env,employee,handler){
  if(request.method==='GET')return handler(request,env,employee);
  let input={};try{const copy=request.clone();if(request.headers.get('content-type')?.includes('application/json'))input=await copy.json();else{const f=await copy.formData();for(const key of ['id','day','title','category','quantity','projectName','authorId','body','entryId'])input[key]=String(f.get(key)||'');input.kind='daily'}}catch{return handler(request,env,employee)}
- if(['copy_week','reset_week','text_delete','options','leave','palette','dedupe_week'].includes(input.kind))return handler(request,env,employee);
+ if(['copy_daily','copy_week','reset_week','text_delete','options','leave','palette','dedupe_week'].includes(input.kind))return handler(request,env,employee);
  await scheduleTables71(env);
  const ids=[input.id,...(input.entries||[]).map(e=>e.id),...(input.deletions||[]).map(e=>e.id)].filter(Boolean),before=[];
  for(const id of ids){const old=await env.DB.prepare('SELECT * FROM schedule_entries WHERE id=?').bind(id).first();if(old)before.push(old)}
@@ -661,14 +663,40 @@ async function scheduleLeave72(request,env,employee,input){
  }
  if((old?.revision||0)!==input.revision)return scheduleJSON({error:'請假紀錄已由他人修改，請重新載入'},409);
  const now=new Date().toISOString(),deleting=request.method==='DELETE';
+ let duration=null;
+ if(!deleting){
+  const overlaps=await env.DB.prepare("SELECT l.people FROM schedule_leave72 l WHERE l.id<>? AND l.start_at<? AND l.end_at>?").bind(input.id,input.end,input.start).all();
+  const blocked=new Set(overlaps.results.flatMap(l=>JSON.parse(l.people).map(p=>String(p.id))));
+  const conflicts=people.filter(p=>blocked.has(p.id));if(conflicts.length)return scheduleJSON({error:conflicts.map(p=>p.name).join('、')+'已有重疊請假，這次所有人均未登記'},409);
+  const calendar=env.leaveCalendar124?await env.leaveCalendar124(input.start,input.end):{};
+  duration=leaveMinutes124(input.start,input.end,calendar);if(!duration)return scheduleJSON({error:'選擇的期間沒有工作時數，請確認日期時間'},400);
+ }
  const stmt=deleting?env.DB.prepare('DELETE FROM schedule_leave72 WHERE id=? AND revision=?').bind(input.id,input.revision):old?env.DB.prepare('UPDATE schedule_leave72 SET start_at=?,end_at=?,people=?,reason=?,reason_note=?,revision=revision+1,author_name=?,updated_at=? WHERE id=? AND revision=?').bind(input.start,input.end,JSON.stringify(people),input.reason,input.reasonNote,employee.name,now,input.id,input.revision):env.DB.prepare('INSERT OR IGNORE INTO schedule_leave72(id,start_at,end_at,people,reason,reason_note,revision,author_name,updated_at) VALUES(?,?,?,?,?,?,1,?,?)').bind(input.id,input.start,input.end,JSON.stringify(people),input.reason,input.reasonNote,employee.name,now);
  const target=deleting?{start:old.start_at,end:old.end_at,people:JSON.parse(old.people),reason:old.reason,reasonNote:old.reason_note}:{...input,people};
  const body=(deleting?'刪除':old?'修改':'新增')+'請假｜'+target.people.map(x=>x.name).join('、')+'｜'+target.start.replace('T',' ')+' 至 '+target.end.replace('T',' ')+'｜'+target.reason+(target.reason==='其他'&&target.reasonNote?'：'+target.reasonNote:'');
- const statements=[stmt,env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(crypto.randomUUID(),'daily',target.start.slice(0,10),employee.name,body,now)];
+ const token124=crypto.randomUUID(),statements=[];
+ if(!deleting)statements.push(env.DB.prepare("INSERT INTO schedule_leave_guards124 VALUES(?,CASE WHEN NOT EXISTS(SELECT 1 FROM schedule_leave72 l,json_each(l.people) person WHERE l.id<>? AND l.start_at<? AND l.end_at>? AND CAST(json_extract(person.value,'$.id') AS TEXT) IN (SELECT value FROM json_each(?))) AND COALESCE((SELECT revision FROM schedule_leave72 WHERE id=?),0)=? THEN 1 ELSE 0 END)").bind(token124,input.id,input.end,input.start,JSON.stringify(input.people),input.id,input.revision));
+ statements.push(stmt,env.DB.prepare('INSERT INTO schedule_text71 SELECT ?,?,?,?,?,? WHERE changes()>0').bind(crypto.randomUUID(),'daily',target.start.slice(0,10),employee.name,body,now));
  if(!old&&!deleting)statements.push(env.DB.prepare('INSERT OR IGNORE INTO leave_notification_records102(leave_id,created_at) SELECT ?,? WHERE changes()>0').bind(input.id,now));
- const results=await env.DB.batch(statements);
- if(!results[0].meta?.changes)return scheduleJSON({error:'資料已變更或完成登記，請重新載入'},409);
- return scheduleJSON({saved:true,deleted:deleting});
+ if(!deleting)statements.push(env.DB.prepare('UPDATE schedule_leave72 SET work_minutes=? WHERE id=?').bind(duration,input.id),env.DB.prepare('DELETE FROM schedule_leave_guards124 WHERE id=?').bind(token124));
+ let results;try{results=await env.DB.batch(statements)}catch(error){if(/schedule_leave_guards124|CHECK constraint/.test(String(error)))return scheduleJSON({error:'請假資料已更新或有重疊，這次所有人均未登記，請重新檢查'},409);throw error;}
+ if(!results[deleting?0:1].meta?.changes)return scheduleJSON({error:'資料已變更或完成登記，請重新載入'},409);
+ const item=deleting?null:{...(old||{}),id:input.id,start_at:input.start,end_at:input.end,people,reason:input.reason,reason_note:input.reasonNote,revision:input.revision+1,author_name:employee.name,updated_at:now,work_minutes:duration};
+ return scheduleJSON({saved:true,deleted:deleting,item});
+}
+
+async function scheduleCopyDaily124(request,env,employee,input){
+ if(request.method!=='POST'||!scheduleAllowed(employee,'schedule.daily.copy')||!scheduleAllowed(employee,'schedule.daily.create'))return scheduleJSON({error:'沒有複製每日排程權限'},403);
+ if(!scheduleDate(input.source)||!scheduleDate(input.target)||input.source===input.target||!scheduleText(input.id,80))return scheduleJSON({error:'請選擇不同的有效目標日期'},400);
+ const prior=await env.DB.prepare('SELECT * FROM schedule_copy_requests124 WHERE id=?').bind(input.id).first();if(prior){if(prior.source_day!==input.source||prior.target_day!==input.target)return scheduleJSON({error:'複製要求不符'},409);return scheduleJSON({...JSON.parse(prior.result),already:true});}
+ const source=(await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=? ORDER BY sort_index,created_at,id").bind(input.source,input.source).all()).results;
+ if(!source.length)return scheduleJSON({error:'來源日期沒有工作排程'},400);
+ const target=await env.DB.prepare("SELECT id FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=? LIMIT 1").bind(input.target,input.target).first();if(target)return scheduleJSON({error:'目標日期已有工作排程，不能複製'},409);
+ await scheduleTables71(env);const now=new Date().toISOString(),token=crypto.randomUUID(),result={saved:true,count:source.length,target:input.target},statements=[env.DB.prepare("INSERT INTO schedule_guard73 VALUES(?,CASE WHEN NOT EXISTS(SELECT 1 FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?) AND (SELECT COUNT(*) FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=?)=? THEN 1 ELSE 0 END)").bind(token,input.target,input.target,input.source,input.source,source.length)];
+ for(const row of source){statements.push(env.DB.prepare('UPDATE schedule_guard73 SET valid=CASE WHEN EXISTS(SELECT 1 FROM schedule_entries WHERE id=? AND revision=?) THEN 1 ELSE 0 END WHERE id=?').bind(row.id,row.revision,token));statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,assignee_ids,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index) VALUES(?,'daily',?,?,?,?,?,?,?,?,0,?,?,?,?,?,1,?)").bind(crypto.randomUUID(),input.target,input.target,row.title,row.assignee,row.assignee_ids||'[]',row.color,row.note,row.category,row.project_id||'',String(employee.id),employee.name,now,now,row.sort_index||0));}
+ statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'daily',input.target,employee.name,'複製排程｜'+input.source+' → '+input.target+'｜'+source.length+' 項工作（不含回報）',now),env.DB.prepare('INSERT INTO schedule_copy_requests124 VALUES(?,?,?,?)').bind(input.id,input.source,input.target,JSON.stringify(result)),env.DB.prepare('DELETE FROM schedule_guard73 WHERE id=?').bind(token));
+ if(env.audit117)statements.push(...env.audit117({id:crypto.randomUUID(),time:now,actor:employee.name,action:'複製每日排程',category:'daily',location:'工作排程 > 每日排程',target:input.target,detail:input.source+' → '+input.target+'｜'+source.length+' 項工作（不含回報）'}));
+ try{await env.DB.batch(statements)}catch(error){if(/CHECK constraint|UNIQUE constraint/.test(String(error)))return scheduleJSON({error:'來源或目標排程已變動，未複製，請重新開啟'},409);throw error;}return scheduleJSON(result);
 }
 
 function scheduleNames73(e){try{const v=JSON.parse(e.assignee);if(Array.isArray(v))return [...new Set(v.filter(n=>typeof n==='string'&&n))]}catch{}return e.assignee?[e.assignee]:[];}

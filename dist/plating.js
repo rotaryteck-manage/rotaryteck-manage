@@ -211,6 +211,7 @@ function attachPlatingPhotoOverview(p){
   if(loading)return;loading=true;list.textContent=pt('photoLoading');
   try{
    const rows=[];for(const s of [...p.shipments].sort((a,b)=>a.number-b.number))for(const item of await listPlatingPhotos(p,s))rows.push({s,item});
+   rows.sort((a,b)=>String(b.item.created).localeCompare(String(a.item.created))||String(b.item.id).localeCompare(String(a.item.id)));
    list.replaceChildren();panel.querySelector('[data-photo-count]').textContent='（'+rows.length+'）';
    for(const {s,item}of rows){
     const row=document.createElement('div');row.className='receipt-file-row';const link=document.createElement('a');link.textContent=platingPhotoLabel(s,item);link.href=platingPhotoUrl(p,s)+'&id='+encodeURIComponent(item.id);link.target='_blank';link.rel='noopener';row.append(link);

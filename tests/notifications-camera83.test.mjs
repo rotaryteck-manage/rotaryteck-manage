@@ -71,7 +71,7 @@ test('a device deleted by the administrator returns to the normal enable-notific
  const source=read('dist/notifications-v82.js');
  vm.runInContext(source.slice(0,source.indexOf('function notificationAddButton82')),ctx);
  await ctx.notificationUpdateButton82();
- assert.equal(unsubscribed,1);
+ assert.equal(unsubscribed,0);
  assert.equal(removed,'notification-device85');
  assert.equal(button.textContent,'開啟通知');
  assert.equal(button.disabled,false);

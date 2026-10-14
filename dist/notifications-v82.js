@@ -65,8 +65,7 @@ async function notificationCurrentSubscription82(){
  if(!('serviceWorker' in navigator))return null;
 
  try{
-  const registration=
-   await notificationReady85();
+  const registration=(await navigator.serviceWorker.getRegistration?.('/'))||await notificationReady85();
 
   return await registration.pushManager.getSubscription();
  }catch{
@@ -208,9 +207,13 @@ async function notificationUpdateButton82(){
    if(current&&(current.length!==expected.length||current.some((value,index)=>value!==expected[index]))){await subscription.unsubscribe();button.textContent='金鑰已更新，請重新開啟通知';button.classList.remove('selected');button.disabled=false;return;}
   }catch{}
   try{
-   const response=await apiFetch('/api/push-subscription'),data=await response.json();if(!response.ok)throw Error(data.error);
-   const device=(data.items||[]).find(d=>d.id===localStorage.getItem('notification-device85'));
-   if(!device){try{await subscription.unsubscribe()}catch{}localStorage.removeItem('notification-device85');button.textContent='開啟通知';button.classList.remove('selected');}
+   const endpoint=subscription.endpoint||subscription.toJSON?.().endpoint||'';
+   const response=await apiFetch('/api/push-subscription'+(endpoint?'?currentEndpoint='+encodeURIComponent(endpoint):'')),data=await response.json();if(!response.ok)throw Error(data.error);
+   let localId='';try{localId=localStorage.getItem('notification-device85')||''}catch{}
+   const resolvedId=endpoint&&Object.hasOwn(data,'currentDeviceId')?data.currentDeviceId:localId;
+   const device=(data.items||[]).find(d=>d.id===resolvedId);
+   if(device&&data.currentDeviceId)try{localStorage.setItem('notification-device85',device.id)}catch{}
+   if(!device){try{localStorage.removeItem('notification-device85')}catch{}button.textContent='開啟通知';button.classList.remove('selected');}
    else{button.textContent=!data.personEnabled?'人員通知已停用':device.enabled?'通知已開啟':'裝置通知已停用';button.classList.toggle('selected',!!device.enabled&&data.personEnabled);}
   }catch{button.textContent='確認通知狀態';button.classList.remove('selected');}
  }else{button.textContent='開啟通知';button.classList.remove('selected');}
@@ -253,3 +256,8 @@ window.addEventListener('load',async()=>{
  await notificationRegisterServiceWorker82();
  notificationAddButton82();
 });
+let notificationResumeAt124=0;
+function notificationResume124(){if(Date.now()-notificationResumeAt124<3000)return;notificationResumeAt124=Date.now();notificationUpdateButton82().catch(()=>{});}
+window.addEventListener('pageshow',notificationResume124);
+window.addEventListener('focus',notificationResume124);
+if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener?.('controllerchange',notificationResume124);

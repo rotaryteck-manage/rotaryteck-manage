@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS qc_projects124(id TEXT PRIMARY KEY,name TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,deleted_at TEXT NOT NULL DEFAULT '',purge_after TEXT NOT NULL DEFAULT '');
+CREATE UNIQUE INDEX IF NOT EXISTS qc_name124 ON qc_projects124(lower(name)) WHERE deleted_at='';
+CREATE TABLE IF NOT EXISTS qc_uploads124(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,stamp TEXT NOT NULL,note TEXT NOT NULL DEFAULT '',author_name TEXT NOT NULL,created_at TEXT NOT NULL,deleted_at TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS qc_upload_project124 ON qc_uploads124(project_id,created_at);
+CREATE TABLE IF NOT EXISTS qc_files124(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,upload_id TEXT NOT NULL,position INTEGER NOT NULL,order_no INTEGER NOT NULL,storage_key TEXT NOT NULL,original_name TEXT NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL,author_name TEXT NOT NULL,created_at TEXT NOT NULL,deleted_at TEXT NOT NULL DEFAULT '',purge_after TEXT NOT NULL DEFAULT '',superseded_by TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS qc_file_project124 ON qc_files124(project_id,created_at);
+CREATE TABLE IF NOT EXISTS qc_audit124(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS qc_guards124(id TEXT PRIMARY KEY,valid INTEGER NOT NULL CHECK(valid=1));
+CREATE TABLE IF NOT EXISTS schedule_copy_requests124(id TEXT PRIMARY KEY,source_day TEXT NOT NULL,target_day TEXT NOT NULL,result TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS schedule_leave_guards124(id TEXT PRIMARY KEY,valid INTEGER NOT NULL CHECK(valid=1));
+CREATE TABLE IF NOT EXISTS schedule_guard73(id TEXT PRIMARY KEY,valid INTEGER NOT NULL CHECK(valid=1));
+ALTER TABLE schedule_leave72 ADD COLUMN work_minutes INTEGER;

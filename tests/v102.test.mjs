@@ -11,7 +11,7 @@ import {recordsExportApi} from '../worker/records-export.mjs';
 function fixture(){
  const {db,DB}=database();migrations85(db);
  db.exec("INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(1,'boss','boss@local.test','主管','supervisor','active','now','now'),(2,'staff','staff@local.test','甲','viewer','active','now','now'),(3,'staff2','staff2@local.test','乙','viewer','active','now','now')");
- const env={DB},boss={id:1,name:'主管',role:'supervisor',permissions:builtinProfiles[0].permissions};
+ const env={DB,leaveCalendar124:async()=>({})},boss={id:1,name:'主管',role:'supervisor',permissions:builtinProfiles[0].permissions};
  const send=(body,method='POST')=>scheduleApiWithLeaveNotifications102(new Request('https://t.local/api/schedule',{method,headers:{origin:'https://t.local','content-type':'application/json'},body:JSON.stringify(body)}),env,boss);
  return{db,env,send};
 }
@@ -46,10 +46,10 @@ test('leave notification setting defaults, pause and customized content affect r
  assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_inbox88').get().n,2);
  const put=(name,value)=>db.prepare('INSERT INTO state_records(record_key,body,revision) VALUES(?,?,1) ON CONFLICT(record_key) DO UPDATE SET body=excluded.body,revision=revision+1').run(JSON.stringify(['root',name]),JSON.stringify(value));
  put('notificationRules',[{...rule,enabled:false}]);put('notificationVersion102',1);
- assert.equal((await send({...first,id:'paused'})).status,200);
+ assert.equal((await send({...first,id:'paused',start:'2026-10-14T08:30',end:'2026-10-14T17:30'})).status,200);
  assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_inbox88').get().n,2);
  put('notificationRules',[{...rule,title:'假別：{動作}',message:'{人員}的{假別}｜{操作人}',enabled:true}]);
- assert.equal((await send({...first,id:'customized'})).status,200);
+ assert.equal((await send({...first,id:'customized',start:'2026-10-15T08:30',end:'2026-10-15T17:30'})).status,200);
  const rows=db.prepare("SELECT employee_id,title,message FROM notification_inbox88 WHERE source_key LIKE '%:customized:%'").all();
  assert.deepEqual(rows.map(x=>x.employee_id).sort(),[1,2]);
  assert.ok(rows.every(x=>x.title==='假別：登記'&&x.message.includes('特休｜主管')));
