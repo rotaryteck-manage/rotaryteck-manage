@@ -11,7 +11,7 @@ const read=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
 test('10.8v runs the automatic notification scheduler every three minutes',()=>{
  const config=JSON.parse(read('wrangler.jsonc'));
  assert.deepEqual(config.triggers.crons,['*/3 * * * *','1 * * * *']);
- assert.match(read('worker/server.mjs'),/runScheduledNotifications108\(runtime,event\.scheduledTime/);
+ assert.match(read('worker/server.mjs'),/notificationCall125\(runtime,'start',\{now\}\)/);
 });
 
 test('10.8v records a successful automatic scheduler heartbeat without changing notification rules',async()=>{

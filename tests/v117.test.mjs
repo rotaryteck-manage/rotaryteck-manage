@@ -6,12 +6,13 @@ import {createECDH,randomBytes} from 'node:crypto';
 import webpush from 'web-push';
 import {database} from './helpers/d1.mjs';
 import {migrations85} from './helpers/migrations85.mjs';
+import {scheduled125} from './helpers/runtime125.mjs';
 import {meetingApiWithServices117,meetingDispatchWithServices117,scheduleApiWithLeaveNotifications102,runScheduledEvent116} from '../worker/server.mjs';
 import {meetingApi117,meetingDefaults117,meetingSettings117,runMeetingNotifications117,validateMeetingSettings117} from '../worker/meetings117.mjs';
 function fixture(){
  const {db,DB}=database();migrations85(db);const now=new Date().toISOString();
  for(const [id,name,role,status] of [[1,'主管','supervisor','active'],[2,'出席員工','viewer','active'],[3,'未出席員工','viewer','active'],[4,'停用員工','viewer','disabled']])db.prepare('INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id,'user'+id,id+'@test.local',name,role,status,now,now);
- const env={DB},boss={id:1,name:'主管',status:'active',role:'supervisor',permissions:['admin.settings','schedule.view','schedule.daily.create','schedule.daily.edit','schedule.daily.delete','schedule.weekly.create','schedule.weekly.edit','schedule.weekly.delete','schedule.copy','schedule.reset']},viewer={id:3,name:'未出席員工',status:'active',role:'viewer',permissions:[]};const tasks=[],ctx={waitUntil(task){tasks.push(task)}};
+ const keys=webpush.generateVAPIDKeys(),env={DB,VAPID_PUBLIC_KEY:keys.publicKey,VAPID_PRIVATE_KEY:keys.privateKey,VAPID_SUBJECT:'mailto:test@local.test'},boss={id:1,name:'主管',status:'active',role:'supervisor',permissions:['admin.settings','schedule.view','schedule.daily.create','schedule.daily.edit','schedule.daily.delete','schedule.weekly.create','schedule.weekly.edit','schedule.weekly.delete','schedule.copy','schedule.reset']},viewer={id:3,name:'未出席員工',status:'active',role:'viewer',permissions:[]};const tasks=[],ctx={waitUntil(task){tasks.push(task)}};
  const call=(input=null,method='POST',query='',employee=boss)=>meetingApiWithServices117(new Request('https://test.local/api/meetings'+query,{method:input?method:'GET',headers:{origin:'https://test.local','Content-Type':'application/json'},...(input?{body:JSON.stringify(input)}:{})}),env,employee,ctx);
  const input=(id='m117',revision=0)=>({id,requestId:crypto.randomUUID(),revision,day:'2026-10-12',time:'09:00',place:'會議室',attendeeIds:[1,2],notes:[{content:'FAA XX項目由(出席員工)負責製作，約2天完成。',suggestion:'無'},{content:'',suggestion:''}]});return{db,DB,env,boss,viewer,tasks,call,input};
 }
@@ -35,7 +36,7 @@ test('11.7v server blocks staff writes, cross-origin writes, empty notes and inv
 test('11.7v pause/re-enable does not backfill, settings do not change existing rules, text templates are validated',async()=>{
  const f=fixture(),original=JSON.stringify([{id:'existing',type:'work',enabled:true}]);f.db.prepare('INSERT INTO company_state(company_id,body,revision,updated_at) VALUES(?,?,0,?)').run('warehouse-main',JSON.stringify({projects:[],logs:[],notificationRules:JSON.parse(original)}),'now');
  const settings={...structuredClone(meetingDefaults117),revision:0,enabled:false};assert.equal((await f.call(settings,'POST','?view=settings')).status,200);assert.equal((await f.call(f.input())).status,200);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,0);
- assert.equal((await f.call({...settings,enabled:true,title:'{會議日期}週會',message:'{記錄人}｜{筆記數}則',revision:1},'POST','?view=settings')).status,200);await runScheduledEvent116({cron:'*/3 * * * *',scheduledTime:Date.now()},f.env,{waitUntil(){}});assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,0);
+ assert.equal((await f.call({...settings,enabled:true,title:'{會議日期}週會',message:'{記錄人}｜{筆記數}則',revision:1},'POST','?view=settings')).status,200);await scheduled125({cron:'*/3 * * * *',scheduledTime:Date.now()},f.env);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,0);
  assert.equal((await f.call({...f.input(),revision:1})).status,200);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM meeting_events117').get().n,0);assert.equal(f.db.prepare("SELECT body FROM state_records WHERE record_key=?").get(JSON.stringify(['root','notificationRules'])).body,original);
  assert.throws(()=>validateMeetingSettings117({...settings,title:'{錯誤變數}'}),/變數/);assert.throws(()=>validateMeetingSettings117({...settings,text:{...settings.text,content:''}}),/文字/);
 });
@@ -56,8 +57,8 @@ test('11.7v failed device retries use native push and never resend a successful 
  globalThis.fetch=async (url,options)=>{if(String(url).endsWith('/api/meeting-dispatch117'))return meetingDispatchWithServices117(new Request(url,options),f.env);calls.push(String(url));return new Response(null,{status:String(url).endsWith('/bad')&&fail?503:201})};
  try{assert.equal((await f.call(f.input())).status,200);await Promise.all(f.tasks);assert.equal(calls.filter(x=>x.endsWith('/good')).length,1);assert.equal(f.db.prepare("SELECT status FROM notification_deliveries WHERE subscription_id='bad'").get().status,'failed');fail=false;
  f.db.prepare("INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(5,'new','new@test.local','新員工','viewer','active','now','now')").run();addDevice(f,'new',5);
- await runScheduledEvent116({cron:'*/3 * * * *',scheduledTime:Date.now()},f.env,{waitUntil(){}});assert.equal(calls.filter(x=>x.endsWith('/good')).length,1);assert.equal(calls.filter(x=>x.endsWith('/bad')).length,2);assert.equal(calls.filter(x=>x.endsWith('/new')).length,0);assert.equal(f.db.prepare("SELECT status FROM notification_deliveries WHERE subscription_id='bad'").get().status,'sent');
- await runScheduledEvent116({cron:'*/3 * * * *',scheduledTime:Date.now()},f.env,{waitUntil(){}});assert.equal(calls.length,3);
+ await scheduled125({cron:'*/3 * * * *',scheduledTime:Date.now()},f.env);assert.equal(calls.filter(x=>x.endsWith('/good')).length,1);assert.equal(calls.filter(x=>x.endsWith('/bad')).length,2);assert.equal(calls.filter(x=>x.endsWith('/new')).length,0);assert.equal(f.db.prepare("SELECT status FROM notification_deliveries WHERE subscription_id='bad'").get().status,'sent');
+ await scheduled125({cron:'*/3 * * * *',scheduledTime:Date.now()},f.env);assert.equal(calls.length,3);
  }finally{globalThis.fetch=originalFetch}
 });
 

@@ -8,6 +8,7 @@ import {encryptPush116,pushAuthorization116,sendNativePush116} from '../worker/p
 import {runScheduledEvent116} from '../worker/server.mjs';
 import {database} from './helpers/d1.mjs';
 import {migrations85} from './helpers/migrations85.mjs';
+import {runtime125} from './helpers/runtime125.mjs';
 const b64=bytes=>Buffer.from(bytes).toString('base64url');
 function device(){const privateKey=createECDH('prime256v1');privateKey.generateKeys();const auth=randomBytes(16);return{privateKey,auth,subscription:{endpoint:'https://fcm.googleapis.com/test116',keys:{p256dh:b64(privateKey.getPublicKey()),auth:b64(auth)}}}}
 
@@ -41,8 +42,8 @@ test('11.6v production cron uses native cryptography and writes durable receipt/
  db.prepare("INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(1,'one','one@local.test','測試人員','viewer','active',?,?)").run(stamp,stamp);
  db.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,assignee_ids,sort_index) VALUES('j116','daily',?,?,'測試工作','','','','[]',0,'','1','測試人員',?,?,0,'[1]',0)").run(day,day,stamp,stamp);
  db.prepare('INSERT INTO push_subscriptions(id,employee_id,endpoint,p256dh,auth,device_label,user_agent,enabled,created_at,updated_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('d116',1,subscription.endpoint,subscription.keys.p256dh,subscription.keys.auth,'測試手機','test',1,stamp,stamp,stamp);
- let sends=0;const original=globalThis.fetch;globalThis.fetch=async()=>{sends++;return new Response(null,{status:201})};
- try{const ctx={waitUntil(){}};await runScheduledEvent116({cron:'*/3 * * * *',scheduledTime:now},env,ctx);await runScheduledEvent116({cron:'*/3 * * * *',scheduledTime:now+180000},env,ctx);assert.equal(sends,1);assert.equal(db.prepare("SELECT COUNT(*) n FROM notification_receipts921 WHERE status='sent'").get().n,1);assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_inbox88').get().n,1);assert.equal(db.prepare('SELECT status FROM notification_scheduler_status108 WHERE id=1').get().status,'ok')}finally{globalThis.fetch=original}
+ const runtime=runtime125(env);
+ try{await runScheduledEvent116({cron:'*/3 * * * *',scheduledTime:now},env,runtime.ctx);await runtime.drain();await runScheduledEvent116({cron:'*/3 * * * *',scheduledTime:now+180000},env,runtime.ctx);await runtime.drain();assert.equal(runtime.counts().pushes,1);assert.equal(db.prepare("SELECT COUNT(*) n FROM notification_receipts921 WHERE status='sent'").get().n,1);assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_inbox88').get().n,1);assert.equal(db.prepare('SELECT status FROM notification_scheduler_status108 WHERE id=1').get().status,'ok')}finally{runtime.restore()}
 });
 
 test('11.6v maintenance is separate, due-only queries and non-browser execution preserve the UI',()=>{

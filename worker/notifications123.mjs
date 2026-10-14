@@ -1,7 +1,7 @@
 import {notificationScopesRead121} from './notifications121.mjs';
 export async function notificationCutoff123(env){
- if(Object.hasOwn(env,'notificationCutoff123'))return env.notificationCutoff123;
- return (await env.DB.prepare('SELECT cutoff FROM notification_release123 WHERE singleton=1').first())?.cutoff||'';
+ const cutoff=Object.hasOwn(env,'notificationCutoff123')?env.notificationCutoff123:(await env.DB.prepare('SELECT cutoff FROM notification_release123 WHERE singleton=1').first())?.cutoff||'';
+ return env.notificationCutoff125&&env.notificationCutoff125>cutoff?env.notificationCutoff125:cutoff;
 }
 export function notificationBeforeRelease123(stamp,cutoff){return !!cutoff&&Number.isFinite(Date.parse(stamp))&&Date.parse(stamp)<Date.parse(cutoff)}
 export function notificationDueBeforeRelease123(rule,day,cutoff){return rule.type!=='closure'&&notificationBeforeRelease123(day+'T'+rule.time+':00+08:00',cutoff)}
