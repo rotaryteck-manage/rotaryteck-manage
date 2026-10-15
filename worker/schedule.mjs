@@ -536,11 +536,13 @@ async function scheduleMaterialUploadCore71(request,env,employee){
    ]:[])];
   const oldKeys=[...(receiptFiles.length?[old?.receipt_photo_key]:[]),...(incoming.length?[old?.item_photo_key]:[]),...(incoming.length?(oldExtra.results||[]).map(photo=>photo.photo_key):[])].filter(Boolean);
   statements.push(...schedulePhotoJobs85(env,oldKeys));
+  if(!old&&env.materialRuntime126)statements.push(env.DB.prepare("INSERT OR IGNORE INTO material_pending126(material_id,actor_id,actor_name,status,created_at) VALUES(?,?,?,'pending',?)").bind(id,employee.id,employee.name,now));
   await scheduleCommit85(env,statements,[{id,kind:'material',revision}]);
-  await scheduleDiscardPhotos85(env,oldKeys);
+  const discard=scheduleDiscardPhotos85(env,oldKeys);if(env.deferMaterialCleanup126)env.deferMaterialCleanup126(discard);else await discard;
 
   return scheduleJSON({
    saved:true,
+   ...(env.materialRuntime126?{item:await env.DB.prepare("SELECT *,((CASE WHEN item_photo_key<>'' THEN 1 ELSE 0 END)+(SELECT COUNT(*) FROM schedule_material_photos p WHERE p.material_id=schedule_entries.id)) AS photo_count FROM schedule_entries WHERE id=?").bind(id).first(),created:!old}:{}),
    photoCount:incoming.length||undefined
   });
 

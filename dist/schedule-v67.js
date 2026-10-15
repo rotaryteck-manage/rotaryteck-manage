@@ -314,6 +314,7 @@ scheduleReportDialog56=function(day){
 };
 
 scheduleMaterialDialog61=function(entry){
+ const materialId126=entry?.id||crypto.randomUUID();
  const day=entry?.day||scheduleAnchor56;
  const projects=[...new Set((state.projects||[]).map(p=>p.name).filter(Boolean))];
  const hasOldPhoto=!!(entry?.item_photo_key||entry?.receipt_photo_key);
@@ -353,7 +354,7 @@ scheduleMaterialDialog61=function(entry){
     form.append(key,String(fd.get(key)||''));
    }
 
-   form.append('id',entry?.id||crypto.randomUUID());
+   form.append('id',materialId126);
    form.append('revision',String(entry?.revision||0));
    form.append('note',entry?.note||'');
 
@@ -364,9 +365,9 @@ scheduleMaterialDialog61=function(entry){
     ))return;
    }
 
-   for(const photo of pendingPhotos){
-    const compressed=await compressReceiptImage(photo);
-    form.append('photo',compressed,photo.name||'photo.jpg');
+   for(let start=0;start<pendingPhotos.length;start+=2){
+    const batch=pendingPhotos.slice(start,start+2),compressed=await Promise.all(batch.map(photo=>compressReceiptImage(photo)));
+    batch.forEach((photo,index)=>form.append('photo',compressed[index],photo.name||'photo.jpg'));
    }
 
    const response=await apiFetch('/api/schedule-material-upload',{
@@ -380,6 +381,7 @@ scheduleMaterialDialog61=function(entry){
     throw Error(data.error||'料件儲存失敗');
    }
 
+   if(data.item){scheduleData56.entries=(scheduleData56.entries||[]).filter(item=>item.id!==data.item.id);scheduleData56.entries.push(data.item);leaveLocalUpdate124=true;}
    $('#modal').close();
    scheduleRender56();
   }

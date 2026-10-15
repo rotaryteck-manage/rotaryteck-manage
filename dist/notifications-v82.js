@@ -6,7 +6,7 @@ async function notificationRegisterServiceWorker82(){
 
  try{
   return await navigator.serviceWorker.register('/sw.js',{
-   scope:'/'
+   scope:'/',updateViaCache:'none'
   });
  }catch(error){
   console.error('通知 Service Worker 註冊失敗',error);
@@ -213,6 +213,10 @@ async function notificationUpdateButton82(){
    const resolvedId=endpoint&&Object.hasOwn(data,'currentDeviceId')?data.currentDeviceId:localId;
    const device=(data.items||[]).find(d=>d.id===resolvedId);
    if(device&&data.currentDeviceId)try{localStorage.setItem('notification-device85',device.id)}catch{}
+   if(device?.enabled&&data.personEnabled&&data.currentKeyFingerprint126&&crypto.subtle){
+    const own=subscription.toJSON?.().keys;
+    if(own?.p256dh&&own?.auth){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(own.p256dh+'|'+own.auth)),fingerprint=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');if(fingerprint!==data.currentKeyFingerprint126)await notificationSaveSubscription82(subscription)}
+   }
    if(!device){try{localStorage.removeItem('notification-device85')}catch{}button.textContent='開啟通知';button.classList.remove('selected');}
    else{button.textContent=!data.personEnabled?'人員通知已停用':device.enabled?'通知已開啟':'裝置通知已停用';button.classList.toggle('selected',!!device.enabled&&data.personEnabled);}
   }catch{button.textContent='確認通知狀態';button.classList.remove('selected');}

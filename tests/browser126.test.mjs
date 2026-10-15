@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {webcrypto} from 'node:crypto';
+const read=name=>fs.readFileSync(new URL('../dist/'+name,import.meta.url),'utf8');
+test('enabled current subscription silently repairs mismatched encryption keys without changing endpoint or subscribing again',async()=>{
+ for(const config of [{enabled:true,personEnabled:true,mismatch:true,expected:1},{enabled:false,personEnabled:true,mismatch:true,expected:0},{enabled:true,personEnabled:false,mismatch:true,expected:0},{enabled:true,personEnabled:true,mismatch:false,expected:0}]){
+  const keys={p256dh:'actual-key',auth:'actual-auth'},digest=Buffer.from(await webcrypto.subtle.digest('SHA-256',new TextEncoder().encode(keys.p256dh+'|'+keys.auth))).toString('hex');let saved=0,unsubscribed=0;
+  const button={classList:{toggle(){},remove(){}},disabled:false},subscription={endpoint:'https://fcm.googleapis.com/same',toJSON:()=>({keys}),unsubscribe:async()=>{unsubscribed++}},registration={pushManager:{getSubscription:async()=>subscription}};
+  const ctx=vm.createContext({crypto:webcrypto,TextEncoder,setTimeout,clearTimeout,navigator:{serviceWorker:{ready:Promise.resolve(registration),getRegistration:async()=>registration}},window:{PushManager:{},Notification:{}},Notification:{permission:'granted'},document:{querySelector:()=>button},localStorage:{getItem:()=>'',setItem(){},removeItem(){}},apiFetch:async url=>({ok:!url.includes('public-key'),json:async()=>({currentDeviceId:'phone',currentKeyFingerprint126:config.mismatch?'0'.repeat(64):digest,personEnabled:config.personEnabled,items:[{id:'phone',enabled:config.enabled}]})})});
+  const source=read('notifications-v82.js');vm.runInContext(source.slice(0,source.indexOf('function notificationAddButton82')),ctx);ctx.notificationSaveSubscription82=async value=>{assert.equal(value,subscription);saved++};await ctx.notificationUpdateButton82();assert.equal(saved,config.expected);assert.equal(unsubscribed,0);
+ }
+});
+test('integrated schedule labels load successfully, preserve copy action, and keep notification settings separate',async()=>{
+ let actions=0,removed=0;const click=()=>actions++,button={dataset:{},onclick:click},defaults={tab:'週會紀錄',save:'存檔'},ctx=vm.createContext({state:{appearance:{text:{schedule:{'工作紀錄：複製排程按鈕':'移用排程','週會：週會紀錄':'會議記錄'}}}},meetingDefaultText117:defaults,meetingRequest117:async query=>query==='?view=settings'?{message:'原通知'}:{text:{tab:'舊會議名稱',save:'舊存檔'}},meetingTextValue117:()=>'',meetingLabels117:{},scheduleTextSections63:{原排程:['今天']},uiCatalogue44:{schedule:['今天'],global:[]},scheduleTextDialog63(){},meetingAdmin117(){},scheduleDayRecord56(){return true},$:()=>button,document:{querySelector:()=>({remove(){removed++}}),documentElement:{dataset:{}}}});
+  vm.runInContext(read('enhancements-v126.js'),ctx);assert.equal(ctx.meetingTextValue117('tab'),'會議記錄');assert.equal((await ctx.meetingRequest117('?id=one')).text.save,'舊存檔');assert.equal((await ctx.meetingRequest117('?view=settings')).message,'原通知');ctx.scheduleDayRecord56();assert.equal(button.textContent,'移用排程');assert.equal(button.onclick,click);button.onclick();assert.equal(actions,1);assert.equal(button.dataset.uiContent,'');ctx.meetingAdmin117();assert.equal(removed,1);assert.ok(ctx.uiCatalogue44.schedule.includes('週會：複製圖片'));assert.ok(ctx.uiCatalogue44.schedule.includes('工作紀錄：複製排程按鈕'));
+});
+test('material UI replaces only the saved row and keeps work report upload unchanged',async()=>{
+ const source=read('schedule-v67.js'),material=source.slice(source.indexOf('scheduleMaterialDialog61=function'));
+ let callback,requests=0,renders=0,closed=0;const data={item:{id:'new',kind:'material',title:'新增料件',revision:1}},ctx=vm.createContext({crypto:{randomUUID:()=> 'new'},state:{projects:[]},currentUser:{name:'主管'},scheduleAnchor56:'2026-10-15',scheduleData56:{entries:[{id:'old',title:'保留'}]},leaveLocalUpdate124:false,canDo:()=>false,scheduleEsc56:String,schedulePeopleOptions71:()=>'',modal(_title,_html,_save,fn){callback=fn},confirmAction:async()=>true,FormData,apiFetch:async(url)=>{requests++;assert.equal(url,'/api/schedule-material-upload');return{ok:true,json:async()=>data}},scheduleRender56(){renders++},$:(selector)=>selector==='#modal'?{close(){closed++}}:{},document:{},navigator:{}});
+  // The photo selector setup needs DOM; execute only the form callback declaration.
+ const end=material.indexOf('\n );')+4;vm.runInContext(material.slice(0,end)+'\n};',ctx);ctx.scheduleMaterialDialog61();const form=new FormData();for(const[k,v]of Object.entries({day:'2026-10-15',title:'新增料件',category:'收料',projectName:'FAA',quantity:'1'}))form.set(k,v);await callback(form);assert.equal(requests,1);assert.equal(closed,1);assert.equal(renders,1);assert.equal(ctx.leaveLocalUpdate124,true);assert.deepEqual(Array.from(ctx.scheduleData56.entries,x=>x.id),['old','new']);
+ assert.ok(!source.slice(0,source.indexOf('scheduleMaterialDialog61=function')).includes('leaveLocalUpdate124'));
+});

@@ -5,6 +5,8 @@ import {database} from './helpers/d1.mjs';
 import {migrations85} from './helpers/migrations85.mjs';
 import worker,{notificationInboxApi88,pushTestApi82} from '../worker/server.mjs';
 import {notificationPlan85,notificationRulesValid85} from '../worker/notifications85.mjs';
+import webpush from 'web-push';
+import {runtime125} from './helpers/runtime125.mjs';
 
 globalThis.fetch=async(_input,options)=>{const id=new Headers(options.headers).get('authorization')?.slice(7);return Response.json({id,email:id+'@local.test'});};
 function fixture(){
@@ -38,10 +40,12 @@ test('work and custom plans include useful content, category, dedupe key and exa
 
 test('new material record creates an in-app notification for warehouse staff without notifying the actor',async()=>{
  const {db,env}=fixture(),form=new FormData();
+ const keys=webpush.generateVAPIDKeys();Object.assign(env,{VAPID_PUBLIC_KEY:keys.publicKey,VAPID_PRIVATE_KEY:keys.privateKey});
  const material={id:'material-test',enabled:true,type:'material',category:'料件紀錄',name:'料件通知',title:'{類型}紀錄通知',message:'{登記人}新增了 {案件名稱}的{類型}紀錄。',time:'00:00',firstDays:0,repeatDays:0,target:'material-record',recipientMode:'auto',recipientIds:[],materialCategories:['收料','出貨','送貨'],excludeActor:true};
  db.prepare('INSERT INTO company_state(company_id,body,revision,updated_at) VALUES(?,?,0,?)').run('warehouse-main',JSON.stringify({projects:[],logs:[],notificationRules:[material]}),'now');
  for(const [key,value] of Object.entries({id:'mat88',revision:'0',day:'2026-10-02',title:'螺絲',projectName:'FAA',category:'收料',quantity:'1'}))form.set(key,value);
- const response=await worker.fetch(new Request('https://local.test/api/schedule-material-upload',{method:'POST',headers:{Authorization:'Bearer boss',origin:'https://local.test'},body:form}),env);
+ const runtime=runtime125(env,globalThis.fetch);let response;
+ try{response=await worker.fetch(new Request('https://local.test/api/schedule-material-upload',{method:'POST',headers:{Authorization:'Bearer boss',origin:'https://local.test'},body:form}),env,runtime.ctx);await runtime.drain()}finally{runtime.restore()}
  assert.equal(response.status,200);
  const rows=db.prepare('SELECT employee_id,category,title,message,target_url FROM notification_inbox88 ORDER BY employee_id').all();
  assert.equal(rows.length,1);assert.equal(rows[0].employee_id,3);assert.equal(rows[0].category,'料件紀錄');assert.match(rows[0].title,/收料/);assert.match(rows[0].message,/主管新增了 FAA/);assert.match(rows[0].target_url,/notificationMaterial=mat88/);

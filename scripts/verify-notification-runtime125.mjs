@@ -5,14 +5,15 @@ import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 import {createECDH,randomBytes} from 'node:crypto';
 import webpush from 'web-push';
+import ece from 'http_ece';
 const {Miniflare}=await import(pathToFileURL(process.argv[2]).href);
 const keys=webpush.generateVAPIDKeys(),origin='https://rotaryteck-manage.rotaryteckserve.workers.dev';
-let mf,pushes=0,internal=0;
+let mf,pushes=0,internal=0;const receivers=new Map(),decodedPushes=[];
 mf=new Miniflare({modules:true,compatibilityDate:'2026-08-06',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['UPLOADS'],bindings:{VAPID_PUBLIC_KEY:keys.publicKey,VAPID_PRIVATE_KEY:keys.privateKey,VAPID_SUBJECT:'mailto:test@local.test'},script:fs.readFileSync(process.argv[3],'utf8'),outboundService:async request=>{
  // Miniflare reconstructs the custom outbound Request; redirect policy is
  // verified separately by the native push smoke test and unit transport tests.
  if(request.url.startsWith(origin+'/api/notification-runtime125')){internal++;return mf.dispatchFetch('https://local.test/api/notification-runtime125',{method:request.method,headers:request.headers,body:new Uint8Array(await request.arrayBuffer())})}
- assert.ok(request.url.startsWith('https://fcm.googleapis.com/local125/'));pushes++;return new Response(null,{status:201});
+ assert.ok(request.url.startsWith('https://fcm.googleapis.com/local125/'));const receiver=receivers.get(request.url),decoded=JSON.parse(ece.decrypt(Buffer.from(await request.arrayBuffer()),{version:'aes128gcm',privateKey:receiver.key,authSecret:receiver.auth}).toString());assert.ok(['工作提醒','收料紀錄通知'].includes(decoded.title));assert.ok(decoded.body.includes(decoded.title==='工作提醒'?'本日工作':'螺絲'));assert.ok(decoded.receipt126?.proof);decodedPushes.push(decoded);pushes++;return new Response(null,{status:201});
 }});
 async function signature(body){const secret=await crypto.subtle.importKey('raw',new TextEncoder().encode('notification-runtime125:'+keys.privateKey),{name:'HMAC',hash:'SHA-256'},false,['sign']);return Buffer.from(await crypto.subtle.sign('HMAC',secret,new TextEncoder().encode(body))).toString('hex')}
 try{
@@ -29,15 +30,23 @@ try{
  const now=Date.now(),stamp=new Date(now).toISOString(),day=new Date(now).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),rule={id:'local125',enabled:true,type:'work',category:'工作排程',name:'工作',title:'工作提醒',message:'{人員}：{工作清單}',time:'00:00',firstDays:0,repeatDays:0,target:'work-record',recipientMode:'auto',recipientIds:[]};
  await db.prepare('INSERT INTO company_state(company_id,body,revision,updated_at) VALUES(?,?,0,?)').bind('warehouse-main',JSON.stringify({notificationRules:[rule]}),stamp).run();
  for(let id=1;id<=7;id++){
-  const ec=createECDH('prime256v1');ec.generateKeys();
+  const ec=createECDH('prime256v1');ec.generateKeys();const auth=randomBytes(16);receivers.set('https://fcm.googleapis.com/local125/'+id,{key:ec,auth});
   await db.prepare("INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(?,?,?,?,'viewer','active',?,?)").bind(id,'local'+id,id+'@test.local','人員'+id,stamp,stamp).run();
   await db.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,assignee_ids,sort_index) VALUES(?,'daily',?,?,'本日工作','','','','[]',0,'','1','主管',?,?,0,?,0)").bind('job'+id,day,day,stamp,stamp,JSON.stringify([id])).run();
-  await db.prepare('INSERT INTO push_subscriptions(id,employee_id,endpoint,p256dh,auth,device_label,user_agent,enabled,created_at,updated_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('d'+id,id,'https://fcm.googleapis.com/local125/'+id,ec.getPublicKey().toString('base64url'),randomBytes(16).toString('base64url'),'手機','test',1,stamp,stamp,stamp).run();
+  await db.prepare('INSERT INTO push_subscriptions(id,employee_id,endpoint,p256dh,auth,device_label,user_agent,enabled,created_at,updated_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('d'+id,id,'https://fcm.googleapis.com/local125/'+id,ec.getPublicKey().toString('base64url'),auth.toString('base64url'),'手機','test',1,stamp,stamp,stamp).run();
  }
  async function round(time){
   const body=JSON.stringify({action:'start',at:Date.now(),input:{now:time}}),response=await mf.dispatchFetch('https://local.test/api/notification-runtime125',{method:'POST',headers:{'Content-Type':'application/json','X-Notification-Signature125':await signature(body)},body});assert.equal(response.status,200,await response.clone().text());
   for(let i=0;i<400;i++){const row=await db.prepare('SELECT status,error_message FROM notification_scheduler_status108 WHERE id=1').first();if(row?.status==='ok')return;if(row?.status==='failed')throw Error(row.error_message);await new Promise(resolve=>setTimeout(resolve,25))}throw Error('local stage chain did not finish');
  }
  await round(now);assert.equal(pushes,7);await round(now+180000);assert.equal(pushes,7);assert.ok(internal>20);assert.equal((await db.prepare("SELECT COUNT(*) n FROM notification_receipts921 WHERE status='sent'").first()).n,7);
- console.log(JSON.stringify({runtime:'workerd',people:7,pushes,internalInvocations:internal,secondRoundResends:0,realProviderRequests:0,cpuLimitVerified:false}));
+ const materialRule={...rule,id:'material126',type:'material',recipientMode:'selected',recipientIds:[2],title:'收料紀錄通知',message:'螺絲已新增',target:'material-record'};
+ await db.prepare('UPDATE company_state SET body=?').bind(JSON.stringify({notificationRules:[rule,materialRule]})).run();
+ await db.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at) VALUES('material126','material',?,?,'螺絲','','','','收料',1,'','1','主管',?,?)").bind(day,day,stamp,stamp).run();
+ await db.prepare("INSERT INTO material_pending126 VALUES('material126',1,'主管','pending',?)").bind(stamp).run();
+ for(let i=0;i<2;i++){const body=JSON.stringify({action:'material',at:Date.now(),input:{id:'material126'}}),response=await mf.dispatchFetch('https://local.test/api/notification-runtime125',{method:'POST',headers:{'X-Notification-Signature125':await signature(body)},body});assert.equal(response.status,200,await response.clone().text())}
+ assert.equal(pushes,8);
+ for(const decoded of decodedPushes){const response=await mf.dispatchFetch('https://local.test/api/push-receipt126',{method:'POST',body:JSON.stringify({receipt:decoded.receipt126,stage:'shown'})});assert.equal(response.status,200,await response.clone().text())}
+ assert.equal((await db.prepare("SELECT COUNT(*) n FROM notification_deliveries WHERE device_shown_at126<>''").first()).n,8);
+ console.log(JSON.stringify({runtime:'workerd',people:7,scheduledPushes:7,materialPushes:1,deviceDisplayReceipts:8,internalInvocations:internal,secondRoundResends:0,realProviderRequests:0,cpuLimitVerified:false}));
 }finally{await mf.dispose()}

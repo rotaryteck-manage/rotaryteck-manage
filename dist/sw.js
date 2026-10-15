@@ -11,6 +11,9 @@ async function syncPersonalBadge112(){
 }
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(clients.claim()));
+async function pushReceipt126(receipt,stage,error=''){
+ if(!receipt)return;try{await fetch('/api/push-receipt126',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receipt,stage,error}),signal:AbortSignal.timeout(4000)})}catch{}
+}
 
 self.addEventListener('push',event=>{
  let data={};
@@ -37,9 +40,8 @@ self.addEventListener('push',event=>{
   }
  };
 
- event.waitUntil(
-  Promise.all([self.registration.showNotification(title,options),syncPersonalBadge112()])
- );
+ const display=self.registration.showNotification(title,options).then(()=>pushReceipt126(data.receipt126,'shown')).catch(error=>pushReceipt126(data.receipt126,'error',error.name+': '+error.message));
+ event.waitUntil(Promise.allSettled([display,pushReceipt126(data.receipt126,'received'),syncPersonalBadge112()]));
 });
 
 self.addEventListener('notificationclick',event=>{

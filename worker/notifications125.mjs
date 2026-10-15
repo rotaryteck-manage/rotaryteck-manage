@@ -3,7 +3,7 @@
 // boundary holds pre-upgrade notices without resetting the old release cutoff.
 const notificationOrigin125='https://rotaryteck-manage.rotaryteckserve.workers.dev';
 const notificationSigning125=new Map();
-const notificationPhaseNames125={'rule':'檢查單一規則','dispatch':'處理單一收件人','retry-list':'建立裝置重試待辦','retry':'重試單一裝置','leave-list':'建立請假通知待辦','leave':'處理單筆請假通知','meeting-list':'建立週會通知待辦','meeting':'處理單筆週會通知'};
+const notificationPhaseNames125={'rule':'檢查單一規則','dispatch':'處理單一收件人','retry-list':'建立裝置重試待辦','retry':'重試單一裝置','leave-list':'建立請假通知待辦','leave':'處理單筆請假通知','meeting-list':'建立週會通知待辦','meeting':'處理單筆週會通知','material-list':'建立料件通知待辦','material':'處理單筆料件通知'};
 async function notificationSignature125(env,body){
  if(!env.VAPID_PRIVATE_KEY)throw Error('通知秘密金鑰尚未設定');
  let key=notificationSigning125.get(env.VAPID_PRIVATE_KEY);
@@ -45,7 +45,7 @@ async function notificationStart125(env,now,services){
  if(active)await env.DB.batch([env.DB.prepare("UPDATE notification_runs125 SET status='expired' WHERE id=?").bind(active.id),env.DB.prepare("UPDATE notification_tasks125 SET status='expired' WHERE run_id=? AND status<>'done'").bind(active.id)]);
  const id=new Date(now).toISOString();
  const rules=await services.rules(env,now),tasks=rules.map(rule=>({kind:'rule',payload:{ruleId:rule.id,now}}));
- tasks.push({kind:'retry-list',payload:{}},{kind:'leave-list',payload:{}},{kind:'meeting-list',payload:{}});
+ tasks.push({kind:'retry-list',payload:{}},{kind:'leave-list',payload:{}},{kind:'meeting-list',payload:{}},{kind:'material-list',payload:{}});
  const result=await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO notification_runs125(id,scheduled_for,status,attempts,created_at) VALUES(?,?,'running',0,?)").bind(id,id,stamp),notificationTaskStatement125(env,id,id,tasks,10),env.DB.prepare("INSERT INTO notification_scheduler_status108(id,scheduled_for,started_at,completed_at,status,planned,eligible,sent,failed,deferred,error_message) SELECT 1,?,?,'','running',0,0,0,0,0,'' WHERE EXISTS(SELECT 1 FROM notification_runs125 WHERE id=? AND status='running') ON CONFLICT(id) DO UPDATE SET scheduled_for=excluded.scheduled_for,started_at=excluded.started_at,completed_at='',status='running',planned=0,eligible=0,sent=0,failed=0,deferred=0,error_message='' WHERE notification_scheduler_status108.scheduled_for<>excluded.scheduled_for").bind(id,stamp,id)]);
  if(!result[0].meta?.changes){const current=await env.DB.prepare("SELECT id FROM notification_runs125 WHERE status='running'").first();if(current)await notificationKick125(env,current.id);return{accepted:true,duplicate:true}}
  await notificationKick125(env,id);return{accepted:true};
@@ -96,6 +96,7 @@ export async function notificationRuntimeApi125(request,env,ctx,services){
   let result;if(input.action==='start')result=await notificationStart125(env,input.input.now,services);
   else if(input.action==='step'&&typeof input.input.runId==='string'&&Number.isInteger(input.input.hop??0)&&(input.input.hop??0)>=0&&(input.input.hop??0)<=7)result=await notificationStep125(env,input.input.runId,services,ctx,input.input.hop??0);
   else if(input.action==='push')result=await services.push({...env,NOTIFICATION_RUNTIME116:true},input.input);
+  else if(input.action==='material')result=await services.material({...env,NOTIFICATION_RUNTIME116:true},input.input);
   else return Response.json({error:'未知階段'},{status:400});
   return Response.json(result,{headers:{'Cache-Control':'no-store'}});
  }catch(error){return Response.json({error:String(error?.message||error).slice(0,400)},{status:503})}
