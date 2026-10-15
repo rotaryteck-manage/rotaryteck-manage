@@ -35,10 +35,10 @@ test('notification log controls provide single, failed and all deletion with con
  assert.match(source,/method:'DELETE'/);
 });
 
-test('a browser subscription made with the old public key is stopped and asks to reopen notifications',async()=>{
+test('an old public key asks to reopen without destroying the browser subscription during a state check',async()=>{
  const source=fs.readFileSync(new URL('../dist/notifications-v82.js',import.meta.url),'utf8'),publicKey=JSON.parse(fs.readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8')).vars.VAPID_PUBLIC_KEY;
  let unsubscribed=0;const button={textContent:'',disabled:true,classList:{remove(){},toggle(){}}},subscription={options:{applicationServerKey:new Uint8Array(65).buffer},unsubscribe:async()=>{unsubscribed++}},registration={pushManager:{getSubscription:async()=>subscription}};
  const context=vm.createContext({atob,Uint8Array,setTimeout,clearTimeout,navigator:{serviceWorker:{ready:Promise.resolve(registration)}},window:{PushManager:{},Notification:{}},Notification:{permission:'granted'},document:{querySelector:selector=>selector==='#notification-enable82'?button:null},localStorage:{getItem:()=> 'old-device',removeItem(){}},apiFetch:async url=>({ok:true,json:async()=>url.endsWith('push-public-key')?{publicKey}:{items:[{id:'old-device',enabled:true}],personEnabled:true}})});
  vm.runInContext(source.slice(0,source.indexOf('function notificationAddButton82')),context);await context.notificationUpdateButton82();
- assert.equal(unsubscribed,1);assert.equal(button.textContent,'金鑰已更新，請重新開啟通知');assert.equal(button.disabled,false);
+ assert.equal(unsubscribed,0);assert.equal(button.textContent,'金鑰已更新，請重新開啟通知');assert.equal(button.disabled,false);
 });

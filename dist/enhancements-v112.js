@@ -25,8 +25,8 @@ let badgeBusy112=false;
 async function refreshPersonalBadge112(){
  if(badgeBusy112||document.hidden)return;
  if(!authRead()){await personalBadge112(0);return;}
- badgeBusy112=true;
- try{const data=await notificationInboxLoad88();const button=$('#notification-enable82');if(button)notificationBadge88(button,data.unread);}catch{}finally{badgeBusy112=false;}
+ badgeBusy112=true;const owner=currentUser?.id;
+ try{const data=await notificationInboxLoad88();const button=$('#notification-enable82');if(button&&owner===currentUser?.id)notificationBadge88(button,data.unread);}catch{}finally{badgeBusy112=false;}
 }
 setInterval(refreshPersonalBadge112,60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshPersonalBadge112();});

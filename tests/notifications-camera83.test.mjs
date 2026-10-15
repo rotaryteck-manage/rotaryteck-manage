@@ -73,7 +73,7 @@ test('a device deleted by the administrator returns to the normal enable-notific
  await ctx.notificationUpdateButton82();
  assert.equal(unsubscribed,0);
  assert.equal(removed,'notification-device85');
- assert.equal(button.textContent,'開啟通知');
+ assert.equal(button.textContent,'此裝置尚未綁定或已被刪除');
  assert.equal(button.disabled,false);
 });
 

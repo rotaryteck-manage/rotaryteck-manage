@@ -63,14 +63,9 @@ function notificationDeviceLabel82(){
 
 async function notificationCurrentSubscription82(){
  if(!('serviceWorker' in navigator))return null;
-
- try{
-  const registration=(await navigator.serviceWorker.getRegistration?.('/'))||await notificationReady85();
-
-  return await registration.pushManager.getSubscription();
- }catch{
-  return null;
- }
+ let registration=(await navigator.serviceWorker.getRegistration?.('/'))||await notificationReady85();
+ if('active' in registration&&!registration.active)registration=await notificationReady85();
+ return await registration.pushManager.getSubscription();
 }
 
 async function notificationSaveSubscription82(subscription){
@@ -178,51 +173,50 @@ async function notificationEnable82(){
  }
 }
 
-async function notificationUpdateButton82(){
- const button=
-  document.querySelector('#notification-enable82');
-
- if(!button)return;
-
- if(!('Notification' in window)||
-    !('PushManager' in window)){
-  button.textContent='此裝置不支援通知';
-  button.disabled=true;
-  return;
- }
-
- if(Notification.permission==='denied'){
-  button.textContent='通知已封鎖';
-  button.disabled=false;
-  return;
- }
-
- const subscription=
-  await notificationCurrentSubscription82();
-
- if(Notification.permission==='granted'&&subscription){
-  try{
-   const keyResponse=await apiFetch('/api/push-public-key'),keyData=await keyResponse.json();if(!keyResponse.ok)throw Error(keyData.error);
-   const expected=notificationKey82(keyData.publicKey),current=subscription.options?.applicationServerKey?new Uint8Array(subscription.options.applicationServerKey):null;
-   if(current&&(current.length!==expected.length||current.some((value,index)=>value!==expected[index]))){await subscription.unsubscribe();button.textContent='金鑰已更新，請重新開啟通知';button.classList.remove('selected');button.disabled=false;return;}
-  }catch{}
-  try{
-   const endpoint=subscription.endpoint||subscription.toJSON?.().endpoint||'';
-   const response=await apiFetch('/api/push-subscription'+(endpoint?'?currentEndpoint='+encodeURIComponent(endpoint):'')),data=await response.json();if(!response.ok)throw Error(data.error);
-   let localId='';try{localId=localStorage.getItem('notification-device85')||''}catch{}
-   const resolvedId=endpoint&&Object.hasOwn(data,'currentDeviceId')?data.currentDeviceId:localId;
-   const device=(data.items||[]).find(d=>d.id===resolvedId);
-   if(device&&data.currentDeviceId)try{localStorage.setItem('notification-device85',device.id)}catch{}
-   if(device?.enabled&&data.personEnabled&&data.currentKeyFingerprint126&&crypto.subtle){
-    const own=subscription.toJSON?.().keys;
-    if(own?.p256dh&&own?.auth){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(own.p256dh+'|'+own.auth)),fingerprint=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');if(fingerprint!==data.currentKeyFingerprint126)await notificationSaveSubscription82(subscription)}
+let notificationStatusSequence127=0,notificationStatusRetry127=null,notificationPushOwner127;
+let notificationPushStatus127={kind:'checking',message:'正在確認系統通知狀態',canEnable:false};
+function notificationOwner127(){return typeof currentUser==='undefined'?null:currentUser?.id}
+async function notificationUpdateButton82(attempt127=0){
+ const button=document.querySelector('#notification-enable82');if(!button)return null;
+ clearTimeout(notificationStatusRetry127);const sequence=++notificationStatusSequence127,owner=notificationOwner127();
+ if(notificationPushOwner127!==owner){notificationPushOwner127=owner;notificationPushStatus127={kind:'checking',message:'正在確認系統通知狀態',canEnable:false};if(typeof notificationPushPanel127==='function')notificationPushPanel127()}
+ const current=()=>sequence===notificationStatusSequence127&&owner===notificationOwner127()&&document.querySelector('#notification-enable82')===button&&button.isConnected!==false;
+ let status;
+ try{
+  if(!('Notification' in window)||!('PushManager' in window)||!('serviceWorker' in navigator))status={kind:'unsupported',message:'此裝置不支援系統通知',canEnable:false};
+  else if(Notification.permission==='denied')status={kind:'blocked',message:'瀏覽器通知已封鎖',canEnable:false};
+  else if(Notification.permission!=='granted')status={kind:'unbound',message:'系統通知尚未開啟',canEnable:true};
+  else{
+   const subscription=await notificationCurrentSubscription82();if(!current())return null;
+   if(!subscription)status={kind:'unbound',message:'系統通知尚未開啟',canEnable:true};
+   else{
+    const keyResponse=await apiFetch('/api/push-public-key'),keyData=await keyResponse.json();if(!current())return null;
+    // A state check never unsubscribes. Only the explicit enable action may replace a changed key.
+    let keyChanged127=false;if(keyResponse.ok&&subscription.options?.applicationServerKey){const expected=notificationKey82(keyData.publicKey),key=new Uint8Array(subscription.options.applicationServerKey);keyChanged127=key.length!==expected.length||key.some((value,index)=>value!==expected[index])}
+    {
+     const endpoint=subscription.endpoint||subscription.toJSON?.().endpoint||'',response=await apiFetch('/api/push-subscription'+(endpoint?'?currentEndpoint='+encodeURIComponent(endpoint):'')),data=await response.json();if(!current())return null;if(!response.ok)throw Error(data.error||'通知狀態讀取失敗');
+     let localId='';try{localId=localStorage.getItem('notification-device85')||''}catch{}
+     const resolvedId=endpoint&&Object.hasOwn(data,'currentDeviceId')?data.currentDeviceId:localId,device=(data.items||[]).find(d=>d.id===resolvedId);
+     if(device&&data.currentDeviceId)try{localStorage.setItem('notification-device85',device.id)}catch{}
+     if(!data.personEnabled)status={kind:'person-disabled',message:'人員通知已停用（後台設定）',canEnable:false};
+     else if(!device){try{localStorage.removeItem('notification-device85')}catch{}status={kind:'unbound',message:'此裝置尚未綁定或已被刪除',canEnable:true}}
+     else if(!device.enabled)status={kind:'device-disabled',message:'裝置通知已停用（後台設定）',canEnable:false};
+     else if(keyChanged127)status={kind:'key-changed',message:'金鑰已更新，請重新開啟通知',canEnable:true};
+     else{
+      if(data.currentKeyFingerprint126&&crypto.subtle){const own=subscription.toJSON?.().keys;if(own?.p256dh&&own?.auth){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(own.p256dh+'|'+own.auth));if(!current())return null;const fingerprint=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');if(fingerprint!==data.currentKeyFingerprint126)await notificationSaveSubscription82(subscription)}}
+      status={kind:'ready',message:'通知已開啟',canEnable:false};
+     }
+    }
    }
-   if(!device){try{localStorage.removeItem('notification-device85')}catch{}button.textContent='開啟通知';button.classList.remove('selected');}
-   else{button.textContent=!data.personEnabled?'人員通知已停用':device.enabled?'通知已開啟':'裝置通知已停用';button.classList.toggle('selected',!!device.enabled&&data.personEnabled);}
-  }catch{button.textContent='確認通知狀態';button.classList.remove('selected');}
- }else{button.textContent='開啟通知';button.classList.remove('selected');}
-
- button.disabled=false;
+  }
+ }catch{status={kind:'checking',message:'暫時無法確認系統通知狀態',canEnable:false}}
+ if(!current())return null;
+ notificationPushStatus127=status;button.classList.toggle('selected',status.kind==='ready');button.disabled=false;
+ if(!button.classList.contains?.('notification-bell88'))button.textContent=status.message;
+ if(typeof notificationPushPanel127==='function')notificationPushPanel127();
+ // Two bounded retries for startup/read failures; never register, subscribe or override admin settings here.
+ if((status.kind==='checking'||status.kind==='unbound'&&Notification.permission==='granted')&&attempt127<2)notificationStatusRetry127=setTimeout(()=>current()?notificationUpdateButton82(attempt127+1).catch(()=>{}):undefined,1500);
+ return status;
 }
 
 function notificationAddButton82(){
@@ -240,9 +234,10 @@ function notificationAddButton82(){
  button.className='small';
  button.textContent='開啟通知';
 
- button.onclick=notificationEnable82;
+ button.onclick=()=>notificationEnable82();
 
  actions.prepend(button);
+ if(typeof notificationBell127==='function')notificationBell127(button);
 
  notificationUpdateButton82();
 }
