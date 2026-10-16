@@ -81,7 +81,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="leave-duration124.js?v=124" defer></script>'+
  '<script src="enhancements-v124.js?v=124" defer></script>'+
  '<script src="enhancements-v126.js?v=126" defer></script>'+
- '<link rel="stylesheet" href="enhancements-v124.css?v=124">'+
+ '<link rel="stylesheet" href="enhancements-v124.css?v=128">'+
  '<link rel="stylesheet" href="meetings117.css?v=123">'+
  '</head>'
 );
