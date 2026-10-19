@@ -1,0 +1,27 @@
+/* Scoped to the QC case and its PDF preview; shared forms keep their existing layout. */
+.qc-dialog129{overflow:hidden;max-height:90dvh}
+.qc-dialog129 #dialog-form{display:flex;flex-direction:column;max-height:86dvh;min-height:0}
+.qc-dialog129 .modal-head,.qc-dialog129 .modal-foot{flex-shrink:0}
+.qc-dialog129 .modal-body{overflow:auto;min-height:0;padding-top:0}
+.qc-toolbar129{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;background:var(--ui-surface,#fff);padding:8px 0 12px}
+.qc-list129{padding:0;margin:0 0 16px}
+.qc-row129{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:5px 0}
+.qc-dialog129 .qc-link129{display:block;width:100%;min-width:0;border:0;border-radius:0;box-shadow:none;background:transparent;padding:3px 0;text-align:left;color:inherit;line-height:1.55;overflow-wrap:anywhere;white-space:normal}
+.qc-link129:hover{text-decoration:underline}
+.qc-list129.is-editing .qc-row129{grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--border,#d8e1d5);padding:8px 0}
+.qc-author129{grid-column:1;font-size:.78rem;color:#667562;overflow-wrap:anywhere}
+.qc-actions129{grid-column:2;grid-row:1 / span 2;display:flex;align-items:center;gap:5px}
+.qc-dialog129 .qc-actions129 button{font-size:.78rem;padding:5px 8px;min-height:30px}
+.qc-registration129{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;overflow-wrap:anywhere}
+.qc-registration129>span:last-child{display:flex;flex-wrap:wrap;gap:6px}
+.qc-pdf129{box-sizing:border-box;width:min(1100px,96vw);height:92dvh;max-width:96vw;max-height:94dvh;padding:0;border:1px solid var(--ui-border,#b6cbbb);border-radius:12px;overflow:hidden;background:var(--ui-surface,#fff);color:var(--ui-text,#234e40)}
+.qc-pdf129[open]{display:flex;flex-direction:column}
+.qc-pdf129::backdrop{background:rgb(0 0 0 / .5)}
+.qc-pdf-head129{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #d8e1d5;flex-shrink:0}
+.qc-pdf-head129 h2{margin:0 auto 0 0;min-width:0;font-size:1rem;overflow-wrap:anywhere;max-height:4.5em;overflow:auto}
+.qc-pdf-head129 button{flex-shrink:0;padding:7px 10px}
+.qc-pdf-status129{margin:12px 18px;overflow-wrap:anywhere}
+.qc-pdf-content129{flex:1;min-height:0;overflow:auto}
+.qc-pdf-content129 object{display:block;width:100%;height:100%;min-height:200px}
+.qc-pdf-help129{flex-shrink:0;margin:0;padding:8px 18px;font-size:.78rem;border-top:1px solid #d8e1d5}
+@media(max-width:600px){.qc-toolbar129{gap:6px}.qc-pdf-head129{padding:10px;gap:6px}.qc-pdf-help129{padding:8px 10px}.qc-dialog129 .modal-head h2{overflow-wrap:anywhere}}
