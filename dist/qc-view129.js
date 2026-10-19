@@ -23,7 +23,10 @@ qcOpen124=function(project,editing=null){
  const registration=edit?'<details class="qc-history124"><summary>登記資料與其他操作</summary>'+uploads.map(u=>'<div class="qc-registration129"><span>'+esc(u.stamp.replace('T',' '))+(u.note?'｜'+esc(u.note):'')+'</span><span>'+(qcCanUI124('manage')?button('修改日期／備註','data-qc-edit="'+esc(u.id)+'"')+button('補加 PDF','data-qc-append="'+esc(u.id)+'"'):'')+(qcCanUI124('delete')?button('刪除整次登記','data-qc-delete-upload="'+esc(u.id)+'"','danger-button'):'')+'</span></div>').join('')+'</details>':'';
  modal(p.name+' _ 品檢報告','<div class="qc-toolbar129">'+toolbar+'</div><div class="qc-list129'+(edit?' is-editing':'')+'">'+(list||'<p class="muted">目前沒有 PDF，請按新增。</p>')+'</div>'+registration+qcHistory129(p),null);
  const box=$('#modal'),token=++qcOpenToken129;box.classList.add('qc-dialog124','qc-dialog129');
- box.addEventListener('close',()=>{if(token===qcOpenToken129&&!box.open){box.classList.remove('qc-dialog124','qc-dialog129');qcEditingProject129=''}},{once:true});
+ // An earlier form's queued close event can arrive after this dialog has reopened.
+ // Keep the current listener until its actual close, so QC styles cannot leak to other forms.
+ const onClose=()=>{if(token!==qcOpenToken129){box.removeEventListener('close',onClose);return}if(box.open)return;box.classList.remove('qc-dialog124','qc-dialog129');qcEditingProject129='';box.removeEventListener('close',onClose)};
+ box.addEventListener('close',onClose);
  box.querySelector('[data-qc-add]')?.addEventListener('click',()=>qcForm129(()=>qcUpload124(p)));
  box.querySelector('[data-qc-edit-project]')?.addEventListener('click',()=>qcForm129(()=>qcProject124(p)));
  box.querySelector('[data-qc-edit-mode]')?.addEventListener('click',()=>qcOpen124(project,true));

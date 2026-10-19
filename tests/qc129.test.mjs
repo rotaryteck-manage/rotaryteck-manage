@@ -36,6 +36,13 @@ test('edit screen shows authors and individual controls, retaining registration 
  const f=setup();f.run("qcOpen124('p',true)");assert.match(f.html(),/新增人員：倉管/);assert.match(f.html(),/data-qc-replace="replacement"/);assert.match(f.html(),/data-qc-delete-file="second"/);assert.match(f.html(),/data-qc-edit-project/);assert.match(f.html(),/登記資料與其他操作/);assert.match(f.html(),/data-qc-edit="old"/);assert.match(f.html(),/刪除紀錄與舊版附件/);
  f.run("qcOpen124('p')");assert.match(f.html(),/完成編輯/);f.run("qcOpen124('p',false)");assert.doesNotMatch(f.html(),/qc-author129/);
 });
+test('queued close from a saved form cannot lose the reopened case cleanup or leak QC styling',()=>{
+ const f=setup(),removed=[];f.box.classList.remove=(...classes)=>removed.push(...classes);
+ f.run("qcOpen124('p',true)");f.run("qcOpen124('p')");
+ f.box.dispatchEvent(new Event('close'));assert.equal(f.run('qcEditingProject129'),'p');assert.equal(removed.length,0);
+ f.box.close();assert.equal(f.run('qcEditingProject129'),'');assert.ok(removed.includes('qc-dialog129'));
+ f.run("qcOpen124('p')");assert.doesNotMatch(f.html(),/qc-author129/);
+});
 test('QC permission combinations never expose unauthorized mutations or old PDFs',()=>{
  const f=setup([]);f.run("qcOpen124('p',true)");assert.doesNotMatch(f.html(),/data-qc-add|data-qc-edit-mode|data-qc-delete|data-qc-replace|data-qc-export-case|刪除紀錄與舊版附件/);
  const d=setup(['delete']);d.run("qcOpen124('p',true)");assert.match(d.html(),/data-qc-delete-file/);assert.doesNotMatch(d.html(),/data-qc-replace|data-qc-edit-project|data-qc-edit="/);
