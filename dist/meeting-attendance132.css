@@ -1,0 +1,22 @@
+/* Only the added attendance window; the meeting form and report table retain their layout. */
+.attendance-dialog132{box-sizing:border-box;width:min(580px,calc(100vw - 20px));max-width:calc(100vw - 20px);max-height:86dvh;padding:0;border:1px solid var(--ui-border,#cad8c9);border-radius:10px;background:var(--ui-surface,#fff);color:var(--ui-text,#234336);overflow:hidden}
+.attendance-dialog132[open]{display:flex;flex-direction:column}
+.attendance-dialog132::backdrop{background:#152a2066}
+.attendance-head132{display:flex;align-items:center;gap:12px;flex-shrink:0;padding:14px 18px;border-bottom:1px solid var(--ui-border,#cad8c9);background:var(--ui-rowAlt,#f3f7ef)}
+.attendance-head132 h2{margin:0;flex:1;font-size:18px;overflow-wrap:anywhere}
+.attendance-head132 button{flex-shrink:0;font-size:14px;padding:7px 10px}
+.attendance-body132{overflow:auto;min-height:0;padding:16px 18px;font-size:14px}
+.attendance-dialog132 .attendance-meeting132{margin:0 0 12px;font-size:13px}
+.attendance-tools132{display:flex;gap:8px;flex-wrap:wrap}
+.attendance-tools132 button{font-size:14px;padding:7px 10px}
+.attendance-dialog132 h3{font-size:15px;margin:18px 0 8px}
+.attendance-dialog132 table{min-width:0!important;width:100%;table-layout:fixed;border-collapse:collapse}
+.attendance-dialog132 th,.attendance-dialog132 td{padding:8px;font-size:13px;overflow-wrap:anywhere;white-space:normal;border-bottom:1px solid var(--ui-border,#cad8c9)}
+.attendance-dialog132 th:first-child{width:35%}
+.attendance-status132:empty{display:none}
+.attendance-status132,.attendance-legacy132{font-size:12px;line-height:1.6;overflow-wrap:anywhere;margin:10px 0}
+.attendance-names132{line-height:1.8;overflow-wrap:anywhere}
+.attendance-help132{display:block;font-size:12px;line-height:1.7;margin-top:16px}
+.attendance-fallback132{box-sizing:border-box;width:100%;height:160px;margin-top:12px;font-size:14px}
+.attendance-dialog132 [hidden]{display:none!important}
+@media(max-width:600px){.attendance-head132{padding:12px}.attendance-body132{padding:12px}.attendance-dialog132 td,.attendance-dialog132 th{padding:7px 5px}}

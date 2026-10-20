@@ -7,7 +7,7 @@ async function qcRequest124(data,form=null){const r=await apiFetch('/api/qc-repo
 async function qcLoad124(){const account=String(currentUser?.id||currentUser?.email||'');if(account!==qcAccount124){qcData124={projects:[],uploads:[],files:[],logs:[]};qcAccount124=account;qcSelected124=''}const token=++qcLoadToken124,r=await apiFetch('/api/qc-reports'),d=await r.json();if(!r.ok)throw Error(d.error||'品檢資料讀取失敗');if(token!==qcLoadToken124||qcAccount124!==account)return false;qcData124=d;return true}
 Object.assign(auditCategories,{qc:'品檢報告'});
 const pagesBeforeQC124=managementPages;
-managementPages=function(){const list=pagesBeforeQC124();if(qcCanUI124('view')){const i=list.findIndex(p=>p.id==='schedule');list.splice(i<0?list.length:i,0,{id:'qc',title:'品檢報告'})}return list};
+managementPages=function(){const list=pagesBeforeQC124();if(qcCanUI124('view')){const i=list.findIndex(p=>p.id==='schedule');list.splice(i<0?list.length:i+1,0,{id:'qc',title:'品檢報告'})}return list};
 const renderBeforeQC124=render;
 render=function(){renderBeforeQC124();if(activeManagementPage().id==='qc')renderQC124()};
 function renderQC124(){
@@ -59,4 +59,4 @@ scheduleDayRecord56=function(day,section='jobs',...args){dayRecordBefore124(day,
 function copyDailyDialog124(source){const id=crypto.randomUUID();modal('複製排程','<p>來源：'+esc(source)+'。只複製工作安排，不包含回報及照片。</p><label class="field">目標日期<input type="date" name="target" value="'+esc(taipeiDate())+'" required></label>','確認複製',async fd=>{const target=String(fd.get('target'));if(target===source)throw Error('不能複製到原日期');if((scheduleData56.entries||[]).some(e=>e.kind==='daily'&&e.day<=target&&e.end_day>=target))throw Error('目標日期已有工作排程，不能複製');await scheduleSend56({kind:'copy_daily',id,source,target});$('#modal').close();scheduleAnchor56=target;scheduleTab56='daily';scheduleLoadedRange56='';scheduleRender56();const token=++copyDailyToken124,deadline=Date.now()+30000,open=()=>{if(token!==copyDailyToken124||location.hash!=='#schedule')return;if(Date.now()>deadline){toast('排程已複製；資料讀取較慢，請稍後開啟目標日期');return}if((scheduleData56.entries||[]).some(e=>e.kind==='daily'&&e.day===target)){scheduleDayRecord56(target);return}setTimeout(open,150)};open()})}
 let copyDailyToken124=0;
 function notificationLeaveHTML124(message){return esc(message).replace(/(\d+)([DHM])(?=\s*(?:\/|$|\n))/g,(_,n,u)=>n+'<span class="leave-unit124 leave-unit-'+u+'124">'+u+'</span>')}
-document.documentElement.dataset.appVersion='13.1v';
+document.documentElement.dataset.appVersion='13.2v';

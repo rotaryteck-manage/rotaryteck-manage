@@ -4,6 +4,8 @@ export function migrations85(db){
  for(const name of fs.readdirSync(new URL('../../drizzle/',import.meta.url)).filter(n=>/^\d.*\.sql$/.test(n)).sort()){
   if(name.startsWith('0017')||name.startsWith('0002'))continue; // Production history migration is exercised separately on an existing store.
   const source=fs.readFileSync(new URL('../../drizzle/'+name,import.meta.url),'utf8');
+  // SQLite must parse a trigger body as a whole; its internal semicolons are not statement boundaries.
+  if(name==='0039_meeting_attendance132.sql'){db.exec(source);continue}
   for(let statement of source.split(';').map(s=>s.replace(/^\s*--[^\n]*\n/gm,'').trim()).filter(Boolean)){
    const alter=statement.match(/^ALTER TABLE\s+([\w`]+)\s+ADD(?: COLUMN)?\s+([\w`]+)/i);
    if(alter&&db.prepare('PRAGMA table_info('+alter[1]+')').all().some(c=>c.name===alter[2].replaceAll('`','')))continue;
