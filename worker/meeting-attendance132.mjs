@@ -19,11 +19,11 @@ export async function meetingAttendanceApi132(request,env,employee){
   if(request.method==='POST'){
    const now=new Date().toISOString();
    // Neither a caller-supplied employee nor a client clock is trusted. The first read is immutable.
-   await env.DB.prepare("UPDATE meeting_attendance_people132 SET first_read_at=? WHERE meeting_id=? AND employee_id=? AND first_read_at='' AND EXISTS(SELECT 1 FROM employees WHERE id=? AND status='active') AND EXISTS(SELECT 1 FROM meetings117 WHERE id=? AND deleted_at='') AND NOT EXISTS(SELECT 1 FROM meeting_attendance_excluded132 WHERE employee_id=?)").bind(now,id,employee.id,employee.id,id,employee.id).run();
-   const row=await env.DB.prepare('SELECT first_read_at FROM meeting_attendance_people132 WHERE meeting_id=? AND employee_id=? AND NOT EXISTS(SELECT 1 FROM meeting_attendance_excluded132 WHERE employee_id=?)').bind(id,employee.id,employee.id).first();
+   await env.DB.prepare("UPDATE meeting_attendance_people132 SET first_read_at=? WHERE meeting_id=? AND employee_id=? AND first_read_at='' AND EXISTS(SELECT 1 FROM employees WHERE id=? AND status='active') AND EXISTS(SELECT 1 FROM meetings117 WHERE id=? AND deleted_at='') AND included=1").bind(now,id,employee.id,employee.id,id).run();
+   const row=await env.DB.prepare('SELECT first_read_at FROM meeting_attendance_people132 WHERE meeting_id=? AND employee_id=? AND included=1').bind(id,employee.id).first();
    return attendanceJSON132({registered:!!row?.first_read_at,firstReadAt:row?.first_read_at||''});
   }
-  const rows=await env.DB.prepare('SELECT employee_id AS id,name,first_read_at AS firstReadAt FROM meeting_attendance_people132 WHERE meeting_id=? AND NOT EXISTS(SELECT 1 FROM meeting_attendance_excluded132 b WHERE b.employee_id=meeting_attendance_people132.employee_id) ORDER BY position,employee_id').bind(id).all();
+  const rows=await env.DB.prepare('SELECT employee_id AS id,name,first_read_at AS firstReadAt FROM meeting_attendance_people132 WHERE meeting_id=? AND included=1 ORDER BY position,employee_id').bind(id).all();
   return attendanceJSON132({id:item.id,day:item.day,legacy:!!item.legacy,startedAt:item.started_at,people:rows.results});
  }catch(error){console.error('週會簽到操作失敗',error.message);return attendanceJSON132({error:'簽到操作未完成，請稍後重試'},500)}
 }

@@ -77,13 +77,13 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v112.js?v=127" defer></script>'+
  '<script src="enhancements-v113.js?v=113" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v113.css?v=113">'+
- '<script src="meetings117.js?v=123" defer></script>'+
+ '<script src="meetings117.js?v=133" defer></script>'+
  '<script src="leave-duration124.js?v=124" defer></script>'+
  '<script src="enhancements-v124.js?v=124" defer></script>'+
  '<script src="enhancements-v126.js?v=126" defer></script>'+
  '<script src="qc-view129.js?v=129" defer></script>'+
- '<script src="meeting-attendance132.js?v=132" defer></script>'+
- '<link rel="stylesheet" href="meeting-attendance132.css?v=132">'+
+ '<script src="meeting-attendance132.js?v=133" defer></script>'+
+ '<link rel="stylesheet" href="meeting-attendance132.css?v=133">'+
  '<link rel="stylesheet" href="qc-view129.css?v=131">'+
  '<link rel="stylesheet" href="enhancements-v124.css?v=128">'+
  '<link rel="stylesheet" href="meetings117.css?v=123">'+
@@ -91,5 +91,5 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
 );
 fs.mkdirSync('dist/server',{recursive:true});
 const code=fs.readFileSync('worker/push-receipts126.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/material126.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications125.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/server.mjs','utf8').replace(/^import .*from '\.\/.*';?\n/gm,'').replace("return new Response('Not found',{status:404});","const a=assets[path==='/'?'/index.html':path];if(!a)return new Response('Not found',{status:404});return new Response(a.body,{headers:{'Content-Type':a.type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});");
-fs.writeFileSync('dist/server/index.js',fs.readFileSync('worker/backup85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications121.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications123.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/alerts90.mjs','utf8').replace(/^export /gm,'')+'\n'+workflows+'\n'+codec+'\n'+fs.readFileSync('worker/wire-permissions.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\nconst assets='+JSON.stringify(assets)+';\n'+fs.readFileSync('worker/leave-duration124.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/qc124.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/schedule.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/records-export.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/holidays.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/meeting-attendance132.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/meetings117.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/push116.mjs','utf8').replace(/^export /gm,'')+'\n'+code);
+fs.writeFileSync('dist/server/index.js',fs.readFileSync('worker/backup85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications85.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications121.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/notifications123.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/alerts90.mjs','utf8').replace(/^export /gm,'')+'\n'+workflows+'\n'+codec+'\n'+fs.readFileSync('worker/wire-permissions.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\nconst assets='+JSON.stringify(assets)+';\n'+fs.readFileSync('worker/leave-duration124.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/qc124.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/schedule.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/records-export.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/holidays.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/meeting-audience133.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/meeting-attendance132.mjs','utf8').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/meetings117.mjs','utf8').replace(/^import .*\n/gm,'').replace(/^export /gm,'')+'\n'+fs.readFileSync('worker/push116.mjs','utf8').replace(/^export /gm,'')+'\n'+code);
 console.log('Built authenticated warehouse Worker');

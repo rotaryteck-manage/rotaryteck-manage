@@ -20,3 +20,8 @@
 .attendance-fallback132{box-sizing:border-box;width:100%;height:160px;margin-top:12px;font-size:14px}
 .attendance-dialog132 [hidden]{display:none!important}
 @media(max-width:600px){.attendance-head132{padding:12px}.attendance-body132{padding:12px}.attendance-dialog132 td,.attendance-dialog132 th{padding:7px 5px}}
+.meeting-notification-form118 .attendance-settings133{margin:8px 0 16px;border:1px solid #cbd9c9;border-radius:6px;padding:10px 12px;min-width:0}
+.attendance-settings133 summary{cursor:pointer;color:#285842;font-weight:600}
+.attendance-settings133 summary small{margin-left:8px;font-weight:400}
+.attendance-settings133 .attendance-select-tools133{display:flex;gap:8px;margin-bottom:10px}
+.attendance-settings133 .meeting-recipient-list118{max-height:220px;overflow-y:auto}

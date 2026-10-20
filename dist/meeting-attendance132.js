@@ -1,10 +1,25 @@
 'use strict';
 const meetingAttendanceLabels132={attendance:'簽到名單',copyAttendance:'複製文字',shareAttendance:'分享到 LINE',attendanceRead:'已簽到',attendanceUnread:'未簽到',attendanceName:'人員',attendanceTime:'首次閱讀時間',attendanceAll:'全員已簽到',attendanceEmpty:'本次沒有需簽到的人員',attendanceLoading:'正在讀取簽到名單…',attendanceRetry:'重新讀取',attendanceLegacy:'自功能啟用後開始記錄',attendanceReminderTitle:'【週會紀錄閱讀提醒】',attendancePending:'尚未簽到',attendanceReminder:'請開啟該則週會紀錄閱讀，系統會自動完成簽到。',attendanceCopied:'已複製',attendanceManualCopy:'瀏覽器未允許複製，請選取下方文字後自行複製。',attendanceShareHelp:'由你選擇 LINE 群組並確認送出，不會自動發送。',attendanceFailed:'簽到尚未完成，請點簽到名單重試。'};
 Object.assign(meetingLabelDefaults126,meetingAttendanceLabels132);
+const attendanceSettingsLabels133={attendanceAudience:'應簽到人員',attendanceSelected:'已選',attendanceUnit:'人',attendanceSelectAll:'全選',attendanceSelectNone:'清除選取',attendanceSettingsHint:'儲存後同步既有及之後新增的週會簽到名單；保留既有簽到時間，不發送或補發通知。通知接收對象另行設定。'};
+Object.assign(meetingAttendanceLabels132,attendanceSettingsLabels133);
+Object.assign(meetingLabelDefaults126,attendanceSettingsLabels133);
 scheduleTextSections63['週會紀錄']=[...new Set([...scheduleTextSections63['週會紀錄'],...Object.values(meetingAttendanceLabels132).map(s=>'週會：'+s)])];
 uiCatalogue44.schedule=[...new Set([...uiCatalogue44.schedule,...scheduleTextSections63['週會紀錄']])];
 const attendanceLabel132=key=>meetingTextValue117(key)||meetingAttendanceLabels132[key]||key;
 const attendanceAccount132=()=>String(currentUser?.id||currentUser?.email||'');
+function attendanceSettingsUI133(fields,settings,people){
+ const details=document.createElement('details');details.className='attendance-settings133';details.dataset.uiContent='';
+ const selected=new Set((settings.attendanceIds||[]).map(String)),initial=[...selected].sort((a,b)=>Number(a)-Number(b));
+ // Retain selected disabled accounts in the editor so an unrelated setting save cannot silently remove them.
+ const visible=[...people];for(const id of selected)if(!visible.some(p=>String(p.id)===id))visible.push({id,name:'帳號 '+id+'（未啟用，可取消選取）'});
+ details.innerHTML='<summary>'+esc(attendanceLabel132('attendanceAudience'))+' <small data-attendance-count133></small></summary><p class="muted">'+esc(attendanceLabel132('attendanceSettingsHint'))+'</p><div class="attendance-select-tools133"><button type="button" data-attendance-all133>'+esc(attendanceLabel132('attendanceSelectAll'))+'</button><button type="button" data-attendance-none133>'+esc(attendanceLabel132('attendanceSelectNone'))+'</button></div><div class="meeting-recipient-list118">'+visible.map(p=>'<label><input type="checkbox" name="attendanceIds133" value="'+esc(String(p.id))+'" '+(selected.has(String(p.id))?'checked':'')+'> '+esc(p.name)+'</label>').join('')+'</div>';
+ fields.querySelector('[data-people118]').after(details);
+ const ids=()=>[...details.querySelectorAll('input:checked')].map(p=>p.value).sort((a,b)=>Number(a)-Number(b));
+ const update=()=>{details.querySelector('[data-attendance-count133]').textContent=attendanceLabel132('attendanceSelected')+' '+ids().length+' '+attendanceLabel132('attendanceUnit')};
+ details.onchange=update;details.querySelector('[data-attendance-all133]').onclick=()=>{details.querySelectorAll('input').forEach(p=>{if(people.some(person=>String(person.id)===p.value))p.checked=true});update()};details.querySelector('[data-attendance-none133]').onclick=()=>{details.querySelectorAll('input').forEach(p=>p.checked=false);update()};update();
+ return {collect:()=>JSON.stringify(ids())===JSON.stringify(initial)?{}:{attendanceIds:ids(),attendanceRevision:settings.attendanceRevision}};
+}
 async function attendanceRequest132(id,mark=false,signal){
  const response=await apiFetch('/api/meeting-attendance132'+(mark?'':'?id='+encodeURIComponent(id)),mark?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id}),signal}:{signal});
  const data=await response.json();if(!response.ok)throw Error(data.error||'簽到操作未完成');return data;
@@ -84,4 +99,4 @@ meetingRead120=function(item,text,canEdit){
 };
 // A notification may have opened its record while deferred scripts were still loading.
 document.querySelectorAll('.meeting-read-dialog120[open]').forEach(parent=>attendanceAttach132(parent,parent.meetingRecord132));
-document.documentElement.dataset.appVersion='13.2v';
+document.documentElement.dataset.appVersion='13.3v';
