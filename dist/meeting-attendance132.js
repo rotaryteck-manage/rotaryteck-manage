@@ -99,4 +99,4 @@ meetingRead120=function(item,text,canEdit){
 };
 // A notification may have opened its record while deferred scripts were still loading.
 document.querySelectorAll('.meeting-read-dialog120[open]').forEach(parent=>attendanceAttach132(parent,parent.meetingRecord132));
-document.documentElement.dataset.appVersion='13.4v';
+document.documentElement.dataset.appVersion='13.5v';

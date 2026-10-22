@@ -25,4 +25,4 @@ const meetingAdminBefore126=meetingAdmin117;
 meetingAdmin117=function(){meetingAdminBefore126();document.querySelector('[data-meeting-settings117]')?.remove()};
 const dayRecordBefore126=scheduleDayRecord56;
 scheduleDayRecord56=function(...args){const result=dayRecordBefore126(...args),button=$('#modal [data-copy-daily124]');if(button){button.dataset.uiContent='';button.textContent=state.appearance?.text?.schedule?.[copyDailyLabelKey126]||'複製排程'}return result};
-document.documentElement.dataset.appVersion='13.4v';
+document.documentElement.dataset.appVersion='13.5v';

@@ -18,7 +18,7 @@ export async function holidayApi60(request,env){
   if(env?.DB)try{
    const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}),from=today.startsWith(year+'-')?today:year+'-01-01';
    const rows=await env.DB.prepare("SELECT effective_date,detail FROM notification_source_state90 WHERE status='closed' AND effective_date>=? AND effective_date<=?").bind(from,year+'-12-31').all();
-   for(const row of rows.results||[]){let detail={};try{detail=JSON.parse(row.detail||'{}')}catch{}dates[row.effective_date]={off:true,name:(detail.city||'高雄市')+(detail.district||'左營區')+'停班'};}
+   for(const row of rows.results||[]){let detail={};try{detail=JSON.parse(row.detail||'{}')}catch{}if(detail.periodKey&&detail.periodKey!=='all')continue;dates[row.effective_date]={off:true,name:(detail.city||'高雄市')+(detail.district||'左營區')+'停班'};}
   }catch{}
   return Response.json({year,dates,available:true},{headers:{'Cache-Control':'no-store'}});
  }catch{return Response.json({year,dates:{},available:false},{headers:{'Cache-Control':'no-store'}})}

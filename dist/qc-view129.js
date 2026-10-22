@@ -69,4 +69,4 @@ qcViewPDF124=async function(id){
  }catch(error){if(!closed){status.hidden=false;status.textContent=timeout?'PDF讀取逾時，請關閉後重試。':error.message||'PDF讀取失敗';content.replaceChildren();download.disabled=true}}
  finally{clearTimeout(timer)}
 };
-document.documentElement.dataset.appVersion='13.4v';
+document.documentElement.dataset.appVersion='13.5v';

@@ -18,7 +18,8 @@ import {recordAuxiliary85,recordCollections,recordKey,normalizeLogIds,stableJSON
 import {scheduleApi,schedulePhotoApi,schedulePhotoUpload,scheduleMaterialPhotoApi,scheduleMaterialUpload} from './schedule.mjs';
 import {recordsExportApi} from './records-export.mjs';
 import {holidayApi60,governmentHolidayData60,namedGovernmentHoliday60} from './holidays.mjs';
-import {fetchClosureStatus90} from './alerts90.mjs';
+import {fetchClosureStatus90,closureDateActive901} from './alerts90.mjs';
+import {closureRecord135,closurePending135,closureComplete135,closureSourceStatement135} from './closure135.mjs';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x);
 function check(ok,message){if(!ok)throw new Error(message);}
@@ -951,7 +952,7 @@ async function previewValues90(type,employee,env){
  if(type==='wire'){const reels=(state.wireReels||[]).filter(x=>x.status==='low'&&!x.restock?.ordered&&!x.restock?.received),reel=reels[0];if(!reel)return{available:false,note:'目前沒有可預覽的待補線材。',values:base,targetDate:day};return{available:true,note:'預覽統計目前尚未訂購的線材；正式發送另依提醒天數與發送紀錄篩選。',values:{...base,數量:reels.length,線材名稱:(state.wireTypes||[]).find(x=>x.id===reel.wireId)?.name||'',逾期天數:Math.max(0,Math.floor((Date.parse(day)-Date.parse(String(reel.restock?.reported?.time||day).slice(0,10)))/86400000))},targetDate:day};}
  if(type==='plating'){const project=(state.platingProjects||[]).find(p=>!p.archived&&(p.shipments||[]).some(s=>s.sent&&!s.returned)),shipment=project?.shipments?.find(s=>s.sent&&!s.returned);if(!shipment)return{available:false,note:'目前沒有可預覽的待回貨電鍍資料。',values:base,targetDate:day};return{available:true,note:'預覽使用目前待回貨電鍍資料。',values:{...base,數量:1,案件名稱:project.name,電鍍內容:shipment.note||('第'+shipment.number+'次送鍍'),逾期天數:Math.max(0,Math.floor((Date.parse(day)-Date.parse(shipment.sent))/86400000))},targetDate:day};}
  if(type==='holiday'){const next=await holidayPreview90(day);if(!next)return{available:false,note:'目前沒有可預覽的國定假日資料。',values:base,targetDate:day};return{available:true,note:'預覽使用下一個政府日曆國定假日。',values:{...base,假日名稱:next.name,假日日期:next.date},targetDate:next.date};}
- if(type==='closure'){const row=await env.DB.prepare("SELECT * FROM notification_source_state90 WHERE source_key=?").bind('closure:高雄市:左營區').first();if(!row||row.status==='unknown'||!closureDateActive901({effectiveDate:row.effective_date},day))return{available:false,note:'目前沒有高雄市左營區今日或明日的停班公告。',values:base,targetDate:day};let detail={};try{detail=JSON.parse(row.detail||'{}')}catch{}return{available:true,note:'預覽使用目前有效的官方停班狀態。',values:{...base,縣市:detail.city||'高雄市',行政區:detail.district||'左營區',停班日期:row.effective_date,停班狀態:row.status==='closed'?'停止上班':'恢復上班',公告時間:detail.announcedAt||''},targetDate:row.effective_date||day};}
+ if(type==='closure'){const row=await env.DB.prepare("SELECT * FROM notification_source_state90 WHERE source_key=?").bind('closure:高雄市:左營區').first();let detail={};try{detail=JSON.parse(row?.detail||'{}')}catch{}if(detail.error)return{available:false,note:'官方停班資料讀取失敗：'+detail.error,values:base,targetDate:day};if(!row||row.status==='unknown'||!closureDateActive901({effectiveDate:row.effective_date},day))return{available:false,note:detail.note||'尚未確認高雄市左營區今日或明日的停班公告。',values:base,targetDate:day};return{available:true,note:'預覽使用目前有效的官方停班狀態。',values:{...base,縣市:detail.city||'高雄市',行政區:detail.district||'左營區',停班日期:row.effective_date,停班狀態:detail.workText||(row.status==='closed'?'停止上班':'恢復上班'),公告時間:detail.announcedAt||''},targetDate:row.effective_date||day};}
  return{available:true,note:'預覽使用目前登入人員與今日日期。',values:base,targetDate:day};
 }
 export async function notificationPreviewApi90(request,env){const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);if(request.method!=='GET')return json({error:'不支援的操作'},405);try{return json(await previewValues90(new URL(request.url).searchParams.get('type')||'custom',employee,env))}catch(error){return json({error:error.message||'無法產生實際預覽'},503)}}
@@ -973,16 +974,19 @@ async function runHolidayRules90(env,rules,now,budget=null,suppressed=new Map())
  for(const rule of eligible)for(const person of await ruleRecipients90(env,rule)){const blocked=suppressed.get(rule.id);if(blocked&&(blocked.has('*')||blocked.has(String(person.id))))continue;const values={人員:person.name,日期:day,通知名稱:rule.name,假日名稱:holiday.name,假日日期:tomorrow};await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'holiday',category:rule.category||'假日提醒',title:template90(rule.title,values),message:template90(rule.message,values),targetUrl:'/?notificationDay='+tomorrow+'#schedule',sourceKey:'holiday:'+rule.id+':'+tomorrow+':'+person.id},budget)}
 }
 async function cleanupStaleClosure901(env,clock=Date.now()){const day=new Date(clock).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});await env.DB.prepare("DELETE FROM notification_inbox88 WHERE category='停班提醒' AND target_url LIKE '/?notificationDay=%' AND substr(target_url,19,10)<?").bind(day).run();await env.DB.prepare("UPDATE notification_source_state90 SET status='unknown',source_id='',effective_date='',detail=json_set(CASE WHEN json_valid(detail) THEN detail ELSE '{}' END,'$.stale',1),changed_at='' WHERE effective_date<>'' AND effective_date<?").bind(day).run()}
-async function runClosureRules90(env,rules,clock=Date.now(),budget=null,suppressed=new Map()){
+async function runClosureRules90(env,rules,clock=Date.now(),budget=null,suppressed=new Map(),context=null){
  const day=new Date(clock).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
  await env.DB.prepare("DELETE FROM notification_inbox88 WHERE category='停班提醒' AND target_url LIKE '/?notificationDay=%' AND substr(target_url,19,10)<?").bind(day).run();
  const checks=new Map();
  for(const rule of rules.filter(x=>x.enabled&&x.type==='closure')){
   const city=rule.city||'高雄市',district=rule.district||'左營區',key='closure:'+city+':'+district,now=new Date(clock).toISOString();let checkResult=checks.get(key);
-  if(!checkResult){const previous=await env.DB.prepare('SELECT * FROM notification_source_state90 WHERE source_key=?').bind(key).first();let result;try{result=await fetchClosureStatus90(city,district,fetch,budget?.signal)}catch(error){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({city,district,error:error.message||String(error)}),now).run();checks.set(key,{skip:true});continue}if(!closureDateActive901(result,day)){await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?, 'unknown','','', ?, ?, '') ON CONFLICT(source_key) DO UPDATE SET status='unknown',source_id='',effective_date='',detail=excluded.detail,checked_at=excluded.checked_at").bind(key,JSON.stringify({...result,city,district,stale:true}),now).run();checks.set(key,{skip:true});continue}const changed=closureStateChanged902(result,previous),detail=JSON.stringify({...result,city,district});await env.DB.prepare("INSERT INTO notification_source_state90(source_key,status,source_id,effective_date,detail,checked_at,changed_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET status=excluded.status,source_id=excluded.source_id,effective_date=excluded.effective_date,detail=excluded.detail,checked_at=excluded.checked_at,changed_at=CASE WHEN excluded.status<>notification_source_state90.status OR excluded.source_id<>notification_source_state90.source_id OR excluded.effective_date<>notification_source_state90.effective_date THEN excluded.changed_at ELSE notification_source_state90.changed_at END").bind(key,result.status,result.sourceId,result.effectiveDate,detail,now,changed?now:(previous?.changed_at||'')).run();checkResult={result,changed,previous};checks.set(key,checkResult)}
-  if(checkResult.skip)continue;const {result,changed,previous}=checkResult;
-  if(!changed||result.status==='unknown'||result.status==='open'&&previous?.status!=='closed')continue;
-  for(const person of await ruleRecipients90(env,rule)){const blocked=suppressed.get(rule.id);if(blocked&&(blocked.has('*')||blocked.has(String(person.id))))continue;const values={人員:person.name,日期:result.effectiveDate,通知名稱:rule.name,縣市:city,行政區:district,停班日期:result.effectiveDate,停班狀態:result.status==='closed'?'停止上班':'恢復上班',公告時間:result.announcedAt||''};await notificationDispatch88(env,person.id,{ruleId:rule.id,notificationType:'closure',category:rule.category||'停班提醒',title:template90(rule.title,values),message:template90(rule.message,values),targetUrl:'/?notificationDay='+encodeURIComponent(result.effectiveDate)+'#schedule',sourceKey:'closure:'+rule.id+':'+result.effectiveDate+':'+result.sourceId+':'+result.status+':'+person.id},budget)}
+  if(!checkResult){const previous=await env.DB.prepare('SELECT * FROM notification_source_state90 WHERE source_key=?').bind(key).first();try{const result=await fetchClosureStatus90(city,district,fetch,budget?.signal,clock);checkResult={result,previous};if(!closureDateActive901(result,day)&&result.status!=='unknown')throw Error('官方停班公告不適用今日或明日')}catch(error){let detail={};try{detail=JSON.parse(previous?.detail||'{}')}catch{}await closureSourceStatement135(env,key,{...detail,city,district},now,error.message||String(error)).run();checkResult={error:true,previous}}checks.set(key,checkResult)}
+  const people=await ruleRecipients90(env,rule),allowed=new Set(people.map(p=>String(p.id))),blocked=suppressed.get(rule.id);
+  if(!checkResult.error)await closureRecord135(env,rule,checkResult.result,checkResult.previous,clock,people.filter(p=>!blocked||!blocked.has('*')&&!blocked.has(String(p.id))),template90);
+  const pending=await closurePending135(env,rule,day),plans=[];
+  for(const row of pending){if(!allowed.has(String(row.employee_id))||blocked&&(blocked.has('*')||blocked.has(String(row.employee_id))))continue;plans.push({...JSON.parse(row.payload),employeeId:row.employee_id})}
+  if(context?.enqueue125){await context.enqueue125(plans.map(plan=>[plan]));continue}
+  for(const plan of plans){const result=await notificationDispatch88(env,plan.employeeId,plan,budget);await closureComplete135(env,[plan],result)}
  }
 }
 async function notificationRuleSuppressions921(env,rules,now){
@@ -1044,7 +1048,7 @@ export async function notificationRuntimeWithServices125(request,env,ctx){
    if(kind==='dispatch'){
     const rules=(await notificationState115(runtime,Date.now(),{rulesOnly125:true})).notificationRules||[];
     if(!rules.some(rule=>rule.enabled&&rule.id===input.plans[0]?.ruleId))return{sent:0};
-    return notificationDispatchBatch93(runtime,input.employeeId,input.plans,{remaining:32});
+    const result=await notificationDispatchBatch93(runtime,input.employeeId,input.plans,{remaining:32});if(input.plans[0]?.notificationType==='closure')await closureComplete135(runtime,input.plans,result);return result;
    }
    if(kind==='retry-list'){const rows=await notificationRetryRows125(runtime);await add((rows.results||[]).map(row=>({kind:'retry',payload:{dedupeKey:row.dedupe_key}})),30);return{}}
    if(kind==='retry'){
@@ -1117,7 +1121,7 @@ export async function runNotifications85(env,now=Date.now(),context=null){
  if(!context?.enqueue125)await retryNotifications921(env,budget);
  await notificationPhase115(env,context,'檢查假日與停班公告',details);
  try{await runHolidayRules90(env,enabledRules,now,budget,suppressed)}catch(error){if(context?.enqueue125)throw error;console.error('國定假日通知檢查失敗',error?.message||String(error))}
- try{await runClosureRules90(env,enabledRules,now,budget,suppressed)}catch(error){if(context?.enqueue125)throw error;console.error('停班通知檢查失敗',error?.message||String(error))}
+ try{await runClosureRules90(env,enabledRules,now,budget,suppressed,context)}catch(error){if(context?.enqueue125)throw error;console.error('停班通知檢查失敗',error?.message||String(error))}
  await notificationPhase115(env,context,'完成',details);
  return{checked:true,planned:plans.length,eligible:dispatchable.length,invalidRules:invalid.length,remainingBudget:budget.remaining,...delivery};
 }
