@@ -77,7 +77,7 @@ export async function closureRecord135(env,rule,result,previous,clock,people,tem
    // A source switch never appends recipients/devices to an already captured legacy notice.
    if(legacy.length&&!legacyPeople.has(Number(person.id)))continue;
    const deliveryKey=legacyPeople.get(Number(person.id))||eventKey+':'+person.id,values={人員:person.name,日期:announcement.effectiveDate,通知名稱:rule.name,縣市:announcement.city,行政區:announcement.district,停班日期:announcement.effectiveDate,停班狀態:announcement.workText,公告時間:announcement.announcedAt};
-   const info='\n官方公告：'+announcement.effectiveDate+' '+announcement.scopeLabel+' '+announcement.workText,body=template(rule.message,values),message=body.slice(0,Math.max(0,500-info.length))+info;
+   const message=template(rule.message,values).slice(0,500);
    items.push({key:deliveryKey,employeeId:Number(person.id),inboxId:crypto.randomUUID(),payload:{ruleId:rule.id,notificationType:'closure',category:rule.category||'停班提醒',title:template(rule.title,values).slice(0,100),message,targetUrl:'/?notificationDay='+encodeURIComponent(announcement.effectiveDate)+'#schedule',sourceKey:deliveryKey,dedupeKey:deliveryKey}});
   }
   statements.push(

@@ -142,4 +142,4 @@ async function meetingCopy120(item,text,button,dialog){if(button.disabled)return
 async function meetingDownload120(blob,item){const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=item.day+'-週會紀錄.png';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
 
 scheduleNotificationRoute941();
-document.documentElement.dataset.appVersion='13.5v';
+document.documentElement.dataset.appVersion='13.6v';
