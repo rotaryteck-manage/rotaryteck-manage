@@ -117,8 +117,8 @@ function openWireLedger(typeId='',filters={}){
  $('#wire-all-usage137').onclick=()=>openWireUsage137(null,draw);
  $('#wire-ledger-export')?.addEventListener('click',async()=>{if(!await authorizeExport())return;await downloadBlob(new Blob([platingCsv(wireCsvRows(shown))],{type:'text/csv;charset=utf-8'}),wt('ledger')+'.csv');});draw();
 }
-function wireCutRow137({c,r,t},selectable=false){return '<tr>'+(selectable?'<td>'+(wireCanEditCut(c)?'<input type="checkbox" aria-label="'+we('archivePick139')+'" data-wire-archive139="'+esc(c.id)+'">':'')+'</td>':'')+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,t.name,wireReelOrdinal(r),r.color,c.length,c.quantity,Math.round(c.length*c.quantity*100)/100].map(value=>'<td>'+esc(String(value))+'</td>').join('')+'<td><div class="wire-tools">'+(wireCanEditCut(c)?'<button type="button" data-wire-edit137="'+esc(c.id)+'">'+we('edit')+'</button>':'')+(canDo('wire.delete')?'<button type="button" data-wire-delete137="'+esc(c.id)+'">'+we('delete')+'</button>':'')+'</div></td></tr>';}
-function wireDetailTable137(rows){return rows.length?wireTable137(['projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],rows.map(row=>wireCutRow137(row)).join('')):'<p>'+we('empty')+'</p>';}
+function wireCutRow137({c,r,t},selectable=false,focused=false){return (focused?'<tr class="notification-focus93">':'<tr>')+(selectable?'<td>'+(wireCanEditCut(c)?'<input type="checkbox" aria-label="'+we('archivePick139')+'" data-wire-archive139="'+esc(c.id)+'">':'')+'</td>':'')+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,t.name,wireReelOrdinal(r),r.color,c.length,c.quantity,Math.round(c.length*c.quantity*100)/100].map(value=>'<td>'+esc(String(value))+'</td>').join('')+'<td><div class="wire-tools">'+(wireCanEditCut(c)?'<button type="button" data-wire-edit137="'+esc(c.id)+'">'+we('edit')+'</button>':'')+(canDo('wire.delete')?'<button type="button" data-wire-delete137="'+esc(c.id)+'">'+we('delete')+'</button>':'')+'</div></td></tr>';}
+function wireDetailTable137(rows,selected=''){return rows.length?wireTable137(['projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],rows.map(row=>wireCutRow137(row,false,!!selected&&wireBatchKey137(row.c)===selected)).join('')):'<p>'+we('empty')+'</p>';}
 async function wireDeleteCut137(id){
  if(!canDo('wire.delete'))return false;const c=(state.wireCuts||[]).find(x=>x.id===id),r=wireReel(c?.reelId);if(!c||!r)return false;
  if(!await confirmAction(wt('deleteCutPrompt')+' '+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,c.length+' cm × '+c.quantity].join('｜')))return false;
@@ -147,13 +147,13 @@ function openWireUnfiled139(rows,back){
  if(all){const update=()=>{const count=boxes.filter(x=>x.checked).length;all.checked=count===boxes.length;all.indeterminate=count>0&&count<boxes.length;$('#wire-archive-count139').textContent=count+' / '+boxes.length;};all.onchange=()=>{for(const box of boxes)box.checked=all.checked;update();};for(const box of boxes)box.onchange=update;update();}
  wireBindDetails137(dialog,()=>openWireCase137('','',back));
 }
-function openWireCase137(key,selected='',back=()=>openWireLedger(),opened=null){
- const rows=wireCutRows(wireCuts()).filter(x=>wireProjectKey137(x.c.projectName)===key),groups=[...wireGroup137(rows,x=>wireBatchKey137(x.c))],name=rows[0]?.c.projectName||wt('unfiled');
+function openWireCase137(key,selected='',back=()=>openWireLedger()){
+ const rows=wireCutRows(wireCuts()).filter(x=>wireProjectKey137(x.c.projectName)===key),name=rows[0]?.c.projectName||wt('unfiled');
  if(!key)return openWireUnfiled139(rows,back);
- wireModal(name+'｜'+wt('caseCuts'),'<div class="wire-tools"><button type="button" id="wire-case-back137">← '+we('backLedger')+'</button><button type="button" id="wire-case-usage137">'+we('caseUsage')+'</button></div><h3>'+we('cutHistory')+'</h3><div id="wire-case-batches137">'+(groups.map(([id,items])=>{const c=items[0].c;return '<details class="wire-record137" data-wire-batch137="'+esc(id)+'" '+(opened?opened.has(id)?'open':'':selected===id?'open':'')+'><summary>'+esc(receiptTime(c.time)+'｜'+c.actor+'｜'+wt('detailCount')+'：'+items.length)+' <span>'+we('cutDetails')+'</span></summary><div data-batch-detail137></div></details>';}).join('')||'<p>'+we('empty')+'</p>')+'</div>');
+ wireModal(name+'｜'+wt('caseCuts'),'<div class="wire-tools"><button type="button" id="wire-case-back137">← '+we('backLedger')+'</button><button type="button" id="wire-case-usage137">'+we('caseUsage')+'</button></div><h3>'+we('cutHistory')+'</h3><div id="wire-case-batches137">'+wireDetailTable137(rows,selected)+'</div>');
  $('#wire-case-back137').onclick=back;$('#wire-case-usage137').onclick=()=>openWireUsage137(key);
- const box=$('#wire-case-batches137'),refresh=()=>openWireCase137(key,'',back,new Set([...box.querySelectorAll('details[open]')].map(d=>d.dataset.wireBatch137)));const byBatch=new Map(groups);for(const detail of box.querySelectorAll('[data-wire-batch137]')){const show=()=>{const target=detail.querySelector('[data-batch-detail137]');if(detail.open&&!target.hasChildNodes()){target.innerHTML=wireDetailTable137(byBatch.get(detail.dataset.wireBatch137));wireBindDetails137(target,refresh);}};detail.ontoggle=show;show();}
- if(selected)[...box.querySelectorAll('details')].find(d=>d.dataset.wireBatch137===selected)?.scrollIntoView({block:'nearest'});
+ const box=$('#wire-case-batches137');wireBindDetails137(box,()=>openWireCase137(key,selected,back));
+ if(selected)box.querySelector('.notification-focus93')?.scrollIntoView({block:'nearest'});
 }
 function wireUsageRows137(rows,cutoffs){
  return [...wireGroup137(rows,x=>x.r.id)].map(([id,items])=>{const start=[cutoffs?.all||'',cutoffs?.reels?.[id]||''].sort().at(-1),active=items.filter(x=>!start||Date.parse(x.c.time)>Date.parse(start));
