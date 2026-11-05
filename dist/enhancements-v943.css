@@ -1,1 +1,4 @@
-dialog.cloud-progress943[open]{position:fixed!important;inset:0!important;margin:auto!important;width:min(300px,calc(100vw - 32px))!important;height:fit-content!important;min-height:0!important;padding:24px!important;text-align:center;background:#f7f5eb;color:#234e3c;border-radius:14px}dialog.cloud-progress943 p{margin:0;line-height:1.7}html.cloud-progress-active943 #modal[open]{visibility:hidden}html.cloud-progress-active943 #cloud-status.cloud-saving941{display:none}dialog #toast{z-index:2147483647;bottom:24px;max-width:calc(100vw - 32px)}
+.cloud-progress943{position:fixed;inset:auto 16px max(18px,env(safe-area-inset-bottom)) auto;z-index:2147483646;max-width:calc(100vw - 32px);padding:9px 14px;border:1px solid #8eaa99;border-radius:8px;background:#234e3c;color:#fff;font-size:13px;line-height:1.5;box-shadow:0 3px 12px #19392a26;pointer-events:none}
+html.cloud-progress-active943 #cloud-status.cloud-saving941{display:none}
+dialog #toast{z-index:2147483647;bottom:24px;max-width:calc(100vw - 32px)}
+@media(max-width:600px){.cloud-progress943{right:12px;bottom:max(12px,env(safe-area-inset-bottom));font-size:12px;padding:8px 12px}}

@@ -36,7 +36,7 @@ persist=function(){saveCloud(state).catch(e=>oldToast(e.message));};
 saveEditState=function(candidate){if(!cloudReady||cloudBusy||failedCandidate)error('請先等候雲端儲存完成。');state=candidate;persist();};
 for(const event of ['click','submit','input','change'])document.addEventListener(event,e=>{
  if(e.target.closest('#close-modal,#cancel-modal'))return;
- if(failedCandidate&&event==='click'&&e.target.closest('summary,[data-cloud-readonly]'))return;
+ if(cloudReady&&(cloudBusy||failedCandidate)&&event==='click'&&e.target.closest('summary,[data-cloud-readonly]'))return;
  if(cloudReady&&cloudBusy&&!failedCandidate&&event==='click'&&e.target.closest('a[href^="#"],[data-schedule-tab],[data-project]'))return;
  if(!cloudReady&&e.target.closest('a'))return;
  if((!cloudReady||cloudBusy||failedCandidate)&&!e.target.closest('#cloud-status,.login-page,[data-confirmation]')){

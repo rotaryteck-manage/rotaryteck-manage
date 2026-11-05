@@ -32,7 +32,7 @@
 #modal #dialog-form .wire-ledger-tools142>input{width:240px}
 #modal #dialog-form .wire-ledger-tools142>select{width:130px}
 #modal #dialog-form .wire-ledger-tools142>label input{width:150px}
-#modal #dialog-form .wire-ledger-tools142>button{width:auto;background:var(--ui-card,#fff);white-space:nowrap}
+#modal #dialog-form .wire-ledger-tools142>button{width:auto;align-self:flex-end;background:var(--ui-card,#fff);white-space:nowrap}
 @media(max-width:760px){
  #modal #dialog-form .wire-ledger-tools142{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
  #modal #dialog-form .wire-ledger-tools142>input,#modal #dialog-form .wire-ledger-tools142>select{grid-column:1/-1;width:100%}

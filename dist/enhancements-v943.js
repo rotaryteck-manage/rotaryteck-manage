@@ -1,12 +1,19 @@
  'use strict';
-let cloudDialog943=null;
+let cloudDialog943=null,cloudSavedForm143=null;
 function cloudProgress943(busy){
  if(busy){
-  if(cloudDialog943?.open)return;
-  cloudDialog943=document.createElement('dialog');cloudDialog943.className='cloud-progress943';cloudDialog943.innerHTML='<p role="status" aria-live="polite">正在上傳雲端…<br><small>請勿重複操作</small></p>';
-  cloudDialog943.addEventListener('cancel',event=>event.preventDefault());document.body.append(cloudDialog943);cloudDialog943.showModal();document.documentElement.classList.add('cloud-progress-active943');
+  if(cloudDialog943?.isConnected)return;
+  const modal=document.querySelector('#modal'),form=modal?.querySelector('#dialog-form');
+  // Keep the submitted form intact for failure recovery, without its modal backdrop.
+  cloudSavedForm143=modal?.open&&form?.dataset.busy==='1'?{modal,form}:null;
+  if(cloudSavedForm143)modal.close();
+  cloudDialog943=document.createElement('div');cloudDialog943.className='cloud-progress943';
+  cloudDialog943.setAttribute('role','status');cloudDialog943.setAttribute('aria-live','polite');cloudDialog943.textContent='儲存中…';
+  (modal?.open?modal:document.body).append(cloudDialog943);document.documentElement.classList.add('cloud-progress-active943');
  }else{
-  document.documentElement.classList.remove('cloud-progress-active943');if(cloudDialog943){cloudDialog943.close();cloudDialog943.remove();cloudDialog943=null;}
+  document.documentElement.classList.remove('cloud-progress-active943');cloudDialog943?.remove();cloudDialog943=null;
+  const saved=cloudSavedForm143;cloudSavedForm143=null;
+  if(typeof failedCandidate!=='undefined'&&failedCandidate&&saved?.form.isConnected&&saved.modal.querySelector('#dialog-form')===saved.form&&!saved.modal.open)saved.modal.showModal();
  }
 }
 function legacyNotificationTarget943(value){
