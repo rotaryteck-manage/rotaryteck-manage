@@ -101,6 +101,31 @@ body='<div class="schedule-daily-list67">'+
 };
 
 function scheduleAssigned67(day){return(scheduleData56.entries||[]).filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day&&scheduleAssignees56(e).includes(currentUser.name)).sort((a,b)=>(a.sort_index||0)-(b.sort_index||0)||String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id))}
+// Work-report-only fallback; other upload areas keep their existing compressor.
+async function compressReportPhoto144(file){
+ const limit=750*1024,name=file?.name||'工作照片';
+ try{
+  let prepared;
+  try{prepared=await compressReceiptImage(file,limit);}catch(error){if(!/壓縮後仍超過/.test(error.message||''))throw error;}
+  if(prepared?.size>0&&prepared.size<=limit)return prepared;
+  const image=await decodePhoto89(file);
+  try{
+   const scale=Math.min(1,900/Math.max(image.width,image.height));
+   let width=Math.max(1,Math.round(image.width*scale)),height=Math.max(1,Math.round(image.height*scale));
+   const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{alpha:false});
+   if(!ctx)throw Error('裝置無法處理這張照片');
+   while(true){
+    canvas.width=width;canvas.height=height;ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.drawImage(image,0,0,width,height);
+    for(const quality of [.85,.7,.55,.4,.25]){
+     const blob=await canvasBlob(canvas,'image/jpeg',quality);
+     if(blob?.size>0&&blob.size<=limit)return new File([blob],name.replace(/\.[^.]+$/, '')+'.jpg',{type:'image/jpeg',lastModified:file.lastModified});
+    }
+    if(width===1&&height===1)throw Error('裝置無法將照片壓縮至 750 KB，請重新選擇這張照片');
+    width=Math.max(1,Math.floor(width*.75));height=Math.max(1,Math.floor(height*.75));
+   }
+  }finally{image.close?.();}
+ }catch(error){throw Error(name+'：'+(error.message||'照片處理失敗'));}
+}
 scheduleReportDialog56=function(day){
  day=day||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});
  let pendingPhotos=[];
@@ -144,8 +169,8 @@ scheduleReportDialog56=function(day){
    form.append('body',String(fd.get('body')||'').trim());
 
    for(const photo of pendingPhotos){
-    const compressed=await compressReceiptImage(photo);
-    form.append('photo',compressed,photo.name||'photo.jpg');
+    const compressed=await compressReportPhoto144(photo);
+    form.append('photo',compressed,compressed.name||photo.name||'photo.jpg');
    }
 
    const response=await apiFetch('/api/schedule-photo-upload',{
