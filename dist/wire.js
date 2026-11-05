@@ -117,8 +117,8 @@ function openWireLedger(typeId='',filters={}){
  $('#wire-all-usage137').onclick=()=>openWireUsage137(null,draw);
  $('#wire-ledger-export')?.addEventListener('click',async()=>{if(!await authorizeExport())return;await downloadBlob(new Blob([platingCsv(wireCsvRows(shown))],{type:'text/csv;charset=utf-8'}),wt('ledger')+'.csv');});draw();
 }
-function wireCutRow137({c,r,t}){return '<tr>'+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,t.name,wireReelOrdinal(r),r.color,c.length,c.quantity,Math.round(c.length*c.quantity*100)/100].map(value=>'<td>'+esc(String(value))+'</td>').join('')+'<td><div class="wire-tools">'+(wireCanEditCut(c)?'<button type="button" data-wire-edit137="'+esc(c.id)+'">'+we('edit')+'</button>':'')+(canDo('wire.delete')?'<button type="button" data-wire-delete137="'+esc(c.id)+'">'+we('delete')+'</button>':'')+'</div></td></tr>';}
-function wireDetailTable137(rows){return rows.length?wireTable137(['projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],rows.map(wireCutRow137).join('')):'<p>'+we('empty')+'</p>';}
+function wireCutRow137({c,r,t},selectable=false){return '<tr>'+(selectable?'<td>'+(wireCanEditCut(c)?'<input type="checkbox" aria-label="'+we('archivePick139')+'" data-wire-archive139="'+esc(c.id)+'">':'')+'</td>':'')+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,t.name,wireReelOrdinal(r),r.color,c.length,c.quantity,Math.round(c.length*c.quantity*100)/100].map(value=>'<td>'+esc(String(value))+'</td>').join('')+'<td><div class="wire-tools">'+(wireCanEditCut(c)?'<button type="button" data-wire-edit137="'+esc(c.id)+'">'+we('edit')+'</button>':'')+(canDo('wire.delete')?'<button type="button" data-wire-delete137="'+esc(c.id)+'">'+we('delete')+'</button>':'')+'</div></td></tr>';}
+function wireDetailTable137(rows){return rows.length?wireTable137(['projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],rows.map(row=>wireCutRow137(row)).join('')):'<p>'+we('empty')+'</p>';}
 async function wireDeleteCut137(id){
  if(!canDo('wire.delete'))return false;const c=(state.wireCuts||[]).find(x=>x.id===id),r=wireReel(c?.reelId);if(!c||!r)return false;
  if(!await confirmAction(wt('deleteCutPrompt')+' '+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,c.length+' cm × '+c.quantity].join('｜')))return false;
@@ -128,8 +128,28 @@ function wireBindDetails137(box,done,editDone=done){
  for(const b of box.querySelectorAll('[data-wire-edit137]'))b.onclick=()=>{const c=(state.wireCuts||[]).find(x=>x.id===b.dataset.wireEdit137);if(c)editWireCut(c.reelId,c.id,editDone);};
  for(const b of box.querySelectorAll('[data-wire-delete137]'))b.onclick=async()=>{try{if(await wireDeleteCut137(b.dataset.wireDelete137))done();}catch(e){toast(e.message);}};
 }
+Object.assign(wireWords,{archivePick139:'選取裁線紀錄',archiveAll139:'全選可歸檔紀錄',archiveSave139:'歸檔所選紀錄',archiveEmpty139:'請選擇要歸檔的紀錄',archiveConfirm139:'確定將所選裁線紀錄歸檔至',archiveChanged139:'紀錄已變更，請重新選取'});
+function openWireUnfiled139(rows,back){
+ const allow=rows.some(x=>wireCanEditCut(x.c)),controls='<div class="wire-tools"><button type="button" id="wire-unfiled-back139">← '+we('backLedger')+'</button><button type="button" id="wire-unfiled-usage139">'+we('caseUsage')+'</button></div>';
+ const form=allow?wireProjectField137()+'<label><input type="checkbox" id="wire-archive-all139"> '+we('archiveAll139')+'</label> <output id="wire-archive-count139" aria-live="polite"></output>':'';
+ wireModal(wt('unfiled')+'｜'+wt('caseCuts'),controls+form+(rows.length?wireTable137([...(allow?['archivePick139']:[]),'projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],rows.map(row=>wireCutRow137(row,allow)).join('')):'<p>'+we('empty')+'</p>'),allow?'archiveSave139':undefined,async fd=>{
+  const ids=new Set(boxes.filter(x=>x.checked).map(x=>x.dataset.wireArchive139)),name=wireProjectName137(fd.get('projectName'));
+  if(!ids.size)throw Error(wt('archiveEmpty139'));if(!name)throw Error(wt('required'));
+  if(!await confirmAction(wt('archiveConfirm139')+' '+name+'（'+ids.size+'）？'))return;
+  const next=structuredClone(state),cuts=(next.wireCuts||[]).filter(c=>ids.has(c.id));
+  if(cuts.length!==ids.size||cuts.some(c=>c.batchId||c.projectName||!wireCanEditCut(c)))throw Error(wt('archiveChanged139'));
+  const time=actionTime44();for(const c of cuts)Object.assign(c,{projectName:name,updatedAt:time,updatedBy:currentUser.name});
+  await wireCommit(next,wt('archiveSave139'),wireReel(cuts[0].reelId)?.wireId||'usage',name+'｜'+ids.size);
+  openWireCase137(wireProjectKey137(name),'',back);
+ });
+ $('#wire-unfiled-back139').onclick=back;$('#wire-unfiled-usage139').onclick=()=>openWireUsage137('');
+ const dialog=$('#dialog-form'),boxes=[...dialog.querySelectorAll('[data-wire-archive139]')],all=$('#wire-archive-all139');
+ if(all){const update=()=>{const count=boxes.filter(x=>x.checked).length;all.checked=count===boxes.length;all.indeterminate=count>0&&count<boxes.length;$('#wire-archive-count139').textContent=count+' / '+boxes.length;};all.onchange=()=>{for(const box of boxes)box.checked=all.checked;update();};for(const box of boxes)box.onchange=update;update();}
+ wireBindDetails137(dialog,()=>openWireCase137('','',back));
+}
 function openWireCase137(key,selected='',back=()=>openWireLedger(),opened=null){
  const rows=wireCutRows(wireCuts()).filter(x=>wireProjectKey137(x.c.projectName)===key),groups=[...wireGroup137(rows,x=>wireBatchKey137(x.c))],name=rows[0]?.c.projectName||wt('unfiled');
+ if(!key)return openWireUnfiled139(rows,back);
  wireModal(name+'｜'+wt('caseCuts'),'<div class="wire-tools"><button type="button" id="wire-case-back137">← '+we('backLedger')+'</button><button type="button" id="wire-case-usage137">'+we('caseUsage')+'</button></div><h3>'+we('cutHistory')+'</h3><div id="wire-case-batches137">'+(groups.map(([id,items])=>{const c=items[0].c;return '<details class="wire-record137" data-wire-batch137="'+esc(id)+'" '+(opened?opened.has(id)?'open':'':selected===id?'open':'')+'><summary>'+esc(receiptTime(c.time)+'｜'+c.actor+'｜'+wt('detailCount')+'：'+items.length)+' <span>'+we('cutDetails')+'</span></summary><div data-batch-detail137></div></details>';}).join('')||'<p>'+we('empty')+'</p>')+'</div>');
  $('#wire-case-back137').onclick=back;$('#wire-case-usage137').onclick=()=>openWireUsage137(key);
  const box=$('#wire-case-batches137'),refresh=()=>openWireCase137(key,'',back,new Set([...box.querySelectorAll('details[open]')].map(d=>d.dataset.wireBatch137)));const byBatch=new Map(groups);for(const detail of box.querySelectorAll('[data-wire-batch137]')){const show=()=>{const target=detail.querySelector('[data-batch-detail137]');if(detail.open&&!target.hasChildNodes()){target.innerHTML=wireDetailTable137(byBatch.get(detail.dataset.wireBatch137));wireBindDetails137(target,refresh);}};detail.ontoggle=show;show();}

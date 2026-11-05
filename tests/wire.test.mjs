@@ -73,3 +73,22 @@ test('裁線批次：升級保留舊紀錄，儲存及通知同時落地，重�
   assert.equal(env.db.prepare('SELECT count(*) n FROM notification_inbox88').get().n,2);
  }finally{r.restore();}
 });
+
+test('批次歸檔只查選取紀錄，保留原始數量，逾時後可查同一筆回執',async()=>{
+ const env=setup();migrations85(env.db);await initialize(env);
+ const old={reelId:'reel',actor:'viewer',actorId:'3',time:'2026-01-01T08:00:00.000Z',length:80,quantity:8,photoId:''};
+ for(const id of ['old1','old2','old3'])env.db.prepare('INSERT INTO state_records(record_key,body,revision) VALUES(?,?,1)').run(JSON.stringify(['wireCuts',id]),JSON.stringify({...old,id}));
+ const before=await read(env,'viewer'),next=structuredClone(before.state);
+ for(const cut of next.wireCuts.filter(c=>c.id!=='old3'))Object.assign(cut,{projectName:'SJ70-40',updatedAt:new Date().toISOString(),updatedBy:'viewer'});
+ const request={storageVersion:2,requestId:crypto.randomUUID(),changes:diffRecords(before.state,next,before.versions)};
+ const prepare=env.DB.prepare.bind(env.DB);env.DB.prepare=(sql)=>{assert.doesNotMatch(sql,/json_extract\(body,'\$\.reelId'\)/);return prepare(sql)};
+ const send=(check=false,user='viewer')=>api(req('/api/state'+(check?'?checkCommit=1':''),user,'PATCH',request),env);
+ assert.equal((await send(true)).status,404);
+ const saved=await send();assert.equal(saved.status,200);
+ const checked=await send(true);assert.equal(checked.status,200);assert.deepEqual(await checked.json(),await saved.json());
+ assert.equal((await send(true,'warehouse')).status,409);
+ const after=await read(env,'viewer');
+ assert.deepEqual(after.state.wireCuts.filter(c=>c.projectName).map(c=>c.id).sort(),['old1','old2']);
+ for(const c of after.state.wireCuts)for(const [key,value]of Object.entries(old))assert.equal(c[key],value);
+ assert.equal(env.db.prepare('SELECT COUNT(*) n FROM notification_inbox88').get().n,0);
+});

@@ -171,9 +171,20 @@ async function readScopedRecordStorage941(env,changes){
  const queries=[env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1')];
  if(keys.size)queries.push(env.DB.prepare('SELECT record_key,body,revision FROM state_records WHERE record_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify([...keys])));
  if(projectIds.size)queries.push(env.DB.prepare("SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]') IN ('materialLog','materialLogOrder') AND json_extract(json_extract(record_key,'$[1]'),'$[0]') IN (SELECT value FROM json_each(?))").bind(JSON.stringify([...projectIds])));
- if(wireReelIds.size)queries.push(env.DB.prepare("SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]')='wireCuts' AND json_extract(body,'$.reelId') IN (SELECT value FROM json_each(?))").bind(JSON.stringify([...wireReelIds])));
+ const possibleArchive=changes.every(c=>{const [kind]=JSON.parse(c.key);return kind==='log'||kind==='wireCuts'&&c.version>0&&c.value?.projectName&&!c.value.batchId;});
+ const wireHistory=wireReelIds.size?()=>env.DB.prepare("SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]')='wireCuts' AND json_extract(body,'$.reelId') IN (SELECT value FROM json_each(?))").bind(JSON.stringify([...wireReelIds])):null;
+ if(wireHistory&&!possibleArchive)queries.push(wireHistory());
  const result=await env.DB.batch(queries),records=Object.create(null),versions=Object.create(null);
  for(const group of result.slice(1))for(const row of group.results){records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;}
+ const archiveOnly=possibleArchive&&changes.every(c=>{const [kind]=JSON.parse(c.key);if(kind==='log')return true;if(kind!=='wireCuts'||!c.version)return false;
+  const old=records[c.key],next=c.value;if(!old||old.batchId||next.batchId||!next.projectName)return false;
+  const unchanged=({projectName,updatedAt,updatedBy,...cut})=>cut;
+  return stableJSON(unchanged(old))===stableJSON(unchanged(next));
+ });
+ if(wireHistory&&possibleArchive&&!archiveOnly){
+  const history=await wireHistory().all();
+  for(const row of history.results){records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;}
+ }
  // A cut points to a reel, and a reel points to a wire type.  Resolve that
  // second dependency without loading unrelated projects, logs or schedules.
  const parentKeys=[];for(const [key,value]of Object.entries(records)){const [kind]=JSON.parse(key);if(kind==='wireReels'&&value?.wireId&&!records[recordKey('wireTypes',value.wireId)])parentKeys.push(recordKey('wireTypes',value.wireId));}
@@ -218,6 +229,12 @@ export async function api(request,env,ctx){
   if(request.method==='GET'){const data=await readRecordStorage(env);return json({serverTime:new Date().toISOString(),state:visibleState(data.state,employee),versions:data.versions,revision:data.revision,storageVersion:2,currentUser:{id:employee.id,name:employee.name,email:employee.email,role:employee.role,roleLabel:employee.roleLabel,permissions:employee.permissions,profileId:employee.profileId}});}
   const input=await boundedJSON(request,8*1024*1024);check(input.storageVersion===2&&typeof input.requestId==='string'&&/^[a-f0-9-]{36}$/.test(input.requestId),'請重新整理至新版網站');validateRecordChanges(input.changes);
   const signature=await scopeKey(employee.id+':'+stableJSON(input.changes));
+  if(new URL(request.url).searchParams.get('checkCommit')==='1'){
+   const committed=await env.DB.prepare('SELECT signature,result FROM state_commits WHERE request_id=?').bind(input.requestId).first();
+   if(!committed)return json({error:'尚未確認儲存'},404);
+   if(committed.signature!==signature)return json({error:'儲存編號不相符'},409);
+   return json(JSON.parse(committed.result));
+  }
   for(let attempt=0;attempt<4;attempt++){
    const committed=await env.DB.prepare('SELECT signature,result FROM state_commits WHERE request_id=?').bind(input.requestId).first();
    if(committed){if(committed.signature!==signature)return json({error:'儲存編號重複，請重新載入'},409);return json(JSON.parse(committed.result));}

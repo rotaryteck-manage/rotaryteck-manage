@@ -10,7 +10,14 @@ render=function(){oldRender();const demo=$('.demo');if(demo)demo.innerHTML='<spa
 async function sendRecordSave(snapshot,request){
  cloudBusy=true;cloudBar();
  try{
-  let response,data;for(let attempt=0;attempt<2;attempt++){response=await apiFetch('/api/state',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(request),signal:AbortSignal.timeout(20000)});try{data=await(typeof cloudJSON921==='function'?cloudJSON921(response,'儲存'):response.json());}catch(error){if(attempt===0&&[429,502,503,504].includes(response.status)){await new Promise(resolve=>setTimeout(resolve,700));continue;}throw error;}if(response.ok||attempt===1||![429,502,503,504].includes(response.status))break;await new Promise(resolve=>setTimeout(resolve,700));}
+  let response,data;for(let attempt=0;attempt<2;attempt++){const send=(path,ms)=>apiFetch(path,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(request),signal:AbortSignal.timeout(ms)});
+  try{response=await send('/api/state',20000);}catch(error){
+   if(error.name!=='TimeoutError'&&error.name!=='AbortError'&&!/timed? ?out|逾時/i.test(error.message||''))throw error;
+   let receipt;try{receipt=await send('/api/state?checkCommit=1',8000);}catch{}
+   if(receipt?.ok||receipt?.status===409)response=receipt;
+   else if(receipt?.status===404&&attempt===0)continue;
+   else throw Error('儲存回應逾時，尚未確認結果。重試會沿用同一次儲存編號');
+  }try{data=await(typeof cloudJSON921==='function'?cloudJSON921(response,'儲存'):response.json());}catch(error){if(attempt===0&&[429,502,503,504].includes(response.status)){await new Promise(resolve=>setTimeout(resolve,700));continue;}throw error;}if(response.ok||attempt===1||![429,502,503,504].includes(response.status))break;await new Promise(resolve=>setTimeout(resolve,700));}
   if(!response.ok)throw Error(data.error||'儲存失敗');if(data.storageVersion!==2)throw Error('伺服器版本不同，請重新整理');
   revision=data.revision;Object.assign(recordVersions,data.versions);confirmed=snapshot;pendingSave=null;failedCandidate=null;failedSaveMessage='';lastCloudSavedAt=Date.now();cloudBusy=false;cloudBar();oldToast(queuedToast||'已儲存到雲端');queuedToast='';return true;
  }catch(err){cloudBusy=false;queuedToast='';pendingSave={snapshot,request};failedCandidate=snapshot;failedSaveMessage=String(err.message||'雲端儲存失敗');state=JSON.parse(JSON.stringify(confirmed));render();cloudBar();const box=$('#modal[open] #form-error');if(box)box.textContent='儲存失敗：'+failedSaveMessage+'。可先關閉視窗，頁面上方可以重試或重新載入。';oldToast(failedSaveMessage);return false;}
