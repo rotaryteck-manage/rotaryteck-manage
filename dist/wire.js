@@ -109,7 +109,7 @@ function openWireLedger(typeId='',filters={}){
  for(const id of ids)if(filters[id]!==undefined)el(id).value=filters[id];
  function draw(){const {query,type,from,to}=values(),q=wireProjectKey137(query);
   shown=wireCutRows(wireCuts()).filter(({c,r,t})=>{const day=(from||to)?new Date(c.time).toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}):'';return(!type||t.id===type)&&(!from||day>=from)&&(!to||day<=to)&&(!q||wireProjectKey137([c.projectName||wt('unfiled'),t.name,wireReelOrdinal(r),r.color,c.actor].join(' ')).includes(q));});
-  const cases=[...wireGroup137(shown,x=>wireProjectKey137(x.c.projectName))],summary=cases.map(([key,rows],i)=>{const c=rows[0].c;return '<tr tabindex="0" data-wire-case137="'+i+'"><td><button type="button">'+esc(c.projectName||wt('unfiled'))+' ›</button></td><td>'+esc(receiptTime(c.time))+'</td><td>'+esc(c.actor)+'</td><td>'+new Set(rows.map(x=>wireBatchKey137(x.c))).size+'</td></tr>';}).join('');
+  const cases=[...wireGroup137(shown,x=>wireProjectKey137(x.c.projectName))],summary=cases.map(([key,rows],i)=>{const c=rows[0].c;return '<tr tabindex="0" data-wire-case137="'+i+'"><td>'+esc(c.projectName||wt('unfiled'))+'</td><td>'+esc(receiptTime(c.time))+'</td><td>'+esc(c.actor)+'</td><td>'+new Set(rows.map(x=>wireBatchKey137(x.c))).size+'</td></tr>';}).join('');
   const box=el('table');box.innerHTML=summary?wireTable137(['projectName','lastCut','lastActor','batchCount'],summary):'<p>'+we('empty')+'</p>';
   for(const row of box.querySelectorAll('[data-wire-case137]')){row.onclick=()=>{const saved=values();openWireCase137(cases[Number(row.dataset.wireCase137)][0],'',()=>openWireLedger(typeId,saved));};row.onkeydown=e=>{if(e.target===row&&['Enter',' '].includes(e.key)){e.preventDefault();row.click();}};}
  }
@@ -117,8 +117,15 @@ function openWireLedger(typeId='',filters={}){
  $('#wire-all-usage137').onclick=()=>openWireUsage137(null,draw);
  $('#wire-ledger-export')?.addEventListener('click',async()=>{if(!await authorizeExport())return;await downloadBlob(new Blob([platingCsv(wireCsvRows(shown))],{type:'text/csv;charset=utf-8'}),wt('ledger')+'.csv');});draw();
 }
+// Keep ledger and totals aligned with the management tile order.
+function wireCompare141(a,b){
+ const types=state.wireTypes||[],rank=id=>{const index=types.findIndex(t=>t.id===id);return index<0?types.length:index;};
+ const colors=['黑','棕','紅','橙','黃','綠','藍','紫','灰','白'],colorRank=color=>{const index=colors.indexOf(String(color||'').trim());return index<0?colors.length:index;};
+ return rank(a.t.id)-rank(b.t.id)||a.t.id.localeCompare(b.t.id)||colorRank(a.r.color)-colorRank(b.r.color)||Number(wireReelOrdinal(a.r))-Number(wireReelOrdinal(b.r))||String(b.c.time).localeCompare(String(a.c.time))||String(b.c.id).localeCompare(String(a.c.id));
+}
+function wireSorted141(rows){return [...rows].sort(wireCompare141);}
 function wireCutRow137({c,r,t},selectable=false,focused=false){return (focused?'<tr class="notification-focus93">':'<tr>')+(selectable?'<td>'+(wireCanEditCut(c)?'<input type="checkbox" aria-label="'+we('archivePick139')+'" data-wire-archive139="'+esc(c.id)+'">':'')+'</td>':'')+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,t.name,wireReelOrdinal(r),r.color,c.length,c.quantity,Math.round(c.length*c.quantity*100)/100].map(value=>'<td>'+esc(String(value))+'</td>').join('')+'<td><div class="wire-tools">'+(wireCanEditCut(c)?'<button type="button" data-wire-edit137="'+esc(c.id)+'">'+we('edit')+'</button>':'')+(canDo('wire.delete')?'<button type="button" data-wire-delete137="'+esc(c.id)+'">'+we('delete')+'</button>':'')+'</div></td></tr>';}
-function wireDetailTable137(rows,selected=''){return rows.length?wireTable137(['projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],rows.map(row=>wireCutRow137(row,false,!!selected&&wireBatchKey137(row.c)===selected)).join('')):'<p>'+we('empty')+'</p>';}
+function wireDetailTable137(rows,selected=''){return rows.length?wireTable137(['projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],wireSorted141(rows).map(row=>wireCutRow137(row,false,!!selected&&wireBatchKey137(row.c)===selected)).join('')):'<p>'+we('empty')+'</p>';}
 async function wireDeleteCut137(id){
  if(!canDo('wire.delete'))return false;const c=(state.wireCuts||[]).find(x=>x.id===id),r=wireReel(c?.reelId);if(!c||!r)return false;
  if(!await confirmAction(wt('deleteCutPrompt')+' '+[c.projectName||wt('unfiled'),receiptTime(c.time),c.actor,c.length+' cm × '+c.quantity].join('｜')))return false;
@@ -132,7 +139,7 @@ Object.assign(wireWords,{archivePick139:'選取裁線紀錄',archiveAll139:'全�
 function openWireUnfiled139(rows,back){
  const allow=rows.some(x=>wireCanEditCut(x.c)),controls='<div class="wire-tools"><button type="button" id="wire-unfiled-back139">← '+we('backLedger')+'</button><button type="button" id="wire-unfiled-usage139">'+we('caseUsage')+'</button></div>';
  const form=allow?wireProjectField137()+'<label><input type="checkbox" id="wire-archive-all139"> '+we('archiveAll139')+'</label> <output id="wire-archive-count139" aria-live="polite"></output>':'';
- wireModal(wt('unfiled')+'｜'+wt('caseCuts'),controls+form+(rows.length?wireTable137([...(allow?['archivePick139']:[]),'projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],rows.map(row=>wireCutRow137(row,allow)).join('')):'<p>'+we('empty')+'</p>'),allow?'archiveSave139':undefined,async fd=>{
+ wireModal(wt('unfiled')+'｜'+wt('caseCuts'),controls+form+(rows.length?wireTable137([...(allow?['archivePick139']:[]),'projectName','time','actor','name','ordinal','color','length','quantity','total','edit'],wireSorted141(rows).map(row=>wireCutRow137(row,allow)).join('')):'<p>'+we('empty')+'</p>'),allow?'archiveSave139':undefined,async fd=>{
   const ids=new Set(boxes.filter(x=>x.checked).map(x=>x.dataset.wireArchive139)),name=wireProjectName137(fd.get('projectName'));
   if(!ids.size)throw Error(wt('archiveEmpty139'));if(!name)throw Error(wt('required'));
   if(!await confirmAction(wt('archiveConfirm139')+' '+name+'（'+ids.size+'）？'))return;
@@ -158,7 +165,7 @@ function openWireCase137(key,selected='',back=()=>openWireLedger()){
 function wireUsageRows137(rows,cutoffs){
  return [...wireGroup137(rows,x=>x.r.id)].map(([id,items])=>{const start=[cutoffs?.all||'',cutoffs?.reels?.[id]||''].sort().at(-1),active=items.filter(x=>!start||Date.parse(x.c.time)>Date.parse(start));
   return {...items[0],start,quantity:active.reduce((n,x)=>n+x.c.quantity,0),meters:active.reduce((n,x)=>n+x.c.length*x.c.quantity,0)/100,items};
- }).sort((a,b)=>a.t.name.localeCompare(b.t.name,'zh-Hant',{numeric:true})||Number(wireReelOrdinal(a.r))-Number(wireReelOrdinal(b.r)));
+ }).sort(wireCompare141);
 }
 function wireUsageTypes138(groups){
  const byType=wireGroup137(groups,x=>x.t.id),order=new Set([...wireTypes().map(t=>t.id),...byType.keys()]);
