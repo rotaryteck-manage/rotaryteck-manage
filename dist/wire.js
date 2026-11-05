@@ -140,6 +140,13 @@ function wireUsageRows137(rows,cutoffs){
   return {...items[0],start,quantity:active.reduce((n,x)=>n+x.c.quantity,0),meters:active.reduce((n,x)=>n+x.c.length*x.c.quantity,0)/100,items};
  }).sort((a,b)=>a.t.name.localeCompare(b.t.name,'zh-Hant',{numeric:true})||Number(wireReelOrdinal(a.r))-Number(wireReelOrdinal(b.r)));
 }
+function wireUsageTypes138(groups){
+ const byType=wireGroup137(groups,x=>x.t.id),order=new Set([...wireTypes().map(t=>t.id),...byType.keys()]);
+ return [...order].filter(id=>byType.has(id)).map(id=>{
+  const reels=byType.get(id);
+  return {id,name:reels[0].t.name,reels,quantity:reels.reduce((sum,x)=>sum+x.quantity,0),meters:reels.reduce((sum,x)=>sum+x.meters,0)};
+ });
+}
 function openWireUsage137(caseKey=null,onChange=()=>{}){
  const all=caseKey===null,dialog=document.createElement('dialog');dialog.className='wire-usage-dialog137';dialog.innerHTML='<div class="modal-head"><h2>'+(all?we('allUsage'):we('caseUsage'))+'</h2><button type="button" aria-label="'+we('close')+'" data-close-wire137>×</button></div><div class="modal-body"></div><div class="modal-foot"><button type="button" data-close-wire137>'+we('close')+'</button></div>';
  const body=dialog.querySelector('.modal-body'),expanded=new Set();dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.querySelectorAll('[data-close-wire137]').forEach(b=>b.onclick=()=>dialog.close());document.body.append(dialog);draw();dialog.showModal();
@@ -151,7 +158,11 @@ function openWireUsage137(caseKey=null,onChange=()=>{}){
  }
  function draw(){
   const rows=wireCutRows(wireCuts()).filter(x=>all||wireProjectKey137(x.c.projectName)===caseKey),groups=wireUsageRows137(rows,all?state.wireUsage137:null);
-  body.innerHTML=(all?'<div class="wire-tools"><span>'+we('usageStart')+'：'+(state.wireUsage137?.all?esc(receiptTime(state.wireUsage137.all)):we('usageBeginning'))+'</span>'+(canDo('wire.edit')?'<button type="button" data-wire-reset137="">'+we('resetAllUsage')+'</button>':'')+'</div>':'')+(groups.length?wireTable137(['name','ordinal','color','usageQuantity','usageLength',...(all?['usageStart','edit']:[])],groups.map(({r,t,quantity,meters,start,items})=>'<tr>'+[t.name,wireReelOrdinal(r),r.color,quantity,Number(meters.toFixed(6)),...(all?[start?receiptTime(start):wt('usageBeginning')]:[])].map(value=>'<td>'+esc(String(value))+'</td>').join('')+(all?'<td><div class="wire-tools">'+(canDo('wire.edit')?'<button type="button" data-wire-reset137="'+esc(r.id)+'">'+we('resetOneUsage')+'</button>':'')+'<button type="button" data-wire-source137="'+esc(r.id)+'">'+we('usageSources')+'</button></div></td>':'')+'</tr>'+(all&&expanded.has(r.id)?'<tr><td colspan="7">'+wireDetailTable137(items)+'</td></tr>':'')).join('')):'<p>'+we('empty')+'</p>');
+  const openTypes=new Set([...body.querySelectorAll('[data-wire-usage-type138][open]')].map(d=>d.dataset.wireUsageType138));
+  const table=reels=>wireTable137(['name','ordinal','color','usageQuantity','usageLength',...(all?['usageStart','edit']:[])],reels.map(({r,t,quantity,meters,start,items})=>'<tr>'+[t.name,wireReelOrdinal(r),r.color,quantity,Number(meters.toFixed(6)),...(all?[start?receiptTime(start):wt('usageBeginning')]:[])].map(value=>'<td>'+esc(String(value))+'</td>').join('')+(all?'<td><div class="wire-tools">'+(canDo('wire.edit')?'<button type="button" data-wire-reset137="'+esc(r.id)+'">'+we('resetOneUsage')+'</button>':'')+'<button type="button" data-wire-source137="'+esc(r.id)+'">'+we('usageSources')+'</button></div></td>':'')+'</tr>'+(all&&expanded.has(r.id)?'<tr><td colspan="7">'+wireDetailTable137(items)+'</td></tr>':'')).join(''));
+  const content=!groups.length?'<p>'+we('empty')+'</p>':!all?table(groups):wireUsageTypes138(groups).map(({id,name,reels,quantity,meters})=>
+   '<details class="wire-usage-type138" data-wire-usage-type138="'+esc(id)+'" '+(openTypes.has(id)?'open':'')+'><summary><strong>'+esc(name)+'</strong><span>'+we('usageQuantity')+'：'+quantity+'</span><span>'+we('usageLength')+'：'+Number(meters.toFixed(6))+'</span></summary>'+table(reels)+'</details>').join('');
+  body.innerHTML=(all?'<div class="wire-tools"><span>'+we('usageStart')+'：'+(state.wireUsage137?.all?esc(receiptTime(state.wireUsage137.all)):we('usageBeginning'))+'</span>'+(canDo('wire.edit')?'<button type="button" data-wire-reset137="">'+we('resetAllUsage')+'</button>':'')+'</div>':'')+content;
   body.querySelectorAll('[data-wire-reset137]').forEach(b=>b.onclick=()=>reset(b.dataset.wireReset137).catch(e=>toast(e.message)));
   body.querySelectorAll('[data-wire-source137]').forEach(b=>b.onclick=()=>{const id=b.dataset.wireSource137;if(expanded.has(id))expanded.delete(id);else expanded.add(id);draw();});
   body.querySelectorAll('[data-wire-edit137]').forEach(b=>b.remove());

@@ -19,3 +19,8 @@
 .wire-record137 summary,[data-wire-case137]{cursor:pointer}
 .wire-record137 summary span{margin-inline-start:8px}
 .wire-record137 .ledger-scroll{margin-top:8px}
+
+.wire-usage-type138{margin:8px 0;border:1px solid var(--ui-border,#cad8c9);border-radius:8px;padding:10px}
+.wire-usage-type138 summary{cursor:pointer;line-height:1.6}
+.wire-usage-type138 summary strong,.wire-usage-type138 summary span{display:inline-block;margin-inline-end:12px}
+.wire-usage-type138[open]>.ledger-scroll{margin-top:8px}
