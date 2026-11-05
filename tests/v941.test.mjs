@@ -6,7 +6,7 @@ const read=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
 test('v94.1 corrective layer is loaded after v94 and owns the final replenishment screen',()=>{
  const build=read('build.mjs'),fix=read('dist/enhancements-v941.js');
- assert.ok(build.indexOf('enhancements-v94.js?v=94')<build.indexOf('enhancements-v941.js?v=942'));
+ assert.ok(build.indexOf('enhancements-v94.js?v=94')<build.indexOf('enhancements-v941.js?v=137'));
  assert.match(fix,/openWireRestock=function/);
  assert.match(fix,/wire-restock-delete941/);
  assert.match(fix,/刪除補貨紀錄/);

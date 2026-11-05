@@ -203,7 +203,7 @@ function validateRecordChanges(changes){
   check(new TextEncoder().encode(JSON.stringify(c.value)).length<=1000000,'單一案件資料過大，請先整理該案件的歷史紀錄');
  }
 }
-export async function api(request,env){
+export async function api(request,env,ctx){
  if(!hasCredentials(request))return json({error:'請先登入後再使用'},401);
  if(!env.DB)return json({error:'雲端資料庫尚未就緒'},503);
  try{
@@ -235,14 +235,19 @@ export async function api(request,env){
    if(!stateChangeAllowed(current.state,next,employee))return json({error:'沒有此操作的權限，或紀錄內容不符合規則'},403);
    await verifyWirePhotos(env,current.state,next,employee);
    const nextRevision=current.revision+1,versions=Object.fromEntries(input.changes.map(c=>[c.key,c.version+1])),result={storageVersion:2,revision:nextRevision,versions},now=new Date().toISOString();
+   const newCuts=input.changes.filter(c=>JSON.parse(c.key)[0]==='wireCuts'&&!c.deleted&&c.version===0).map(c=>c.value),batches=new Map();
+   for(const cut of newCuts){check(cut.batchId&&cut.projectName,'請填寫裁線案名，並重新整理至新版網站');if(!batches.has(cut.batchId))batches.set(cut.batchId,[]);batches.get(cut.batchId).push(cut);}
+   for(const [id,cuts] of batches)check(cuts.some(c=>c.id===id),'裁線批次必須一次儲存');
+   const wireNotices=await wireCutNotice137(env,batches,now);
    const writes=input.changes.map(c=>({key:c.key,body:c.deleted?null:JSON.stringify(c.value),revision:c.version+1}));
    try{
     await env.DB.batch([
      env.DB.prepare(`INSERT INTO state_commits(request_id,signature,revision,result,created_at) VALUES (?,?,CASE WHEN (SELECT revision FROM state_storage_meta WHERE singleton=1)=? THEN ? ELSE NULL END,?,?)`).bind(input.requestId,signature,current.revision,nextRevision,JSON.stringify(result),now),
      ...recordChunks(writes).map(chunk=>env.DB.prepare(`INSERT INTO state_records(record_key,body,revision) SELECT json_extract(value,'$.key'),json_extract(value,'$.body'),json_extract(value,'$.revision') FROM json_each(?) WHERE 1 ON CONFLICT(record_key) DO UPDATE SET body=excluded.body,revision=excluded.revision`).bind(JSON.stringify(chunk))),
      env.DB.prepare('UPDATE state_storage_meta SET revision=? WHERE singleton=1').bind(nextRevision),
+     ...wireNotices.statements,
      ...input.changes.filter(c=>JSON.parse(c.key)[0]==='wireReels'&&!c.deleted).map(c=>env.DB.prepare('DELETE FROM wire_pending_uploads WHERE id IN (SELECT value FROM json_each(?))').bind(JSON.stringify(c.value.photos.map(p=>p.id))))
-    ]);return json(result);
+    ]);if(wireNotices.keys.length){const task=Promise.allSettled(wireNotices.keys.map(key=>notificationCall125(env,'wire-cut',{key})));if(ctx?.waitUntil)ctx.waitUntil(task);else await task;}return json(result);
    }catch(e){const duplicate=await env.DB.prepare('SELECT request_id FROM state_commits WHERE request_id=?').bind(input.requestId).first();const latest=await env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1').first();if(!duplicate&&latest.revision===current.revision)throw e;}
   }return json({error:'其他人正在儲存，請稍後重試。',code:'BUSY'},409);
  }catch(e){console.error('warehouse request failed',e.message);return json({error:e.message||'暫時無法儲存，請稍後重試'},400);}
@@ -888,12 +893,12 @@ export async function notificationLogApi85(request,env){
  const employee=await employeeFor(request,env);if(!employee||!permitted(employee,'admin.settings'))return json({error:'沒有通知管理權限'},403);
  if(request.method==='POST'){
   if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
-  try{const input=await boundedJSON(request,8192),ruleId=String(input.ruleId||''),selected=new Set((input.selectionIds||[]).map(String));check(ruleId&&selected.size&&selected.size<=100,'請勾選要補發的通知');const state=JSON.parse((await companyRow(env)).body),rule=(state.notificationRules||[]).find(item=>item.id===ruleId&&item.enabled);check(rule,'找不到已啟用的通知規則');check(!['material','holiday','closure','leave'].includes(rule.type),'此類通知不提供排程缺漏補發');const planned=await notificationRulePlans103(env,state,rule,Date.now()),available=await notificationCatchupItems103(env,planned.plans,planned.people),allowed=new Set(available.filter(item=>item.sendable).map(item=>item.id)),groups=notificationPlanGroups103(planned.plans).filter(group=>selected.has(notificationSelectionId103(group))),budget={remaining:32},results=[];for(const group of groups)if(allowed.has(notificationSelectionId103(group))){await notificationRecoverSelected123(env,group);results.push(await notificationDispatchBatch93(env,group[0].employeeId,group,budget,'manual'))}check(results.length,'勾選的通知已送達、已達重試上限，或目前不再符合規則');return json({source:'手動補發',sent:results.reduce((n,x)=>n+x.sent,0),failed:results.reduce((n,x)=>n+x.failed,0),deferred:results.reduce((n,x)=>n+x.deferred,0),messages:results.length})}catch(error){console.error('手動補發通知失敗',error?.message||String(error));return json({error:error.message||'補發通知失敗，請稍後再試'},400)}
+  try{const input=await boundedJSON(request,8192),ruleId=String(input.ruleId||''),selected=new Set((input.selectionIds||[]).map(String));check(ruleId&&selected.size&&selected.size<=100,'請勾選要補發的通知');const state=JSON.parse((await companyRow(env)).body),rule=(state.notificationRules||[]).find(item=>item.id===ruleId&&item.enabled);check(rule,'找不到已啟用的通知規則');check(!['material','wire-cut','holiday','closure','leave'].includes(rule.type),'此類通知不提供排程缺漏補發');const planned=await notificationRulePlans103(env,state,rule,Date.now()),available=await notificationCatchupItems103(env,planned.plans,planned.people),allowed=new Set(available.filter(item=>item.sendable).map(item=>item.id)),groups=notificationPlanGroups103(planned.plans).filter(group=>selected.has(notificationSelectionId103(group))),budget={remaining:32},results=[];for(const group of groups)if(allowed.has(notificationSelectionId103(group))){await notificationRecoverSelected123(env,group);results.push(await notificationDispatchBatch93(env,group[0].employeeId,group,budget,'manual'))}check(results.length,'勾選的通知已送達、已達重試上限，或目前不再符合規則');return json({source:'手動補發',sent:results.reduce((n,x)=>n+x.sent,0),failed:results.reduce((n,x)=>n+x.failed,0),deferred:results.reduce((n,x)=>n+x.deferred,0),messages:results.length})}catch(error){console.error('手動補發通知失敗',error?.message||String(error));return json({error:error.message||'補發通知失敗，請稍後再試'},400)}
  }
  if(request.method==='GET'&&new URL(request.url).searchParams.get('export')==='1')return notificationExportApi92(request,env);
  if(request.method==='GET'){
   const query=new URL(request.url).searchParams,catchup=String(query.get('catchup')||'');
-  if(catchup){try{const state=JSON.parse((await companyRow(env)).body),rule=(state.notificationRules||[]).find(item=>item.id===catchup&&item.enabled);check(rule,'找不到已啟用的通知規則');check(!['material','holiday','closure','leave'].includes(rule.type),'此類通知不提供排程缺漏補發');const planned=await notificationRulePlans103(env,state,rule,Date.now()),items=await notificationCatchupItems103(env,planned.plans,planned.people);return json({day:planned.day,ruleId:rule.id,ruleName:rule.name,ruleTime:rule.time,source:'自動排程缺漏',items})}catch(error){return json({error:error.message||'無法檢查缺漏通知'},400)}}
+  if(catchup){try{const state=JSON.parse((await companyRow(env)).body),rule=(state.notificationRules||[]).find(item=>item.id===catchup&&item.enabled);check(rule,'找不到已啟用的通知規則');check(!['material','wire-cut','holiday','closure','leave'].includes(rule.type),'此類通知不提供排程缺漏補發');const planned=await notificationRulePlans103(env,state,rule,Date.now()),items=await notificationCatchupItems103(env,planned.plans,planned.people);return json({day:planned.day,ruleId:rule.id,ruleName:rule.name,ruleTime:rule.time,source:'自動排程缺漏',items})}catch(error){return json({error:error.message||'無法檢查缺漏通知'},400)}}
   const page=Math.max(1,Number(query.get('page'))||1),limit=Math.min(1000,Math.max(100,Number(query.get('limit'))||1000)),offset=(page-1)*limit;
   const rows=await notificationLogRows121(env,limit,offset),groups=new Map();
   for(const row of rows.results||[]){const suffix=row.subscription_id?':'+row.subscription_id:'',key=suffix&&row.dedupe_key.endsWith(suffix)?row.dedupe_key.slice(0,-suffix.length):row.dedupe_key;let group=groups.get(key);if(!group){group={id:key,notification_type:row.notification_type,category:notificationCategory88(row.notification_type,row.category),title:row.title,message:row.message,target_url:row.target_url,employee_id:row.employee_id,employee_name:row.employee_name,created_at:row.notification_created_at||row.created_at,lastDeviceAttemptAt:'',lastDeviceRetryAt:'',source:key.startsWith('manual-catchup:')?'手動補發':'自動發送',devices:[]};groups.set(key,group)}const attemptedAt=row.last_attempt_at||row.sent_at||row.created_at;if(attemptedAt>group.lastDeviceAttemptAt)group.lastDeviceAttemptAt=attemptedAt;if(Number(row.retry_count||0)>0&&attemptedAt>group.lastDeviceRetryAt)group.lastDeviceRetryAt=attemptedAt;group.devices.push({createdAt:row.created_at,lastAttemptAt:attemptedAt,id:row.id,subscriptionId:row.subscription_id,deviceLabel:row.device_label||'已移除／未命名裝置',userAgent:row.user_agent||'',status:row.status,sentAt:row.sent_at,error:row.error_message,retryCount:Number(row.retry_count||0),receivedAt126:row.device_received_at126||'',shownAt126:row.device_shown_at126||'',displayError126:row.device_error126||''});}
@@ -947,6 +952,7 @@ async function previewValues90(type,employee,env){
   return{available:true,note:'依今日實際排程與工作回報核對；同一人有多項工作仍只需一份含文字及照片的回報。',values:{...base,完成數:assigned.length-missing.length,總人數:assigned.length,核對結果:lines.join('\n')||'全員皆已完成工作回報。'},targetDate:day};
  }
  if(type==='material'){const row=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='material' ORDER BY created_at DESC LIMIT 1").first();if(!row)return{available:false,note:'目前沒有可預覽的料件資料。',values:base,targetDate:day};return{available:true,note:'預覽使用最近一筆料件資料。',values:{...base,案件名稱:row.project_name||'',料件名稱:row.title,類型:row.category,登記人:row.author_name||employee.name},targetDate:row.day};}
+ if(type==='wire-cut')return{available:true,note:'示意預覽；只有成功新增裁線紀錄才通知。',values:{...base,案名:'SJ7040',登記人員:employee.name,明細筆數:3},targetDate:day};
  if(type==='leave')return{available:true,note:'這是示意預覽，不會補發舊請假紀錄。實際通知只在新增、修改或取消新版請假紀錄時發送。',values:{...base,人員:employee.name,假別:'特休',開始時間:day+' 08:30',結束時間:day+' 17:30',動作:'登記',操作人:employee.name},targetDate:day};
  const state=JSON.parse((await companyRow(env)).body);
  if(type==='wire'){const reels=(state.wireReels||[]).filter(x=>x.status==='low'&&!x.restock?.ordered&&!x.restock?.received),reel=reels[0];if(!reel)return{available:false,note:'目前沒有可預覽的待補線材。',values:base,targetDate:day};return{available:true,note:'預覽統計目前尚未訂購的線材；正式發送另依提醒天數與發送紀錄篩選。',values:{...base,數量:reels.length,線材名稱:(state.wireTypes||[]).find(x=>x.id===reel.wireId)?.name||'',逾期天數:Math.max(0,Math.floor((Date.parse(day)-Date.parse(String(reel.restock?.reported?.time||day).slice(0,10)))/86400000))},targetDate:day};}
@@ -1011,7 +1017,7 @@ async function notificationRuleSuppressions921(env,rules,now){
 async function notificationInitialRecipients921(env,rules,plans,now){
  const {day,time}=notificationClock85(now),allowed=new Map();
  const rows=await env.DB.prepare('SELECT rule_id,eligible_ids FROM notification_rule_run921 WHERE day=?').bind(day).all(),byId=new Map((rows.results||[]).map(row=>[row.rule_id,row])),writes=[];
- for(const rule of rules.filter(item=>item.enabled&&time>=item.time&&!['material','holiday','closure','leave'].includes(item.type))){let row=byId.get(rule.id);if(!row){const ids=[...new Set(plans.filter(plan=>plan.ruleId===rule.id).map(plan=>String(plan.employeeId)))];writes.push({id:rule.id,ids:JSON.stringify(ids)});row={eligible_ids:JSON.stringify(ids)}}let ids=[];try{ids=JSON.parse(row.eligible_ids||'[]')}catch{}allowed.set(rule.id,new Set(ids))}
+ for(const rule of rules.filter(item=>item.enabled&&time>=item.time&&!['material','wire-cut','holiday','closure','leave'].includes(item.type))){let row=byId.get(rule.id);if(!row){const ids=[...new Set(plans.filter(plan=>plan.ruleId===rule.id).map(plan=>String(plan.employeeId)))];writes.push({id:rule.id,ids:JSON.stringify(ids)});row={eligible_ids:JSON.stringify(ids)}}let ids=[];try{ids=JSON.parse(row.eligible_ids||'[]')}catch{}allowed.set(rule.id,new Set(ids))}
  if(writes.length)await env.DB.prepare("INSERT OR IGNORE INTO notification_rule_run921(rule_id,day,eligible_ids,checked_at) SELECT json_extract(value,'$.id'),?,json_extract(value,'$.ids'),? FROM json_each(?)").bind(day,new Date(now).toISOString(),JSON.stringify(writes)).run();
  return allowed;
 }
@@ -1025,9 +1031,10 @@ async function notificationRetryRows125(env){
 export async function notificationRuntimeWithServices125(request,env,ctx){
  // Applied only after signed authentication, never to browser/manual delivery.
  return notificationRuntimeApi125(request,env,ctx,{
+  'wire-cut':(runtime,input)=>sendWireCut137({...runtime,NOTIFICATION_FORWARD125:true},input.key),
   material:(runtime,input)=>materialRun126({...runtime,NOTIFICATION_FORWARD125:true,NOTIFICATION_RUNTIME116:true},input,{state:r=>notificationState115(r,Date.now(),{rulesOnly125:true}),dispatch:notificationDispatch88,freeze:notificationFreezeDevices121}),
   day:now=>notificationClock85(now).day,
-  async rules(runtime,now){const state=await notificationState115(runtime,now,{rulesOnly125:true}),clock=notificationClock85(now);return notificationValidRules103(state.notificationRules||[]).filter(rule=>rule.enabled&&!['material','leave'].includes(rule.type)&&(rule.type==='closure'||clock.time>=rule.time))},
+  async rules(runtime,now){const state=await notificationState115(runtime,now,{rulesOnly125:true}),clock=notificationClock85(now);return notificationValidRules103(state.notificationRules||[]).filter(rule=>rule.enabled&&!['material','wire-cut','leave'].includes(rule.type)&&(rule.type==='closure'||clock.time>=rule.time))},
   async push(runtime,{subscriptionId,options}){
    const row=await runtime.DB.prepare("SELECT s.* FROM push_subscriptions s JOIN employees e ON e.id=s.employee_id LEFT JOIN notification_people n ON n.employee_id=e.id WHERE s.id=? AND s.employee_id=? AND s.enabled=1 AND e.status='active' AND COALESCE(n.enabled,1)=1").bind(subscriptionId,Number(options?.employeeId)).first();
    if(!row)return{ok:false,duplicate:true,disabled:true};
@@ -1062,8 +1069,10 @@ export async function notificationRuntimeWithServices125(request,env,ctx){
    if(kind==='meeting'){await queueMeetingNotifications117(runtime,[input.key]);return{}}
    if(kind==='material-list'){
     const markers=await runtime.DB.prepare("SELECT material_id FROM material_pending126 WHERE status='pending' ORDER BY created_at LIMIT 20").all(),events=await runtime.DB.prepare("SELECT event_key FROM material_events126 WHERE attempts<3 AND (status='pending' OR (status='processing' AND updated_at<?)) ORDER BY created_at LIMIT 32").bind(new Date(Date.now()-90000).toISOString()).all();
-    await add([...markers.results.map(row=>({kind:'material',payload:{id:row.material_id}})),...events.results.map(row=>({kind:'material',payload:{eventKey:row.event_key}}))],40);return{};
+    const wire=await runtime.DB.prepare("SELECT source_key FROM wire_cut_outbox137 WHERE status='pending' ORDER BY created_at LIMIT 20").all();
+    await add([...wire.results.map(row=>({kind:'wire-cut',payload:{key:row.source_key}})),...markers.results.map(row=>({kind:'material',payload:{id:row.material_id}})),...events.results.map(row=>({kind:'material',payload:{eventKey:row.event_key}}))],40);return{};
    }
+   if(kind==='wire-cut')return sendWireCut137(runtime,input.key);
    if(kind==='material')return materialRun126(runtime,input,{state:r=>notificationState115(r,Date.now(),{rulesOnly125:true}),dispatch:notificationDispatch88,freeze:notificationFreezeDevices121});
    throw Error('未知通知待辦');
   }
@@ -1165,8 +1174,34 @@ export async function notificationCheckApi94(request,env){
  try{
   const state=JSON.parse((await companyRow(env)).body),rules=state.notificationRules||[],clock=notificationClock85(),start=new Date(clock.day+'T00:00:00+08:00').toISOString(),rows=await env.DB.prepare("SELECT rule_id,SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) sent,SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) failed FROM notification_deliveries WHERE created_at>=? GROUP BY rule_id").bind(start).all(),delivery=new Map((rows.results||[]).map(row=>[String(row.rule_id),{sent:Number(row.sent||0),failed:Number(row.failed||0)}])),states=await env.DB.prepare('SELECT rule_id,suppress_day,suppressed_ids FROM notification_rule_state921').all(),suppressed=new Map((states.results||[]).map(row=>[String(row.rule_id),row])),scheduler=await notificationSchedulerStatus108(env);
   const diagnostics=await notificationRuleDiagnostics115(env,state,rules,clock);
-  return json({scheduler,items:rules.map(rule=>{const counts=delivery.get(String(rule.id))||{sent:0,failed:0},row=suppressed.get(String(rule.id));let blocked=[];try{blocked=JSON.parse(row?.suppressed_ids||'[]')}catch{}const skipped=row?.suppress_day===clock.day&&blocked.includes('*'),schedulerFailed=scheduler.status==='failed'||scheduler.overdue,diagnostic=diagnostics.get(rule.id),eventDriven=['material','leave','holiday','closure'].includes(rule.type);return{id:rule.id,status:!rule.enabled?'disabled':counts.sent?'sent':skipped?'skipped':clock.time<rule.time?'scheduled':counts.failed?'failed':schedulerFailed?'check-failed':eventDriven?'waiting-event':diagnostic?.reason||'no-match',sent:counts.sent,time:rule.time,planned:diagnostic?.planned||0};})});
+  return json({scheduler,items:rules.map(rule=>{const counts=delivery.get(String(rule.id))||{sent:0,failed:0},row=suppressed.get(String(rule.id));let blocked=[];try{blocked=JSON.parse(row?.suppressed_ids||'[]')}catch{}const skipped=row?.suppress_day===clock.day&&blocked.includes('*'),schedulerFailed=scheduler.status==='failed'||scheduler.overdue,diagnostic=diagnostics.get(rule.id),eventDriven=['material','wire-cut','leave','holiday','closure'].includes(rule.type);return{id:rule.id,status:!rule.enabled?'disabled':counts.sent?'sent':skipped?'skipped':clock.time<rule.time?'scheduled':counts.failed?'failed':schedulerFailed?'check-failed':eventDriven?'waiting-event':diagnostic?.reason||'no-match',sent:counts.sent,time:rule.time,planned:diagnostic?.planned||0};})});
  }catch(error){return json({error:'無法讀取今日通知狀態'},503)}
+}
+async function wireCutNotice137(env,batches,now){
+ if(!batches.size)return{keys:[],statements:[]};
+ const row=await env.DB.prepare('SELECT body FROM state_records WHERE record_key=?').bind(recordKey('root','notificationRules')).first();
+ const rule=JSON.parse(row?.body||'[]').find(r=>r.type==='wire-cut'&&r.enabled);
+ if(!rule)return{keys:[],statements:[]};
+ const people=await env.DB.prepare("SELECT e.id,e.role FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active' AND COALESCE(n.enabled,1)=1").all(),selected=new Set(rule.recipientIds.map(String)),rows=[];
+ for(const [id,cuts]of batches){const cut=cuts[0],values={案名:cut.projectName,登記人員:cut.actor,明細筆數:cuts.length};
+  const fill=s=>String(s).replace(/\{(案名|登記人員|明細筆數)\}/g,(_,k)=>values[k]);
+  for(const p of people.results)if(rule.recipientMode==='selected'?selected.has(String(p.id)):['supervisor','warehouse'].includes(p.role)){
+   const sourceKey='wire-cut:'+id+':'+p.id,options={ruleId:rule.id,notificationType:'wire-cut',category:rule.category||'裁線紀錄',title:fill(rule.title).slice(0,100),message:fill(rule.message).slice(0,500),targetUrl:'/?notificationWireCut='+encodeURIComponent(id)+'#wire',sourceKey,dedupeKey:sourceKey};rows.push({key:sourceKey,employeeId:p.id,inboxId:crypto.randomUUID(),options});
+  }
+ }
+ if(!rows.length)return{keys:[],statements:[]};
+ const data=JSON.stringify(rows);
+ return{keys:rows.map(r=>r.key),statements:[
+  env.DB.prepare("INSERT OR IGNORE INTO wire_cut_outbox137(source_key,employee_id,payload,created_at) SELECT value->>'key',value->>'employeeId',value->'options',? FROM json_each(?)").bind(now,data),
+  env.DB.prepare("INSERT OR IGNORE INTO notification_inbox88(id,employee_id,category,title,message,target_url,source_key,created_at) SELECT value->>'inboxId',value->>'employeeId',value->>'$.options.category',value->>'$.options.title',value->>'$.options.message',value->>'$.options.targetUrl',value->>'key',? FROM json_each(?)").bind(now,data),
+  env.DB.prepare("INSERT OR IGNORE INTO notification_device_scopes121(source_key,employee_id,device_ids,created_at) SELECT value->>'key',value->>'employeeId',(SELECT json_group_array(id) FROM push_subscriptions WHERE enabled=1 AND employee_id=value->>'employeeId'),? FROM json_each(?)").bind(now,data)
+ ]};
+}
+async function sendWireCut137(env,key){
+ const row=await env.DB.prepare("SELECT employee_id,payload FROM wire_cut_outbox137 WHERE source_key=? AND status='pending'").bind(String(key||'')).first();if(!row)return{};
+ const result=await notificationDispatch88(env,row.employee_id,JSON.parse(row.payload));
+ if(!result.deferred&&!result.failed&&!result.results?.some(r=>!r.ok&&!r.exhausted&&!r.disabled))await env.DB.prepare("UPDATE wire_cut_outbox137 SET status='done' WHERE source_key=?").bind(key).run();
+ return result;
 }
 async function materialNotification88(env,employee,form){
  try{
@@ -1209,7 +1244,7 @@ export async function accessApi(request,env){
  }catch(e){return json({error:'無法讀取人員或權限，請重試'},503);}
 }
 export default {async scheduled(event,env,ctx){return runScheduledEvent116(event,env,ctx)},async fetch(request,env,ctx){const path=new URL(request.url).pathname;if(path==='/api/push-receipt126')return pushReceiptApi126(request,env);if(path==='/api/notification-runtime125')return notificationRuntimeWithServices125(request,env,ctx);if(path==='/api/qc-reports'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET'||new URL(request.url).searchParams.get('export')==='1')await ensureRecordStorage(env);return qcApi124(request,env,e,{audit:entry=>auditStatements117(env,entry)})}if(path==='/api/meeting-dispatch117')return meetingDispatchWithServices117(request,env);if(path==='/api/meeting-attendance132'){const employee=await employeeFor(request,env);return meetingAttendanceApi132(request,env,employee)}if(path==='/api/meetings'){const employee=await employeeFor(request,env);return meetingApiWithServices117(request,env,employee,ctx,true)}if(path==='/api/notification-check94')return notificationCheckApi94(request,env);if(path==='/api/employee-order')return employeeOrder85(request,env);if(path==='/api/backup-photos'){if(request.method!=='GET')return json({error:'不支援的操作'},405);const e=await employeeFor(request,env);if(!e||!permitted(e,'admin.export'))return json({error:'沒有備份權限'},403);return backupPhotos85(request,env);}if(path==='/api/switch-accounts'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(request.method!=='GET')return json({error:'不支援的操作'},405);const rows=await env.DB.prepare("SELECT name,email FROM employees WHERE status='active' ORDER BY name,id").all();return json({items:rows.results});}if(path==='/api/schedule-material-photo'||path==='/api/schedule-material-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return path==='/api/schedule-material-photo'?scheduleMaterialPhotoApi(request,env,e):scheduleMaterialUploadWithNotification88(request,env,e,ctx)}if(path==='/api/schedule-holidays')return holidayApi60(request,env);if(path==='/api/notification-preview90')return notificationPreviewApi90(request,env);if(path==='/api/notification-source-status90')return notificationSourceStatusApi90(request,env);if(path==='/api/records-export'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);return recordsExportApi(request,env,e,async database=>JSON.parse((await companyRow(database)).body),scopeKey)}if(path==='/api/schedule'||path==='/api/schedule-photo'||path==='/api/schedule-photo-upload'){const e=await employeeFor(request,env);if(!e)return json({error:'請先登入'},401);if(path==='/api/schedule')return scheduleApiWithLeaveNotifications102(request,env,e,ctx);if(path==='/api/schedule-photo')return schedulePhotoApi(request,env,e);return schedulePhotoUpload(request,env,e);}if(path==='/manifest.webmanifest')return appManifest55(request,env);if(path==='/'||path==='/index.html')return appIndex55(request,env);if(path==='/api/app-icon-settings')return appIconSettings55(request,env);if(path==='/api/app-icon-source')return appIconSource55(request,env);if(path==='/api/appearance')return publicAppearance(request,env);if(path==='/api/app-icon')return appIcon52(request,env);if(path==='/api/login-logo')return loginLogo(request,env);if(path==='/api/auth/config')return json({url:env.SUPABASE_URL,publishableKey:env.SUPABASE_PUBLISHABLE_KEY});if(path==='/api/backup-state'||path==='/api/employee-options'||path==='/api/export-access')return accessApi(request,env);if(path==='/api/wire-photos')return wireImages(request,env);if(path==='/api/permissions')return permissionsApi(request,env);if(path==='/api/notification-resolve945')return notificationResolveApi945(request,env);if(path==='/api/notification-inbox')return notificationInboxApi88(request,env);if(path==='/api/notification-logs')return notificationLogApi85(request,env);if(path==='/api/push-test')return pushTestApi82(request,env);if(path==='/api/push-public-key')return pushPublicKeyApi82(request,env);if(path==='/api/push-subscription')
- return pushSubscriptionApi82(request,env);if(path==='/api/state')return api(request,env);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
+ return pushSubscriptionApi82(request,env);if(path==='/api/state')return api(request,env,ctx);if(path==='/api/employees')return employeesApi(request,env);if(path==='/api/logo'||path==='/api/receipts'||path==='/api/plating-photos')return images(request,env);return new Response('Not found',{status:404});}};
 
 export function singleLogRemovalAllowed(before,after,e){
  if(!permitted(e,'admin.auditDelete'))return false;
@@ -1251,7 +1286,7 @@ export function stateChangeAllowed(before,after,e){
   for(const p of b.projects||[])if(!(a.projects||[]).some(x=>x.id===p.id)){const deleted=(a.deletedProjects||[]).find(x=>x.project?.id===p.id);if(deleted&&stableJSON(deleted.project)===stableJSON(p)){a.projects.splice(Math.min(deleted.index??a.projects.length,a.projects.length),0,structuredClone(p));a.deletedProjects=a.deletedProjects.filter(x=>x!==deleted);}}
  }
  for(const [kind,key]of [['plating','platingProjects'],['wire','wireTypes']])if(permitted(e,kind+'.restore'))for(const old of a[key]||[]){const n=(b[key]||[]).find(x=>x.id===old.id);if(n&&old.archived&&!n.archived)for(const k of ['archived','deletedAt','purgeAfter']){delete old[k];delete n[k];}}
- for(const key of ['logs','wireTypes','wireReels','wireCuts']){delete a[key];delete b[key];}
+ for(const key of ['logs','wireTypes','wireReels','wireCuts','wireUsage137']){delete a[key];delete b[key];}
  if(permitted(e,'cases.manage')){delete a.cases;delete b.cases;}
  if(permitted(e,'plating.manage')){delete a.platingProjects;delete b.platingProjects;}
  if(permitted(e,'warehouse.manage')){delete a.projects;delete b.projects;delete a.deletedProjects;delete b.deletedProjects;}

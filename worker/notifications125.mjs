@@ -96,6 +96,7 @@ export async function notificationRuntimeApi125(request,env,ctx,services){
   let result;if(input.action==='start')result=await notificationStart125(env,input.input.now,services);
   else if(input.action==='step'&&typeof input.input.runId==='string'&&Number.isInteger(input.input.hop??0)&&(input.input.hop??0)>=0&&(input.input.hop??0)<=7)result=await notificationStep125(env,input.input.runId,services,ctx,input.input.hop??0);
   else if(input.action==='push')result=await services.push({...env,NOTIFICATION_RUNTIME116:true},input.input);
+  else if(input.action==='wire-cut')result=await services['wire-cut']({...env,NOTIFICATION_RUNTIME116:true},input.input);
   else if(input.action==='material')result=await services.material({...env,NOTIFICATION_RUNTIME116:true},input.input);
   else return Response.json({error:'未知階段'},{status:400});
   return Response.json(result,{headers:{'Cache-Control':'no-store'}});

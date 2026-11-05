@@ -11,3 +11,11 @@
 .wire-low-warning{padding:12px 14px;background:#fff6de;border:1px solid #e3c989;border-radius:6px;color:#785819;font-size:14px}.wire-low-check{display:flex;align-items:center;gap:8px;margin:12px 0}.wire-low-check input,.wire-batch-table input[type=checkbox]{width:18px;min-width:18px;height:18px}.wire-batch-table{min-width:720px}
 
 .wire-batch-table select[data-batch-type]{min-width:145px}.wire-batch-table select[data-batch-reel]{min-width:110px}
+
+.wire-usage-dialog137{width:min(1080px,calc(100% - 24px));max-height:90dvh;padding:0;border:1px solid var(--ui-border,#cad8c9);border-radius:12px;background:var(--ui-card,#fff);color:inherit}
+.wire-usage-dialog137::backdrop{background:#182b2180}
+.wire-usage-dialog137 .modal-body{overflow:auto;max-height:calc(90dvh - 125px)}
+.wire-record137{margin:8px 0;padding:10px;border:1px solid var(--ui-border,#cad8c9);border-radius:8px}
+.wire-record137 summary,[data-wire-case137]{cursor:pointer}
+.wire-record137 summary span{margin-inline-start:8px}
+.wire-record137 .ledger-scroll{margin-top:8px}

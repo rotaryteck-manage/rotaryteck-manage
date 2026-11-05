@@ -45,6 +45,7 @@ let notificationRouteTimer942=null;
 function notificationRoute941(){
  if(typeof notificationGate945==='function'&&!notificationGate945())return false;
  const url=new URL(location.href),q=url.searchParams;
+ if(q.has('notificationWireCut'))return wireCutTarget137();
  const wire=q.get('notificationWire'),section=q.get('notificationSection'),project=q.get('notificationPlatingProject'),overview=q.get('notificationPlatingOverview');
  if(!wire&&section!=='restock'&&!project&&!overview)return true;
  if(typeof cloudReady==='undefined'||!cloudReady||cloudBusy)return false;

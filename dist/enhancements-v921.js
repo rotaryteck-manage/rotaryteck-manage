@@ -19,7 +19,7 @@ notificationLogs85=async function(){
 const renderNotificationRulesBefore921=renderNotificationRules81;
 renderNotificationRules81=function(){
  renderNotificationRulesBefore921();
- document.querySelectorAll('.notification-rule-row88').forEach(row=>{const edit=row.querySelector('[data-notification-edit81]'),rule=(state.notificationRules||[]).find(item=>String(item.id)===String(edit?.dataset.notificationEdit81));if(!rule||['material','holiday','closure','leave'].includes(rule.type)||row.querySelector('[data-notification-catchup921]'))return;const button=document.createElement('button');button.type='button';button.dataset.notificationCatchup921=rule.id;button.textContent='補發';button.title='檢查當日缺漏及更新前暫停的失敗通知';button.onclick=()=>notificationCatchup921(rule);row.append(button)});
+ document.querySelectorAll('.notification-rule-row88').forEach(row=>{const edit=row.querySelector('[data-notification-edit81]'),rule=(state.notificationRules||[]).find(item=>String(item.id)===String(edit?.dataset.notificationEdit81));if(!rule||['material','wire-cut','holiday','closure','leave'].includes(rule.type)||row.querySelector('[data-notification-catchup921]'))return;const button=document.createElement('button');button.type='button';button.dataset.notificationCatchup921=rule.id;button.textContent='補發';button.title='檢查當日缺漏及更新前暫停的失敗通知';button.onclick=()=>notificationCatchup921(rule);row.append(button)});
 };
 
 async function notificationCatchup921(rule){

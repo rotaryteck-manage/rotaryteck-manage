@@ -77,6 +77,12 @@ export function validateWire(s){
  for(const r of reels){const key=r.wireId+'\u0000'+r.number;wireAssert(typeIds.has(r.wireId)&&text(r.number)&&text(r.color)&&['enough','low','ordered'].includes(r.status),'線捆資料不正確');wireAssert(!reelKeys.has(key),'線捆編號重複');reelKeys.add(key);wireAssert(Array.isArray(r.photos)&&new Set(r.photos.map(x=>x.id)).size===r.photos.length,'線材照片格式不正確');for(const p of r.photos)wireAssert(/^[a-f0-9-]{36}$/.test(p.id)&&text(p.actor)&&text(p.actorId)&&text(p.created)&&text(p.name,200),'照片資料不完整');}
  wireAssert(new Set(cuts.filter(c=>c.photoId).map(c=>c.photoId)).size===cuts.filter(c=>c.photoId).length,'不同裁線紀錄需要各自的照片');
  const reelById=new Map(reels.map(r=>[r.id,r]));for(const c of cuts){const r=reelById.get(c.reelId);wireAssert(r&&(c.photoId===undefined||c.photoId===''||typeof c.photoId==='string'&&r.photos.some(p=>p.id===c.photoId)),'裁線紀錄的線捆或照片不正確');wireAssert(text(c.actor)&&text(c.actorId)&&!Number.isNaN(Date.parse(c.time)),'裁線人員或時間不正確');wireAssert(Number.isFinite(c.length)&&c.length>0&&c.length<=1000000&&Number.isSafeInteger(c.quantity)&&c.quantity>0&&c.quantity<=1000000,'裁線長度與條數必須大於零');}
+ const groups=new Map();
+ for(const c of cuts){
+  if(c.projectName!==undefined)wireAssert(text(c.projectName)&&c.projectName===c.projectName.trim(),'請填寫有效案名');
+  if(c.batchId!==undefined){wireAssert(text(c.projectName)&&/^[a-f0-9-]{36}$/.test(c.batchId),'裁線批次不正確');const signature=JSON.stringify([c.projectName,c.time,c.actorId,c.actor]);wireAssert(!groups.has(c.batchId)||groups.get(c.batchId)===signature,'同批裁線的案名、時間及人員須一致');groups.set(c.batchId,signature);}
+ }
+ if(s.wireUsage137!==undefined){const u=s.wireUsage137,stamp=v=>typeof v==='string'&&v.length===24&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;wireAssert(u&&typeof u==='object'&&(!u.all||stamp(u.all))&&u.reels&&typeof u.reels==='object'&&!Array.isArray(u.reels)&&Object.entries(u.reels).every(([k,v])=>text(k)&&stamp(v)),'線材統計起點不正確');}
  if(s.wireText!==undefined)wireAssert(s.wireText&&typeof s.wireText==='object'&&Object.values(s.wireText).every(x=>text(x,100)),'線材文字設定不正確');
 }
 function wireEqual(a,b){return JSON.stringify(a)===JSON.stringify(b);}
@@ -98,12 +104,14 @@ export function wireChangeAllowed(before,after,e){
   }
   if(!wireEqual(old.filter(x=>newMap.has(x.id)).map(x=>x.id),list.filter(x=>oldMap.has(x.id)).map(x=>x.id))&&!permitted(e,'wire.edit'))return false;
  }
- for(const c of bc)if(!cutAfter.has(c.id))return false;
+ if(!wireEqual(before.wireUsage137,after.wireUsage137)&&!permitted(e,'wire.edit'))return false;
+ for(const c of bc)if(!cutAfter.has(c.id)&&!permitted(e,'wire.delete'))return false;
  for(const c of ac){const prev=cutBefore.get(c.id);if(!prev){if(!permitted(e,'wire.cut')||c.actorId!==String(e.id)||c.actor!==e.name)return false;const r=reelAfter.get(c.reelId),photo=r?.photos.find(p=>p.id===c.photoId);if(c.photoId&&(!photo||photo.actorId!==String(e.id)||photo.created!==c.time||beforePhotoIds.has(c.photoId)))return false;}
- else if(!wireEqual(prev,c)){if(!permitted(e,'wire.editAll')&&(!permitted(e,'wire.editOwn')||prev.actorId!==String(e.id)))return false;const a={...prev},b={...c};for(const k of ['length','quantity','photoId','updatedAt','updatedBy']){delete a[k];delete b[k];}if(!wireEqual(a,b)||c.updatedBy!==e.name||Number.isNaN(Date.parse(c.updatedAt)))return false;if(c.photoId!==prev.photoId&&beforePhotoIds.has(c.photoId))return false;}
+ else if(!wireEqual(prev,c)){if(!permitted(e,'wire.editAll')&&(!permitted(e,'wire.editOwn')||prev.actorId!==String(e.id)))return false;const a={...prev},b={...c};for(const k of ['length','quantity','photoId','updatedAt','updatedBy',...(!prev.batchId?['projectName']:[])]){delete a[k];delete b[k];}if(!wireEqual(a,b)||c.updatedBy!==e.name||Number.isNaN(Date.parse(c.updatedAt)))return false;if(c.photoId!==prev.photoId&&beforePhotoIds.has(c.photoId))return false;}
  }return true;
 }
 export function visibleState(s,e){const out=structuredClone(s);for(const [key,collections]of [['cases',['cases']],['warehouse',['projects','deletedProjects']],['plating',['platingProjects']],['wire',['wireTypes','wireReels','wireCuts']]])if(!permitted(e,key+'.view'))for(const c of collections)out[c]=[];
+ if(!permitted(e,'wire.view'))delete out.wireUsage137;
  if(!permitted(e,'admin.audit'))out.logs=(out.logs||[]).filter(l=>{if(l.project?.startsWith('wire:'))return permitted(e,'wire.view');if(l.project?.startsWith('plating:'))return permitted(e,'plating.view');return false;});return out;}
 export async function wirePhotoKey(id){return 'wire-photos/'+id;}
 export async function verifyWirePhotos(env,before,after,e){
