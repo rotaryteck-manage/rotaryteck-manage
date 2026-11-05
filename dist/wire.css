@@ -24,3 +24,18 @@
 .wire-usage-type138 summary{cursor:pointer;line-height:1.6}
 .wire-usage-type138 summary strong,.wire-usage-type138 summary span{display:inline-block;margin-inline-end:12px}
 .wire-usage-type138[open]>.ledger-scroll{margin-top:8px}
+
+/* Only the wire ledger toolbar: shared control height and bottom alignment. */
+#modal #dialog-form .wire-ledger-tools142{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:0 0 14px}
+#modal #dialog-form .wire-ledger-tools142>label{display:flex;flex-direction:column;gap:4px;margin:0;min-width:0;font-size:12px;line-height:16px}
+#modal #dialog-form .wire-ledger-tools142 input,#modal #dialog-form .wire-ledger-tools142 select,#modal #dialog-form .wire-ledger-tools142>button{box-sizing:border-box;height:38px;min-height:38px;max-height:38px;margin:0;padding:7px 10px;border:1px solid var(--ui-border,#cad8c9);border-radius:6px;font-size:14px;line-height:22px;max-width:none;min-width:0}
+#modal #dialog-form .wire-ledger-tools142>input{width:240px}
+#modal #dialog-form .wire-ledger-tools142>select{width:130px}
+#modal #dialog-form .wire-ledger-tools142>label input{width:150px}
+#modal #dialog-form .wire-ledger-tools142>button{width:auto;background:var(--ui-card,#fff);white-space:nowrap}
+@media(max-width:760px){
+ #modal #dialog-form .wire-ledger-tools142{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
+ #modal #dialog-form .wire-ledger-tools142>input,#modal #dialog-form .wire-ledger-tools142>select{grid-column:1/-1;width:100%}
+ #modal #dialog-form .wire-ledger-tools142>label input,#modal #dialog-form .wire-ledger-tools142>button{width:100%}
+ #modal #dialog-form .wire-ledger-tools142>button{font-size:13px;padding-inline:6px}
+}
