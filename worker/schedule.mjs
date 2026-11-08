@@ -588,18 +588,24 @@ async function scheduleExtra71(request,env,employee,input){
  if(!scheduleDate(week)||new Date(week+'T00:00:00Z').getUTCDay()!==1)return scheduleJSON({error:'請選擇正確的週別'},400);
  const now=new Date().toISOString(),statements=[];
  if(input.kind==='copy_week'){
-  if(await env.DB.prepare('SELECT week FROM schedule_copies71 WHERE week=?').bind(week).first())return scheduleJSON({saved:true,already:true});
   const source=scheduleShift71(week,-7),last=scheduleShift71(week,-1);
+  const copyNote=()=>env.DB.prepare("INSERT INTO schedule_weekly_notes(week_start,body,updated_at,author_id,author_name) SELECT ?,body,?,?,? FROM schedule_weekly_notes WHERE week_start=? AND length(trim(body))>0 ON CONFLICT(week_start) DO NOTHING").bind(week,now,String(employee.id),employee.name,source);
+  const noteWasCopied=result=>Number(result?.meta?.changes||0)>0;
+  const alreadyCopied=async()=>scheduleJSON({saved:true,count:0,already:true,noteCopied:noteWasCopied(await copyNote().run())});
+  if(await env.DB.prepare('SELECT week FROM schedule_copies71 WHERE week=?').bind(week).first())return alreadyCopied();
   const rows=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day<=? AND end_day>=? ORDER BY day,id").bind(last,source).all();
-  if(!rows.results.length)return scheduleJSON({error:'上週沒有可複製的安排'},400);
-  statements.push(env.DB.prepare('INSERT INTO schedule_copies71(week,created_at) VALUES(?,?)').bind(week,now));
+  if(!rows.results.length){
+   if(noteWasCopied(await copyNote().run()))return scheduleJSON({saved:true,count:0,already:false,noteCopied:true});
+   return scheduleJSON({error:'上週沒有可複製的安排'},400);
+  }
+  statements.push(env.DB.prepare('INSERT INTO schedule_copies71(week,created_at) VALUES(?,?)').bind(week,now),copyNote());
   const target=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day>=? AND end_day<=?").bind(week,end).all();
   const projected=rows.results.map(e=>({...e,day:scheduleShift71(e.day<source?source:e.day,7),end_day:scheduleShift71(e.end_day>last?last:e.end_day,7)}));
   const missing=scheduleUnique73(projected,target.results).kept;
   for(const e of missing)statements.push(env.DB.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,color,note,category,quantity,project_id,author_id,author_name,created_at,updated_at,revision,sort_index,assignee_ids) VALUES(?,'weekly',?,?,?,?,?,?,?,0,'',?,?,?,?,1,?,?)").bind(crypto.randomUUID(),e.day,e.end_day,e.title,e.assignee,e.color,e.note,e.category,String(employee.id),employee.name,now,now,e.sort_index||0,e.assignee_ids||'[]'));
   statements.push(env.DB.prepare('INSERT INTO schedule_text71 VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),'weekly',week,employee.name,'複製上週排程｜新增 '+missing.length+' 項',now));
   if(missing.length&&env.audit117)statements.push(...env.audit117({id:crypto.randomUUID(),time:now,actor:employee.name,action:'複製每週排程',category:'weekly',location:'工作排程 > 每週排程',target:week,detail:'複製上週｜新增 '+missing.length+' 項｜'+JSON.stringify(missing)}));
-  try{await env.DB.batch(statements)}catch(e){if(await env.DB.prepare('SELECT week FROM schedule_copies71 WHERE week=?').bind(week).first())return scheduleJSON({saved:true,already:true});throw e}return scheduleJSON({saved:true,count:missing.length,already:missing.length===0});
+  let results;try{results=await env.DB.batch(statements)}catch(e){if(await env.DB.prepare('SELECT week FROM schedule_copies71 WHERE week=?').bind(week).first())return alreadyCopied();throw e}return scheduleJSON({saved:true,count:missing.length,already:missing.length===0,noteCopied:noteWasCopied(results[1])});
  }
  // SQL-only range splitting is atomic, preserving the dates outside the selected week.
  const resetAuditBefore117=env.audit117?await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='weekly' AND day<=? AND end_day>=?").bind(end,week).all():null;

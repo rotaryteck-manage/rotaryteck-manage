@@ -45,3 +45,34 @@ test('supervisor changes material author; warehouse cannot impersonate',async()=
 // v75 fixture migration: these regression cases represent existing profiles.
 import {migratePermissions75} from '../worker/wire-permissions.mjs';
 const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});
+
+test('weekly copy includes the weekly note and can backfill without duplicating entries or overwriting a note',async()=>{
+ const {db,send,item}=fixture(),source='2026-09-21',target='2026-09-28';
+ const note=week=>db.prepare('SELECT body FROM schedule_weekly_notes WHERE week_start=?').get(week)?.body;
+ const put=(weekStart,body)=>send({kind:'weekly_note',weekStart,body});
+ await send({kind:'batch',entries:[{...item('weekly-source','weekly'),day:source,endDay:source}]});
+ assert.equal((await put(source,'第一行\n第二行')).status,200);
+ const copy=async()=>{const res=await send({kind:'copy_week',weekStart:target});assert.equal(res.status,200,await res.clone().text());return res.json()};
+ assert.equal((await copy()).noteCopied,true);
+ assert.equal(note(target),'第一行\n第二行');
+ await put(target,'本週自己寫的備註');
+ assert.equal((await copy()).noteCopied,false);
+ assert.equal(note(target),'本週自己寫的備註');
+ await put(target,'');
+ const backfill=await copy();
+ assert.equal(backfill.noteCopied,true);
+ assert.equal(backfill.count,0);
+ assert.equal(note(target),note(source));
+ assert.equal(db.prepare('SELECT count(*) n FROM schedule_entries WHERE day=?').get(target).n,1);
+});
+
+test('initial weekly copy preserves an existing target note',async()=>{
+ const {db,send,item}=fixture(),source='2026-09-21',target='2026-09-28';
+ await send({kind:'batch',entries:[{...item('weekly-source','weekly'),day:source,endDay:source}]});
+ await send({kind:'weekly_note',weekStart:source,body:'上週備註'});
+ await send({kind:'weekly_note',weekStart:target,body:'保留本週備註'});
+ const res=await send({kind:'copy_week',weekStart:target});
+ assert.equal(res.status,200,await res.clone().text());
+ assert.equal((await res.json()).noteCopied,false);
+ assert.equal(db.prepare('SELECT body FROM schedule_weekly_notes WHERE week_start=?').get(target).body,'保留本週備註');
+});
