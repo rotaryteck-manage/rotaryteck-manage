@@ -1,0 +1,23 @@
+name: RotaryteckMeetingTest
+options:
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  RotaryteckMeetingTest:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    entitlements:
+      path: MeetingTest.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:rotaryteck-meeting-link-test.rotaryteckserve.workers.dev
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tw.com.rotaryteck.meetingtest
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 擎正・週會測試
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"

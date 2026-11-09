@@ -1,0 +1,13 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'tw.com.rotaryteck.meetingtest'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'tw.com.rotaryteck.meetingtest'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '0.1'
+    }
+}
