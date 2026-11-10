@@ -8,8 +8,8 @@ async function personalBadge112(count){
  }catch{}
 }
 const inboxLoadBefore112=notificationInboxLoad88;
-notificationInboxLoad88=async function(){
- const userId=currentUser?.id,data=await inboxLoadBefore112();
+notificationInboxLoad88=async function(...args){
+ const userId=currentUser?.id,data=await inboxLoadBefore112(...args);
  if(userId===currentUser?.id)await personalBadge112(data.unread);
  return data;
 };

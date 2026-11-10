@@ -785,15 +785,21 @@ export async function notificationInboxApi88(request,env){
  const employee=await employeeFor(request,env);if(!employee)return json({error:'請先登入'},401);
  if(request.method==='GET'){
   await cleanupNotificationInbox89(env);
-  const rows=await env.DB.prepare('SELECT id,category,title,message,target_url,created_at,read_at FROM notification_inbox88 WHERE employee_id=? ORDER BY created_at DESC,id DESC LIMIT 100').bind(employee.id).all();
+  const opening=new URL(request.url).searchParams.get('opening')==='1';
+  const snapshot=opening?await env.DB.prepare('SELECT COALESCE(MAX(rowid),0) AS last FROM notification_inbox88 WHERE employee_id=?').bind(employee.id).first():null;
+  const rows=await env.DB.prepare('SELECT rowid AS position,id,category,title,message,target_url,created_at,read_at FROM notification_inbox88 WHERE employee_id=? ORDER BY created_at DESC,id DESC LIMIT 100').bind(employee.id).all();
   const unread=await env.DB.prepare("SELECT COUNT(*) AS n FROM notification_inbox88 WHERE employee_id=? AND read_at=''").bind(employee.id).first();
-  return json({items:(rows.results||[]).map(x=>({id:x.id,category:x.category,title:x.title,message:x.message,targetUrl:x.target_url,createdAt:x.created_at,readAt:x.read_at})),unread:Number(unread?.n)||0});
+  return json({items:(rows.results||[]).map(x=>({id:x.id,category:x.category,title:x.title,message:x.message,targetUrl:x.target_url,createdAt:x.created_at,readAt:x.read_at,...(opening?{inOpening:x.position<=Number(snapshot?.last)}:{})})),unread:Number(unread?.n)||0,...(opening?{through:Number(snapshot?.last)||0}:{})});
  }
  if(request.method!=='PATCH')return json({error:'不支援的操作'},405);
  if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源驗證失敗'},403);
  try{
   const input=await boundedJSON(request,4096),now=new Date().toISOString();let result;
   if(input.scope==='all')result=await env.DB.prepare("UPDATE notification_inbox88 SET read_at=? WHERE employee_id=? AND read_at=''").bind(now,employee.id).run();
+  else if(input.scope==='opening'){
+   check(Number.isSafeInteger(input.through)&&input.through>0,'通知範圍不正確');
+   result=await env.DB.prepare("UPDATE notification_inbox88 SET read_at=? WHERE employee_id=? AND read_at='' AND rowid<=?").bind(now,employee.id,input.through).run();
+  }
   else{check(typeof input.id==='string'&&input.id.length<=100,'通知編號不正確');result=await env.DB.prepare("UPDATE notification_inbox88 SET read_at=? WHERE id=? AND employee_id=? AND read_at=''").bind(now,input.id,employee.id).run();}
   const unread=await env.DB.prepare("SELECT COUNT(*) AS n FROM notification_inbox88 WHERE employee_id=? AND read_at=''").bind(employee.id).first();return json({saved:true,changed:Number(result.meta?.changes)||0,unread:Number(unread?.n)||0});
  }catch(error){return json({error:error.message||'通知已讀狀態儲存失敗'},400);}

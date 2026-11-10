@@ -1,8 +1,8 @@
 'use strict';
 
 const notificationUpdateButtonBefore88=notificationUpdateButton82;
-async function notificationInboxLoad88(){
- const response=await apiFetch('/api/notification-inbox'),data=await response.json();
+async function notificationInboxLoad88(opening=false){
+ const response=await apiFetch('/api/notification-inbox'+(opening?'?opening=1':'')),data=await response.json();
  if(!response.ok)throw Error(data.error||'通知讀取失敗');return data;
 }
 function notificationBadge88(button,count){
@@ -12,7 +12,7 @@ function notificationBadge88(button,count){
 }
 function notificationBell127(button){
  const owner=notificationOwner127();if(button.notificationOwner127!==owner){button.querySelector('.notification-badge88')?.remove();button.notificationOwner127=owner;}
- button.classList.add('notification-bell88');button.disabled=false;button.title='我的通知';button.setAttribute('aria-label','我的通知');button.onclick=()=>notificationInboxDialog88();
+ button.classList.add('notification-bell88');button.disabled=false;button.title='我的通知';button.setAttribute('aria-label','我的通知');button.onclick=()=>notificationInboxDialog88(true);
  if(!button.querySelector('[data-bell-icon127]')){const badge=button.querySelector('.notification-badge88');button.innerHTML='<span data-bell-icon127 aria-hidden="true">🔔</span>';if(badge)button.append(badge)}
 }
 let notificationEnableBusy127=false;
@@ -33,9 +33,10 @@ async function notificationRead88(payload){
  const response=await apiFetch('/api/notification-inbox',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),data=await response.json();if(!response.ok)throw Error(data.error);return data;
 }
 function notificationTime88(value){try{return new Date(value).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})}catch{return String(value||'')}}
-async function notificationInboxDialog88(){
+async function notificationInboxDialog88(opening=false){
  try{
-  const data=await notificationInboxLoad88();
+  const owner=notificationOwner127(),data=await notificationInboxLoad88(opening);
+  if(owner!==notificationOwner127())return;
   modal('我的通知','<div class="notification-inbox-tools88"><span>'+data.unread+' 則未讀</span><button type="button" data-read-all88 '+(data.unread?'':'disabled')+'>全部標示已讀</button></div><div class="notification-inbox88">'+((data.items||[]).map(item=>'<button type="button" class="notification-inbox-item88 '+(item.readAt?'is-read':'is-unread')+'" data-inbox-id88="'+esc(item.id)+'" data-target88="'+esc(item.targetUrl||'/')+'"><span class="notification-category88">'+esc(item.category||'其他')+'</span><strong>'+esc(item.title)+'</strong><span>'+(typeof notificationLeaveHTML124==='function'&&String(item.message).includes('請假時數：')?notificationLeaveHTML124(item.message):esc(item.message))+'</span><small>'+esc(notificationTime88(item.createdAt))+'</small></button>').join('')||'<p class="muted">目前沒有通知。</p>')+'</div>',null);
   $('[data-read-all88]')?.addEventListener('click',async()=>{try{await notificationRead88({scope:'all'});$('#modal').close();await notificationUpdateButton88();notificationInboxDialog88()}catch(e){toast(e.message)}});
   document.querySelectorAll('[data-inbox-id88]').forEach(button=>button.onclick=async()=>{try{await notificationRead88({id:button.dataset.inboxId88});const link=new URL(button.dataset.target88||'/',location.href);link.searchParams.set('notificationInbox945',button.dataset.inboxId88);const target=link.pathname+link.search+link.hash;$('#modal').close();if(target==='/')location.hash='';else location.href=target}catch(e){toast(e.message)}});
@@ -43,6 +44,18 @@ async function notificationInboxDialog88(){
   $('#modal .notification-inbox-tools88').before(panel);notificationPushPanel127();
   panel.querySelector('[data-push-enable127]').onclick=async()=>{if(!notificationPushStatus127.canEnable||notificationEnableBusy127)return;notificationEnableBusy127=true;notificationPushPanel127();try{await notificationEnableBefore88();await notificationUpdateButton82()}finally{notificationEnableBusy127=false;notificationPushPanel127()}};
   panel.querySelector('[data-push-recheck127]').onclick=()=>notificationUpdateButton82();
+  const tools=$('#modal .notification-inbox-tools88');
+  if(opening&&data.unread&&data.through>0){
+   try{
+    const read=await notificationRead88({scope:'opening',through:data.through});
+    if(owner===notificationOwner127()&&tools===$('#modal .notification-inbox-tools88')){
+     const count=tools.querySelector('span'),mark=tools.querySelector('[data-read-all88]');
+     count.textContent=read.unread+' 則未讀';mark.disabled=!read.unread;
+     const ids=new Set(data.items.filter(item=>item.inOpening).map(item=>String(item.id)));
+     $('#modal').querySelectorAll('[data-inbox-id88].is-unread').forEach(row=>{if(ids.has(row.dataset.inboxId88)){row.classList.remove('is-unread');row.classList.add('is-read')}});
+    }
+   }catch(error){if(owner===notificationOwner127())toast(error.message||'通知已讀狀態儲存失敗')}
+  }
   void notificationUpdateButton82();
  }catch(error){toast(error.message||'通知讀取失敗')}
 }

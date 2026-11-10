@@ -14,20 +14,20 @@ class Element127{
  append(c){c.remove();this.children.push(c);c.parent=this}remove(){if(this.parent){this.parent.children=this.parent.children.filter(c=>c!==this);this.parent=null}}
  before(c){this.parent.append(c)}setAttribute(k,v){this.attributes[k]=v}removeAttribute(k){delete this.attributes[k]}addEventListener(k,fn){this['on'+k]=fn}
 }
-function fixture({platform='Windows',enabled=true,personEnabled=true,deleted=false,permission='granted',unsupported=false,subscriptionRead,serverRead}={}){
- const button=new Element127(),modal=new Element127(),tools=new Element127();modal.append(tools);let modalOpens=0,posts=0,registers=0,subscribes=0,unsubscribes=0,readCalls=0,keyMismatch=false,stored='old-id',id=deleted?'':'phone';const timers=new Map();let timerId=0;
+function fixture({platform='Windows',enabled=true,personEnabled=true,deleted=false,permission='granted',unsupported=false,subscriptionRead,serverRead,inbox}={}){
+ const button=new Element127(),modal=new Element127(),tools=new Element127(),count=new Element127(),mark=new Element127();count.marker='count';mark.marker='read-all88';tools.append(count);tools.append(mark);const queryTools=tools.querySelector.bind(tools);tools.querySelector=selector=>selector==='span'?count:queryTools(selector);modal.querySelectorAll=()=>[];modal.append(tools);let modalOpens=0,posts=0,registers=0,subscribes=0,unsubscribes=0,readCalls=0,keyMismatch=false,stored='old-id',id=deleted?'':'phone';const timers=new Map();let timerId=0;
  const keys=webpush.generateVAPIDKeys(),subscription={endpoint:'https://fcm.googleapis.com/current',toJSON:()=>({endpoint:subscription.endpoint,keys:{p256dh:'browser-key',auth:'browser-auth'}}),unsubscribe:async()=>{unsubscribes++}},registration={active:{},pushManager:{getSubscription:async()=>{readCalls++;return subscriptionRead?subscriptionRead(readCalls,subscription):subscription},subscribe:async()=>{subscribes++;return subscription}}};
  const query=selector=>selector==='#notification-enable82'?button:selector==='#modal'?modal:selector==='#modal .notification-inbox-tools88'?tools:selector==='#modal [data-push-status127]'?modal.querySelector('[data-push-status127]'):null;
  const ctx=vm.createContext({crypto:webcrypto,TextEncoder,Uint8Array,atob,setTimeout:(fn,ms)=>{const id=++timerId;timers.set(id,{fn,ms});return id},clearTimeout:id=>timers.delete(id),setInterval(){},console,navigator:{userAgent:platform,serviceWorker:{ready:Promise.resolve(registration),getRegistration:async()=>registration,register:async()=>{registers++;return registration}}},window:unsupported?{addEventListener(){}}:{Notification:{},PushManager:{},addEventListener(){}},Notification:{permission},document:{hidden:false,querySelector:query,querySelectorAll:()=>[],createElement:()=>new Element127(),addEventListener(){}},$:query,currentUser:{id:1},localStorage:{getItem:()=>stored,setItem:(_,v)=>stored=v,removeItem:()=>stored=''},authRead:()=>({user:{id:1}}),authWrite(){},AUTH_STORAGE:'auth',esc:String,toast(){},modal(){modalOpens++},apiFetch:async(url,options)=>{
   if(url.includes('public-key'))return{ok:true,json:async()=>({publicKey:keyMismatch?webpush.generateVAPIDKeys().publicKey:keys.publicKey})};
-  if(url.includes('inbox'))return{ok:true,json:async()=>({unread:9,items:[]})};
+  if(url.includes('inbox'))return{ok:true,json:async()=>inbox?inbox(url,options):({unread:9,items:[]})};
   if(options?.method==='POST'){posts++;id='replacement';return{ok:true,json:async()=>({id,enabled:enabled&&personEnabled})}}
   if(serverRead)await serverRead();return{ok:true,json:async()=>({currentDeviceId:id,personEnabled,items:id?[{id,enabled}]:[]})};
  }});
  vm.runInContext(read('notifications-v82.js').split('function notificationAddButton82')[0],ctx);
  vm.runInContext(read('enhancements-v88.js').split('function notificationTargetLabel88')[0],ctx);
  vm.runInContext(read('enhancements-v112.js').replace('void refreshPersonalBadge112();\n',''),ctx);
- return{ctx,button,modal,subscription,keys,setMismatch(){keyMismatch=true;subscription.options={applicationServerKey:Buffer.from(keys.publicKey,'base64url')}},async retry(){const entry=[...timers].find(([,t])=>t.ms===1500);if(!entry)return false;timers.delete(entry[0]);await entry[1].fn();return true},stats:()=>({modalOpens,posts,registers,subscribes,unsubscribes,stored,readCalls}),status:()=>vm.runInContext('notificationPushStatus127',ctx)};
+ return{ctx,button,modal,count,mark,subscription,keys,setMismatch(){keyMismatch=true;subscription.options={applicationServerKey:Buffer.from(keys.publicKey,'base64url')}},async retry(){const entry=[...timers].find(([,t])=>t.ms===1500);if(!entry)return false;timers.delete(entry[0]);await entry[1].fn();return true},stats:()=>({modalOpens,posts,registers,subscribes,unsubscribes,stored,readCalls}),status:()=>vm.runInContext('notificationPushStatus127',ctx)};
 }
 for(const platform of ['Windows Edge','iPhone PWA','Android Chrome'])test(platform+': healthy bell and unread count retain the original compact appearance without subscription writes',async()=>{
  const f=fixture({platform});await f.ctx.notificationUpdateButton82();assert.equal(f.status().kind,'ready');assert.ok(f.button.classes.has('notification-bell88'));assert.ok(f.button.classes.has('selected'));assert.equal(f.button.querySelector('.notification-badge88').textContent,'9');await f.button.onclick();assert.equal(f.stats().modalOpens,1);assert.equal(f.stats().posts,0);assert.equal(f.stats().registers,0);assert.equal(f.stats().unsubscribes,0);assert.equal(f.modal.querySelector('[data-push-status127]').hidden,true);
@@ -57,4 +57,16 @@ test('checking a changed public key never unsubscribes or creates a new binding'
 test('badge refresh creates the bell anchor even before the push status check has completed',async()=>{
  const f=fixture();await f.ctx.refreshPersonalBadge112();assert.ok(f.button.querySelector('[data-bell-icon127]'));assert.ok(f.button.classes.has('notification-bell88'));assert.equal(f.button.querySelector('.notification-badge88').textContent,'9');await f.button.onclick();assert.equal(f.stats().modalOpens,1);
  const css=read('enhancements-v88.css');assert.match(css,/#notification-enable82\.notification-bell88\{position:relative/);assert.match(css,/\.notification-badge88\{position:absolute;right:-5px;top:-7px/);
+});
+
+test('opening the bell sends the snapshot once and updates the open count without reopening',async()=>{
+ const writes=[];let unread=4;
+ const f=fixture({inbox(url,options){
+  if(options?.method==='PATCH'){writes.push(JSON.parse(options.body));unread=1;return{unread}}
+  return {unread,items:[],...(url.endsWith('?opening=1')?{through:20}:{})};
+ }});
+ await f.ctx.notificationUpdateButton82();assert.equal(writes.length,0);
+ await f.button.onclick();assert.deepEqual(writes,[{scope:'opening',through:20}]);
+ assert.equal(f.stats().modalOpens,1);assert.equal(f.count.textContent,'1 則未讀');assert.equal(f.mark.disabled,false);
+ assert.equal(f.button.querySelector('.notification-badge88').textContent,'1');
 });

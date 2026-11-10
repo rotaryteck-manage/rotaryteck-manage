@@ -63,3 +63,16 @@ test('v88 browser assets contain bell inbox, editable preview, categorized logs 
  for(const pattern of [/position:sticky/,/schedule-task-card88/,/schedule-choice88\.is-open88/,/notification-rule-form88/])assert.match(css,pattern);
  assert.match(build,/enhancements-v88\.js/);assert.match(build,/enhancements-v88\.css/);
 });
+
+test('opening the bell marks the full snapshot, excluding new arrivals and other accounts',async()=>{
+ const {db,env}=fixture(),at=new Date().toISOString(),path='/api/notification-inbox';
+ const insert=(id,employee)=>db.prepare("INSERT INTO notification_inbox88(id,employee_id,title,message,target_url,source_key,created_at) VALUES(?,?,'通知','內容','/',?,?)").run(id,employee,id,at);
+ for(let i=0;i<105;i++)insert('old-'+i,2);
+ insert('other',3);
+ const opened=await(await notificationInboxApi88(request(path+'?opening=1'),env)).json();
+ assert.equal(opened.items.length,100);assert.equal(opened.unread,105);assert.ok(opened.items.every(x=>x.inOpening));
+ insert('new',2);
+ const result=await(await notificationInboxApi88(request(path,{method:'PATCH',body:{scope:'opening',through:opened.through}}),env)).json();
+ assert.equal(result.changed,105);assert.equal(result.unread,1);
+ assert.deepEqual(db.prepare("SELECT id FROM notification_inbox88 WHERE read_at='' ORDER BY id").all().map(row=>row.id),['new','other']);
+});
