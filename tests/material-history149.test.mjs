@@ -30,12 +30,13 @@ test('calendar highlights the existing chips without changing their labels or by
   reports:[],leaves:[{people:[{name:'甲'}],reason:'特休'}],
  }});
  vm.runInContext(source+'\ncalendarMaterialDays149.set("2026-11-12",[{name:"固定座",project:"SJ70-40"}]);',c);
- assert.equal(c.calendarSearchHits149(root,'固定座','all'),3);
- assert.deepEqual([job,leave,receive,issue,adjacent].map(b=>b.active),[true,false,true,true,false]);
+ assert.equal(c.calendarSearchHits149(root,'固定座','all'),4);
+ assert.deepEqual([job,leave,receive,issue,adjacent].map(b=>b.active),[true,false,true,true,true]);
  assert.equal(issue.textContent,'領料 · 3 筆');
  assert.equal(c.calendarSearchHits149(root,'甲','leaves'),1);assert.equal(leave.active,true);
  c.canDo=()=>false;assert.equal(c.calendarSearchHits149(root,'甲','leaves'),0);assert.equal(leave.active,false);
  assert.equal(c.calendarSearchHits149(root,'','all'),0);
+ assert.equal(adjacent.active,false);
 });
 test('work details highlight the exact original text including full-width matches',()=>{
  let output;
@@ -75,4 +76,20 @@ test('desktop and mobile insert issues after jobs and leaves without reordering 
   assert.deepEqual(sorted.map(b=>b.textContent),expected);
   assert.deepEqual(Array.from(c.mobileRows78(day),r=>r.title),expected);
  }
+});
+
+test('calendar search finds 105 on both visible month boundaries, but not offscreen records',()=>{
+ const chip=dataset=>{const b={dataset,matched:false};b.classList={toggle:(_,value)=>{b.matched=value}};return b};
+ const sep=chip({dayMaterialId:'sep'}),nov=chip({mobileMaterialId:'nov'}),offscreen=chip({dayMaterialId:'offscreen'});
+ const cells=[{dataset:{day:'2026-09-30'},querySelector:()=>null,querySelectorAll:()=>[sep]},
+  {dataset:{mobileDay:'2026-11-01'},querySelector:()=>null,querySelectorAll:()=>[nov]}];
+ const c=context({scheduleAnchor56:'2026-10-01',canDo:()=>false,scheduleAssignees56:()=>[],scheduleData56:{
+  entries:[{kind:'material',id:'sep',title:'105環片送鍍'},{kind:'material',id:'nov',project_name:'105',title:'收料'},{kind:'material',id:'offscreen',title:'105未顯示'}],
+  reports:[{day:'2026-09-30',body:'105 測試'}],
+ }});
+ vm.runInContext(source+"\ncalendarSearch149='105';",c);
+ assert.equal(c.calendarSearchHits149({querySelectorAll:()=>cells},'105','material'),2);
+ assert.deepEqual([sep.matched,nov.matched,offscreen.matched],[true,true,false]);
+ assert.equal(c.calendarJobQuery149('2026-09-30'),'105');
+ assert.equal(c.calendarSearchHits149({querySelectorAll:()=>cells},'105未顯示','all'),0);
 });

@@ -57,7 +57,7 @@ function calendarJobMatch149(day,query,data){
 }
 function calendarJobQuery149(day){
  const q=materialText149(calendarSearch149);
- return q&&['all','jobs'].includes(calendarSearchKind149)&&day.slice(0,7)===scheduleMonth56(scheduleAnchor56).slice(0,7)&&calendarJobMatch149(day,q,scheduleData56)?q:'';
+ return q&&['all','jobs'].includes(calendarSearchKind149)&&calendarJobMatch149(day,q,scheduleData56)?q:'';
 }
 function calendarHighlightText149(node,query){
  const value=node.data,folded=value.normalize('NFKC').toLowerCase();
@@ -106,10 +106,10 @@ function calendarRevealJobMatch149(query){
  });
 }
 function calendarSearchHits149(root,query,kind){
- const month=scheduleMonth56(scheduleAnchor56).slice(0,7),data=scheduleData56,entries=data.entries||[],materials=calendarMaterialOrder149(entries),hits=new Set();
+ const data=scheduleData56,entries=data.entries||[],materials=calendarMaterialOrder149(entries),hits=new Set();
  const allowed=key=>query&&(kind==='all'||kind===key);
  const check=(button,day,yes,key)=>{
-  const match=Boolean(button&&day?.slice(0,7)===month&&yes);
+  const match=Boolean(button&&day&&yes);
   button?.classList.toggle('calendar-hit149',match);
   if(match)hits.add(day+':'+key);
  };
@@ -144,7 +144,7 @@ function calendarTools149(){
  if(owner!==calendarSearchOwner149){calendarSearchOwner149=owner;calendarSearch149='';calendarSearchKind149='all'}
  if(toolbar.querySelector('[data-calendar-search149]'))return;
  const box=document.createElement('div');box.className='calendar-search149';
- box.innerHTML='<div class="calendar-search-field149"><input type="search" data-calendar-search149 aria-label="搜尋本月紀錄" placeholder="搜尋本月紀錄"><div class="calendar-search-end149"><button type="button" class="calendar-search-clear149" aria-label="清除搜尋" hidden>×</button><small data-calendar-search-status149 role="status"></small></div></div><select aria-label="搜尋類型"><option value="all">全部</option><option value="material">料件</option><option value="jobs">工作</option>'+(canDo('schedule.leave.view')?'<option value="leaves">請假</option>':'')+'</select>';
+ box.innerHTML='<div class="calendar-search-field149"><input type="search" data-calendar-search149 aria-label="搜尋目前畫面上的紀錄" placeholder="搜尋目前畫面上的紀錄"><div class="calendar-search-end149"><button type="button" class="calendar-search-clear149" aria-label="清除搜尋" hidden>×</button><small data-calendar-search-status149 role="status"></small></div></div><select aria-label="搜尋類型"><option value="all">全部</option><option value="material">料件</option><option value="jobs">工作</option>'+(canDo('schedule.leave.view')?'<option value="leaves">請假</option>':'')+'</select>';
  const input=box.querySelector('input'),select=box.querySelector('select');
  input.value=calendarSearch149;select.value=calendarSearchKind149;
  if(!select.value)select.value=calendarSearchKind149='all';
