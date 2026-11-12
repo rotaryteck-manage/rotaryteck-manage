@@ -4,8 +4,7 @@
 .schedule-export-year151 input{width:7rem}
 .schedule-export-types151 label,.schedule-export-photos151{display:inline-flex;align-items:center;gap:.35rem}
 .schedule-export-types151 input,.schedule-export-photos151 input{width:auto}
-.schedule-toolbar .schedule-week-export-mobile151{display:none}
 .schedule-toolbar .schedule-day-export151,.schedule-toolbar .schedule-week-export151{white-space:nowrap}
 @media(max-width:700px){
- .schedule-toolbar .schedule-week-export-mobile151{display:inline-flex;justify-self:start}
+ .schedule-toolbar>.schedule-week-export151{justify-self:start}
 }

@@ -131,12 +131,18 @@ function scheduleAddDownload151(){
  if(!canDo('schedule.download')||!canDo('schedule.view')||!['daily','weekly'].includes(scheduleTab56))return;
  const toolbar=$('.schedule-workspace .schedule-toolbar');if(!toolbar)return;
  const weekly=scheduleTab56==='weekly',className=weekly?'schedule-week-export151':'schedule-day-export151';
- const make=(suffix='')=>{const b=document.createElement('button');b.type='button';b.className=className+suffix;b.textContent=weekly?'匯出每週排程':'匯出每日紀錄';b.onclick=()=>scheduleExportDialog151(weekly?'weekly':'daily');return b};
- if(!toolbar.querySelector('.'+className)){
-  if(weekly){toolbar.querySelector('[data-schedule-image]')?.after(make());toolbar.append(make(' schedule-week-export-mobile151'))}
-  else toolbar.querySelector('.calendar-search149')?.append(make());
+ let button=toolbar.querySelector('.'+className);
+ if(!button){
+  button=document.createElement('button');button.type='button';button.className=className;
+  button.textContent=weekly?'匯出每週排程':'匯出每日紀錄';
+  button.onclick=()=>scheduleExportDialog151(weekly?'weekly':'daily');
  }
+ if(weekly){
+  if(mobileQuery78.matches){if(button.parentElement!==toolbar)toolbar.append(button)}
+  else{const copy=toolbar.querySelector('[data-schedule-image]');if(copy&&copy.nextElementSibling!==button)copy.after(button)}
+ }else if(!button.parentElement)toolbar.querySelector('.calendar-search149')?.append(button);
 }
+mobileQuery78.addEventListener('change',scheduleAddDownload151);
 const scheduleRenderBefore151=scheduleRender56;
 scheduleRender56=function(...args){const result=scheduleRenderBefore151.apply(this,args);scheduleAddDownload151();return result};
 const scheduleDrawBefore151=scheduleDraw56;

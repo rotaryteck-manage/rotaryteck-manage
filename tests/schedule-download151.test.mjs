@@ -15,7 +15,7 @@ const fixture=()=>{const {db,DB}=database();migrations85(db);return {db,env:{DB}
 const files=new URL('../dist/',import.meta.url);
 const clientSource=fs.readFileSync(new URL('schedule-download151.js',files),'utf8');
 function workbookClient(extra={}){
- const context=vm.createContext({receiptTime:v=>v,Uint8Array,TextEncoder,Blob,scheduleRender56(){},scheduleDraw56(){},meetingRead120(){},document:{documentElement:{dataset:{}}},...extra});
+ const context=vm.createContext({receiptTime:v=>v,Uint8Array,TextEncoder,Blob,mobileQuery78:{addEventListener(){}},scheduleRender56(){},scheduleDraw56(){},meetingRead120(){},document:{documentElement:{dataset:{}}},...extra});
  vm.runInContext(fs.readFileSync(new URL('xlsx.full.min.js',files),'utf8'),context);context.window=context;
  vm.runInContext(clientSource,context);return context;
 }
