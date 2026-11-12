@@ -174,7 +174,7 @@ const renderAdminBeforePlating=renderAdmin;renderAdmin=function(){
 function platingPhotoUrl(p,s){return '/api/plating-photos?project='+encodeURIComponent(p.id)+'&shipment='+encodeURIComponent(s.id);}
 async function listPlatingPhotos(p,s,forExport=false){
  const items=[];let cursor='';const seen=new Set();
- do{const r=await apiFetch(platingPhotoUrl(p,s)+(forExport?'&export=1':'')+(cursor?'&cursor='+encodeURIComponent(cursor):'')),d=await r.json();if(!r.ok)throw Error(d.error||'照片讀取失敗');items.push(...(d.items||[]));cursor=d.truncated?d.cursor:'';if(d.truncated&&(!cursor||seen.has(cursor)))throw Error('照片清單未完整讀取，請重試');seen.add(cursor);}while(cursor);
+ do{const r=await apiFetch(platingPhotoUrl(p,s)+(forExport?'&export=1':'')+(cursor?'&cursor='+encodeURIComponent(cursor):'')),d=await r.json();if(!r.ok)throw Error(d.error||'照片讀取失敗');if(!Array.isArray(d.items))throw Error('照片清單格式不正確');items.push(...d.items);cursor=d.truncated?d.cursor:'';if(d.truncated&&(!cursor||seen.has(cursor)))throw Error('照片清單未完整讀取，請重試');seen.add(cursor);}while(cursor);
  return items.sort((a,b)=>new Date(a.created)-new Date(b.created));
 }
 function platingPhotoKind(item){return item.kind==='area'?'area':'dispatch';}
@@ -186,17 +186,45 @@ async function platingPhotoOperation(status,action){
  try{await action();}catch(e){status.textContent=e.message||'照片操作失敗';}
  finally{imageUploading=false;dialog.removeEventListener('cancel',cancel);controls.forEach(([el,disabled])=>el.disabled=disabled);}
 }
+function platingPhotoStatus155(panel,p,s){
+ const badges=['dispatch','area'].map(kind=>[kind,panel.querySelector('[data-photo-upload-count="'+kind+'"]')]);
+ let counts=null,revision=0;
+ const paint=(error=false)=>{for(const [kind,badge] of badges){
+  const count=counts?.[kind];
+  badge.dataset.photoState=error?'unknown':count===undefined?'loading':count?'uploaded':'empty';
+  badge.textContent=error?'無法確認':count===undefined?'正在確認…':count?'已上傳 '+count+' 張':'尚未上傳';
+ }};
+ async function refresh(){
+  const request=++revision;
+  try{
+   const items=await listPlatingPhotos(p,s);
+   if(request!==revision||!panel.isConnected)return;
+   counts={dispatch:0,area:0};
+   for(const item of items)counts[platingPhotoKind(item)]++;
+   paint();
+  }catch{
+   if(request!==revision||!panel.isConnected)return;
+   counts=null;paint(true);
+  }
+ }
+ paint();
+ return {refresh,begin(){revision++},uploaded(kind){if(counts){counts[kind]++;paint()}}};
+}
 function attachPlatingPhotos(p,s,saved){
  if(!canDo('plating.photos'))return;
  const panel=document.createElement('section');panel.className='plating-photo-panel';
  if(!saved){panel.innerHTML='<p class="muted">'+pe('photoSavedFirst')+'</p>';$('#plating-fields').after(panel);return;}
- panel.innerHTML=['dispatch','area'].map(kind=>'<div class="receipt-upload-row"><label class="field">'+pe(kind)+'<input type="file" multiple accept="image/jpeg,image/png,image/webp" data-photo-files="'+kind+'"></label><button type="button" data-photo-upload="'+kind+'">'+pe(kind==='area'?'uploadArea':'uploadDispatch')+'</button></div>').join('')+'<small>'+pe('photoCompress')+'</small><p data-photo-status role="status"></p>';
- $('#plating-fields').after(panel);const status=panel.querySelector('[data-photo-status]');
+ panel.innerHTML=['dispatch','area'].map(kind=>'<div class="receipt-upload-row plating-upload-row155"><label class="field">'+pe(kind)+'<input type="file" multiple accept="image/jpeg,image/png,image/webp" data-photo-files="'+kind+'"></label><div class="plating-upload-actions155"><small class="plating-upload-count155" data-photo-upload-count="'+kind+'" role="status"></small><button type="button" data-photo-upload="'+kind+'">'+pe(kind==='area'?'uploadArea':'uploadDispatch')+'</button></div></div>').join('')+'<small>'+pe('photoCompress')+'</small><p data-photo-status role="status"></p>';
+ $('#plating-fields').after(panel);const status=panel.querySelector('[data-photo-status]'),photoStatus=platingPhotoStatus155(panel,p,s);
+ void photoStatus.refresh();
  panel.querySelectorAll('[data-photo-upload]').forEach(button=>button.onclick=async()=>{
   const kind=button.dataset.photoUpload,input=panel.querySelector('[data-photo-files="'+kind+'"]'),files=[...input.files];if(!files.length){status.textContent=pt('photoSelect');return;}
   await platingPhotoOperation(status,async()=>{
+   photoStatus.begin();
    let count=0,failure='';
-   for(const file of files){try{status.textContent=pt('photoUploading')+' '+(count+1)+' / '+files.length;const result=await uploadImage(file,platingPhotoUrl(p,s)+'&kind='+kind,2);addAudit('上傳'+pt(kind),platingCount(s)+' · '+file.name+' · '+receiptTime(result.created),pt('title')+' > '+p.name,'plating:'+p.id);count++;}catch(e){failure=e.message;break;}}
+   try{
+    for(const file of files){try{status.textContent=pt('photoUploading')+' '+(count+1)+' / '+files.length;const result=await uploadImage(file,platingPhotoUrl(p,s)+'&kind='+kind,2);count++;photoStatus.uploaded(kind);addAudit('上傳'+pt(kind),platingCount(s)+' · '+file.name+' · '+receiptTime(result.created),pt('title')+' > '+p.name,'plating:'+p.id);}catch(e){failure=e.message;break;}}
+   }finally{void photoStatus.refresh();}
    if(count){await saveCloud(state);if(failedCandidate)throw Error('已上傳 '+count+' 張，但文字紀錄未儲存，請處理上方提示');}
    input.value='';status.textContent=failure?'已上傳 '+count+' / '+files.length+' 張；'+failure+'。未成功的照片請重新選取。':pt('photoDone')+'（'+count+'）';
   });

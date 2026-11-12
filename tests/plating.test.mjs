@@ -22,3 +22,27 @@ test('shipment logs include only changed fields and ignore no-op saves',()=>{con
 test('legacy verbose logs display concise action without guessing prior field values',()=>{const c=context();assert.equal(c.concisePlatingLog({action:'修改送鍍紀錄',detail:'第 1 次送鍍 · 廠商 · 寄 2026/09/23 · A 10片'}),'修改送鍍紀錄｜第 1 次送鍍');assert.equal(c.concisePlatingLog({action:'修改送鍍紀錄',detail:'第 1 次送鍍｜品檢：待品檢 → 合格',platingChanges:true}),'第 1 次送鍍｜品檢：待品檢 → 合格');});
 test('vendor options migrate existing names, preserve historical records, and handle empty lists',()=>{const c=context(),p=project();assert.deepEqual(Array.from(c.platingVendors()),['廠商']);c.state.platingVendors=['新廠商'];assert.equal(c.platingShipmentDraft(p,undefined).vendor,'新廠商');assert.equal(c.platingShipmentDraft(p,p.shipments[0],true).vendor,'新廠商');assert.equal(c.platingShipmentDraft(p,p.shipments[0]).vendor,'廠商');assert.equal(p.shipments[0].vendor,'廠商');c.state.platingVendors=[];assert.equal(c.platingVendors().length,0);assert.equal(c.platingShipmentDraft(p,undefined).vendor,'');});
 test('vendor configuration rejects duplicates and remains supervisor-only',()=>{validate({projects:[],platingVendors:['廠商']});for(const values of [[''],['A','a'],[' A'],['a'.repeat(101)],'廠商'])assert.throws(()=>validate({projects:[],platingVendors:values}));const before={projects:[],logs:[],platingVendors:['廠商']};assert.equal(warehouseChangeAllowed(before,{...before,platingVendors:['另一家']}),false);});
+
+test('shipment photo badges count each saved category, update on upload, and distinguish list failures from zero',async()=>{
+ const c=context(),dispatch={dataset:{}},area={dataset:{}},panel={isConnected:true,querySelector:key=>key.includes('dispatch')?dispatch:area};
+ const status=c.platingPhotoStatus155(panel,project(),shipment());
+ assert.equal(dispatch.textContent,'正在確認…');assert.equal(area.textContent,'正在確認…');
+ c.apiFetch=async()=>({ok:true,json:async()=>({items:[{kind:'dispatch'},{},{kind:'dispatch'}]})});
+ await status.refresh();
+ assert.equal(dispatch.textContent,'已上傳 3 張');assert.equal(area.dataset.photoState,'empty');assert.equal(area.textContent,'尚未上傳');
+ status.begin();status.uploaded('area');assert.equal(area.textContent,'已上傳 1 張');assert.equal(dispatch.textContent,'已上傳 3 張');
+ c.apiFetch=async()=>({ok:true,json:async()=>({})});await status.refresh();
+ assert.equal(area.dataset.photoState,'unknown');assert.equal(dispatch.textContent,'無法確認');
+});
+
+test('an in-flight photo list cannot overwrite an active upload or its refreshed counts',async()=>{
+ const c=context(),dispatch={dataset:{}},area={dataset:{}},panel={isConnected:true,querySelector:key=>key.includes('dispatch')?dispatch:area};
+ let resolve;
+ c.apiFetch=()=>new Promise(r=>{resolve=r});
+ const status=c.platingPhotoStatus155(panel,project(),shipment()),old=status.refresh();
+ status.begin();
+ c.apiFetch=async()=>({ok:true,json:async()=>({items:[{kind:'area'}]})});
+ await status.refresh();
+ resolve({ok:true,json:async()=>({items:[]})});await old;
+ assert.equal(area.textContent,'已上傳 1 張');assert.equal(dispatch.textContent,'尚未上傳');
+});
