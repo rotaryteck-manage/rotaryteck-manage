@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {database} from './helpers/d1.mjs';
+import {migrations85} from './helpers/migrations85.mjs';
+
+test('completion check uses a key range without changing which notifications qualify',()=>{
+ const {db}=database();migrations85(db);
+ const code=fs.readFileSync(new URL('../worker/server.mjs',import.meta.url),'utf8');
+ const sql=code.match(/"(SELECT r\.rule_id FROM notification_rule_run921[^"]+)"/)[1];
+ const old=sql.replace('scope.source_key>=? AND scope.source_key<?','substr(scope.source_key,1,length(?))=?');
+ const id='daily_%:α',day='2026-11-12',prefix='auto:'+id+':';
+ const args=[id,day,prefix,prefix.slice(0,-1)+';',day];
+ const run=db.prepare('INSERT INTO notification_rule_run921(rule_id,day,eligible_ids,checked_at) VALUES(?,?,?,?)');
+ const scope=db.prepare('INSERT INTO notification_device_scopes121(source_key,employee_id,device_ids,created_at) VALUES(?,?,?,?)');
+ const receipt=db.prepare('INSERT INTO notification_receipts921(dedupe_key,status,created_at,updated_at) VALUES(?,?,?,?)');
+ run.run(id,day,'[1,2]',day);
+ const compare=expected=>{const actual=db.prepare(sql).get(...args);assert.deepEqual(actual,db.prepare(old).get(id,day,prefix,prefix,day));assert.equal(Boolean(actual),expected)};
+ for(let i=0;i<300;i++)scope.run('auto:other:'+i+':'+day,1,'[]',day);
+ scope.run('auto:'+id+';1:'+day,1,'[]',day);
+ scope.run(prefix+'1:work:2026-11-11',1,'[]',day);
+ compare(false);
+ scope.run(prefix+'1:work:'+day,1,'["a","b"]',day);
+ scope.run(prefix+'2:work:'+day,2,'[]',day);
+ receipt.run(prefix+'1:work:'+day+':a','sent',day,day);
+ receipt.run(prefix+'1:work:'+day+':b','failed',day,day);
+ compare(false);
+ db.prepare("UPDATE notification_receipts921 SET status='sent'").run();compare(true);
+ const plan=db.prepare('EXPLAIN QUERY PLAN '+sql).all(...args).map(r=>r.detail).join('\n');
+ assert.match(plan,/SEARCH scope USING INDEX .*\(source_key>\? AND source_key<\?\)/);
+});
