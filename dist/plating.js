@@ -192,12 +192,34 @@ function editPlatingProject(id){
 }
 function openPlating(id){
  const p=platingFind(id);if(!p)return;
- const can=platingEditAllowed(),logs=(state.logs||[]).filter(l=>l.project==='plating:'+id);
- platingModal(esc(p.name),'<div class="plating-actions">'+(can?'<button type="button" id="plating-rename">'+pe('edit')+'</button><button type="button" class="primary" id="shipment-new">＋ '+pe('newShipment')+'</button>':'')+'</div><div class="plating-shipments" data-project-reminder156="'+esc(p.id)+'">'+(p.shipments.map(s=>'<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><strong>'+esc(platingCount(s))+'<small class="plating-reminder156" data-plating-reminder156 hidden></small></strong><span>'+esc(platingDate(s.sent))+'</span><span>'+pe(platingStatus(s))+'</span></button>').join('')||'<p>'+pe('empty')+'</p>')+'</div><details class="plating-history"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>textLogLine(l,receiptTime(l.time)+'｜'+(l.actor||'未記錄人員')+'｜'+concisePlatingLog(l))).join('')+'</details>','',null);
- projectMore51('plating',id,$('#modal .plating-actions'));
- attachPlatingPhotoOverview(p);paintPlatingReminders156();void loadPlatingReminders156();
- $('#plating-rename')?.addEventListener('click',()=>editPlatingProject(id));$('#shipment-new')?.addEventListener('click',()=>editPlatingShipment(id));
- document.querySelectorAll('[data-shipment]').forEach(b=>b.onclick=()=>editPlatingShipment(id,b.dataset.shipment));
+ const can=platingEditAllowed(),canExport=canExportPhotos(),canArchive=canDeleteProjectUI('plating');
+ const logs=(state.logs||[]).filter(l=>l.project==='plating:'+id);
+ const rows=p.shipments.map(s=>{
+  const status=platingStatus(s);
+  return '<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><span class="plating-shipment-label"><strong>'+esc(platingCount(s))+'</strong><span class="plating-shipment-date">'+esc(platingDate(s.sent))+'</span></span><span class="plating-shipment-meta"><span class="plating-shipment-status" data-status="'+status+'">'+pe(status)+'</span><small class="plating-reminder156" data-plating-reminder156 hidden></small><span class="plating-shipment-arrow" aria-hidden="true">›</span></span></button>';
+ }).join('');
+ platingModal(p.name,'<div class="plating-project-detail"><section aria-labelledby="plating-shipments-title"><div class="plating-project-section-head"><h3 id="plating-shipments-title">送鍍紀錄</h3><div data-plating-copy></div></div><div class="plating-shipments" data-project-reminder156="'+esc(p.id)+'">'+(rows||'<p class="plating-project-empty">'+pe('empty')+'</p>')+'</div></section><p class="plating-project-feedback" data-photo-status role="status"></p><div class="plating-project-folds"><details class="plating-history plating-project-fold"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>textLogLine(l,receiptTime(l.time)+'｜'+(l.actor||'未記錄人員')+'｜'+concisePlatingLog(l))).join('')+'</details></div></div>','',null);
+ const form=$('#dialog-form'),body=form.querySelector('.plating-project-detail');
+ if(can||canExport||canArchive){
+  const close=form.querySelector('#close-modal'),actions=document.createElement('div');
+  actions.className='plating-project-toolbar';
+  actions.innerHTML=(can?'<button type="button" class="primary" id="shipment-new">＋ '+pe('newShipment')+'</button>':'')+
+   '<details class="plating-project-more"><summary>更多操作</summary><div class="plating-project-menu">'+
+   (can?'<button type="button" id="plating-rename">'+esc(state.platingText?.edit??'修改案名')+'</button>':'')+
+   (canExport?'<button type="button" data-project-photo-export>'+pe('exportProjectPhotos')+'</button>':'')+
+   (canArchive?'<button type="button" class="danger-button" data-plating-archive>刪除專案</button>':'')+'</div></details>';
+  close.parentElement.classList.add('plating-project-head');close.before(actions);
+  const more=actions.querySelector('details'),summary=more.querySelector('summary');
+  const closeMore=()=>{more.open=false;summary.focus();};
+  form.addEventListener('click',e=>{if(more.open&&!more.contains(e.target))more.open=false;});
+  more.addEventListener('keydown',e=>{if(more.open&&e.key==='Escape'){e.preventDefault();e.stopPropagation();closeMore();}});
+  actions.querySelector('#plating-rename')?.addEventListener('click',()=>{closeMore();editPlatingProject(id);});
+  actions.querySelector('#shipment-new')?.addEventListener('click',()=>editPlatingShipment(id));
+  actions.querySelector('[data-plating-archive]')?.addEventListener('click',()=>{closeMore();archiveProject51('plating',id);});
+  actions.querySelector('[data-project-photo-export]')?.addEventListener('click',e=>{closeMore();void exportPlatingPhotos([p],e.currentTarget,body.querySelector('[data-photo-status]'));});
+ }
+ attachPlatingPhotoOverview(p,body);paintPlatingReminders156();void loadPlatingReminders156();
+ body.querySelectorAll('[data-shipment]').forEach(b=>b.onclick=()=>editPlatingShipment(id,b.dataset.shipment));
 }
 function editPlatingShipment(projectId,shipmentId,copy=false){
  const p=platingFind(projectId);if(!p)return;const source=p.shipments.find(s=>s.id===shipmentId),can=platingEditAllowed();
@@ -303,17 +325,17 @@ function attachPlatingPhotos(p,s,saved){
   });
  });
 }
-function attachPlatingPhotoOverview(p){
- const panel=document.createElement('section');panel.className='plating-photo-panel';
- panel.innerHTML=(canExportPhotos()?'<button type="button" class="small" data-project-photo-export>'+pe('exportProjectPhotos')+'</button>':'')+'<details class="receipt-files-fold"><summary>'+pe('photoOverview')+' <span data-photo-count></span></summary><div data-photo-list></div></details><p data-photo-status role="status"></p>';
- $('.plating-history').before(panel);
- const fold=panel.querySelector('details'),list=panel.querySelector('[data-photo-list]'),status=panel.querySelector('[data-photo-status]');let loaded=false,loading=false;
+function attachPlatingPhotoOverview(p,body){
+ const fold=document.createElement('details');fold.className='receipt-files-fold plating-project-fold';
+ fold.innerHTML='<summary>'+pe('photoOverview')+' <span data-photo-count></span></summary><div data-photo-list></div>';
+ body.querySelector('.plating-project-folds').prepend(fold);
+ const list=fold.querySelector('[data-photo-list]'),status=body.querySelector('[data-photo-status]');let loaded=false,loading=false;
  async function load(){
   if(loading)return;loading=true;list.textContent=pt('photoLoading');
   try{
    const rows=[];for(const s of [...p.shipments].sort((a,b)=>a.number-b.number))for(const item of await listPlatingPhotos(p,s))rows.push({s,item});
    rows.sort((a,b)=>String(b.item.created).localeCompare(String(a.item.created))||String(b.item.id).localeCompare(String(a.item.id)));
-   list.replaceChildren();panel.querySelector('[data-photo-count]').textContent='（'+rows.length+'）';
+   list.replaceChildren();fold.querySelector('[data-photo-count]').textContent='（'+rows.length+'）';
    for(const {s,item}of rows){
     const row=document.createElement('div');row.className='receipt-file-row';const link=document.createElement('a');link.textContent=platingPhotoLabel(s,item);link.href=platingPhotoUrl(p,s)+'&id='+encodeURIComponent(item.id);link.target='_blank';link.rel='noopener';row.append(link);
     if(canDo('plating.photos')){const b=document.createElement('button');b.type='button';b.className='small danger-button';b.textContent=pt('delete');b.onclick=async()=>{if(!await confirmAction(pt('photoDelete')))return;await platingPhotoOperation(status,async()=>{const r=await apiFetch(link.getAttribute('href'),{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'照片刪除失敗');void loadPlatingReminders156(true);addAudit('刪除'+pt(platingPhotoKind(item)),platingPhotoLabel(s,item),pt('title')+' > '+p.name,'plating:'+p.id);await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');});await load();};row.append(b);}list.append(row);
@@ -322,7 +344,6 @@ function attachPlatingPhotoOverview(p){
   finally{loading=false;}
  }
  fold.ontoggle=()=>{if(fold.open&&!loaded)load();};
- panel.querySelector('[data-project-photo-export]')?.addEventListener('click',e=>exportPlatingPhotos([p],e.currentTarget,status));
 }
 function platingCsv(rows){return new TextEncoder().encode('\ufeff'+rows.map(row=>row.map(value=>{const v=String(value??'');return csvCell(/^[\s]*[=+@-]/.test(v)?"'"+v:v);}).join(',')).join('\r\n'));}
 function platingRecordEntries(projects,logs){

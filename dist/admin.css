@@ -68,3 +68,43 @@
 .plating-open:has(.plating-reminder156:not([hidden])){position:relative;padding-top:25px}
 .plating-open .plating-reminder156{position:absolute;inset-block-start:5px;inset-inline-end:6px;max-width:calc(100% - 12px)}
 .plating-shipment strong .plating-reminder156{display:table;margin-top:3px;text-align:left}
+
+/* Plating project overview: keep the shipment editor and other dialogs separate. */
+#modal .plating-project-head{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px}
+#modal .plating-project-head h2{min-width:0;overflow-wrap:anywhere}
+#modal .plating-project-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#modal .plating-project-more{position:relative}
+#modal .plating-project-more>summary{box-sizing:border-box;display:flex;align-items:center;gap:8px;min-height:42px;padding:8px 12px;border:1px solid var(--ui-border,var(--border));border-radius:7px;list-style:none;cursor:pointer;font-size:14px}
+#modal .plating-project-more>summary::-webkit-details-marker,#modal .plating-project-fold>summary::-webkit-details-marker{display:none}
+#modal .plating-project-more>summary::after{content:'';width:6px;height:6px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:translateY(-2px) rotate(45deg)}
+#modal .plating-project-more[open]>summary::after{transform:translateY(2px) rotate(225deg)}
+#modal .plating-project-menu{position:absolute;inset-inline-end:0;top:calc(100% + 6px);display:grid;gap:4px;min-width:max-content;padding:6px;border:1px solid var(--ui-border,var(--border));border-radius:8px;background:var(--ui-surface,#fff);box-shadow:0 6px 18px #18362824}
+#modal .plating-project-menu>button{width:100%;justify-content:flex-start;text-align:left;min-height:40px}
+#modal .plating-project-detail{display:grid;gap:18px}
+#modal .plating-project-section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:32px;margin-bottom:10px}
+#modal .plating-project-section-head h3{margin:0;font-size:1rem}
+#modal .plating-project-detail .plating-shipments{display:grid;gap:8px}
+#modal .plating-project-detail .plating-shipment{display:flex;justify-content:space-between;width:100%;text-align:left;min-height:50px;margin:0;padding:10px 13px;gap:8px 14px}
+#modal .plating-project-detail .plating-shipment:hover,#modal .plating-project-fold>summary:hover,#modal .plating-project-more>summary:hover{background:var(--ui-rowAlt,#f3f7ef)}
+#modal .plating-shipment-label,#modal .plating-shipment-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px}
+#modal .plating-shipment-meta{margin-inline-start:auto;gap:6px 8px}
+#modal .plating-shipment-date,#modal .plating-shipment-arrow{color:var(--ui-muted,#516950)}
+#modal .plating-shipment-arrow{font-size:1.25rem;line-height:1}
+#modal .plating-shipment-status{border-radius:999px;padding:3px 9px;background:#e9f0f5;color:#324f65;font-size:.8rem;line-height:1.35}
+#modal .plating-shipment-status[data-status="completed"]{background:#e8f1e5;color:#315d42}
+#modal .plating-project-detail .plating-project-empty{margin:0;padding:14px;border:1px dashed var(--ui-border,var(--border));border-radius:7px;color:var(--ui-muted,#516950)}
+#modal .plating-project-detail .plating-project-feedback{margin:0}
+#modal .plating-project-feedback:empty,#modal [data-plating-copy]:empty{display:none}
+#modal .plating-project-folds{display:grid;gap:8px}
+#modal .plating-project-fold{margin:0;border:1px solid var(--ui-border,var(--border));border-radius:7px;background:var(--ui-surface,#fff);color:var(--ui-text,#234336)}
+#modal .plating-project-fold>summary{display:flex;align-items:center;gap:4px;min-height:44px;padding:10px 13px;border-radius:7px;list-style:none;cursor:pointer;font-size:.9rem;font-weight:600}
+#modal .plating-project-fold>summary::after{content:'展開 ＋';margin-inline-start:auto;color:var(--ui-muted,#516950);font-size:.8rem;font-weight:400;white-space:nowrap}
+#modal .plating-project-fold[open]>summary::after{content:'收合 −'}
+#modal .plating-project-fold>[data-photo-list],#modal .plating-project-fold>.text-history-row{border-top:1px solid var(--ui-border,var(--border));padding:8px 13px}
+@media(max-width:600px){
+ #modal .plating-project-head{grid-template-columns:minmax(0,1fr) auto;gap:8px}
+ #modal .plating-project-head #close-modal{grid-column:2;grid-row:1}
+ #modal .plating-project-toolbar{grid-row:2;grid-column:1/-1;justify-self:end}
+ #modal .plating-project-detail{gap:14px}
+ #modal .plating-project-detail .plating-shipment{padding:9px 10px}
+}
