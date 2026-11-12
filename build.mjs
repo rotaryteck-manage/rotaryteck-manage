@@ -65,7 +65,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<link rel="stylesheet" href="enhancements-v921.css?v=104">'+
  '<link rel="stylesheet" href="enhancements-v93.css?v=93">'+
  '<link rel="stylesheet" href="enhancements-v94.css?v=94">'+
- '<link rel="stylesheet" href="enhancements-v941.css?v=942">'+
+ '<link rel="stylesheet" href="enhancements-v941.css?v=152">'+
  '<link rel="stylesheet" href="mobile-form-v84.css?v=84">'+
  '<link rel="stylesheet" href="enhancements-v103.css?v=103">'+
  '<script src="enhancements-v106.js?v=106" defer></script>'+
@@ -73,7 +73,7 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<script src="enhancements-v107.js?v=107" defer></script>'+
  '<script src="enhancements-v108.js?v=115" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v109.css?v=109">'+
- '<script src="enhancements-v111.js?v=151" defer></script>'+
+ '<script src="enhancements-v111.js?v=152" defer></script>'+
  '<link rel="stylesheet" href="enhancements-v111.css?v=111">'+
  '<script src="enhancements-v112.js?v=148" defer></script>'+
  '<script src="enhancements-v113.js?v=113" defer></script>'+
@@ -90,8 +90,8 @@ assets['/index.html'].body=assets['/index.html'].body.replace('schedule-v60.js?v
  '<link rel="stylesheet" href="meetings117.css?v=134">'+
  '<script src="material-history149.js?v=150" defer></script>'+
  '<link rel="stylesheet" href="material-history149.css?v=150">'+
- '<script src="schedule-download151.js?v=1511" defer></script>'+
- '<link rel="stylesheet" href="schedule-download151.css?v=1511">'+
+ '<script src="schedule-download151.js?v=152" defer></script>'+
+ '<link rel="stylesheet" href="schedule-download151.css?v=152">'+
  '</head>'
 );
 fs.mkdirSync('dist/server',{recursive:true});

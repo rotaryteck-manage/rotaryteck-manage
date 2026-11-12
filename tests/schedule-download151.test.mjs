@@ -91,3 +91,35 @@ test('meeting PDF splits long notes across pages and each page uses valid binary
  const xref=Number(source.match(/startxref\n(\d+)/)[1]);assert.ok(source.slice(xref).startsWith('xref\n'));
  for(const [index,line] of source.slice(xref).split('\n').slice(3,14).entries())assert.ok(source.slice(Number(line.slice(0,10))).startsWith((index+1)+' 0 obj'));
 });
+
+test('photo downloads start ten at once, fall back to four, and retry only failed photos',async()=>{
+ const c=workbookClient(),controller=new AbortController(),loaded=new Map([['cached',{bytes:new Uint8Array(2)}]]),calls=new Map(),started=[];
+ let running=0,peak=0,slow=false,done=0;
+ const list=[{key:'cached'},...Array.from({length:17},(_,i)=>({key:String(i)}))];
+ await c.schedulePhotoBatch152(list,loaded,async ({key})=>{
+  running++;peak=Math.max(peak,running);started.push({running,slow});
+  const n=(calls.get(key)||0)+1;calls.set(key,n);
+  const transient=(key==='0'||key==='1')&&n===1;
+  await new Promise(resolve=>setTimeout(resolve,transient?1:8));running--;
+  if(transient)throw Object.assign(Error('timeout'),{retryable:true});
+  return {bytes:new Uint8Array(2)};
+ },(count,total,status)=>{done=count;assert.equal(total,18);if(status?.includes('較慢'))slow=true},controller.signal,1000);
+ assert.equal(peak,10);assert.ok(started.some(s=>s.slow));assert.ok(started.filter(s=>s.slow).every(s=>s.running<=4));
+ assert.equal(done,18);assert.equal(loaded.size,18);assert.equal(calls.has('cached'),false);
+ assert.deepEqual([...calls].filter(([,n])=>n>1).map(([key])=>key).sort(),['0','1']);
+});
+test('photo retries keep completed files after a repeat failure; cancellation and deadlines abort stalled fetches',async()=>{
+ const c=workbookClient({AbortController,setTimeout,clearTimeout}),controller=new AbortController(),loaded=new Map(),list=[{key:'success'},{key:'failed'}];
+ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const getPhoto=async ({key})=>{if(key==='success')return {bytes:new Uint8Array(1)};await pause(1);throw Object.assign(Error('timeout'),{retryable:true})};
+ await assert.rejects(c.schedulePhotoBatch152(list,loaded,getPhoto,()=>{},controller.signal,50),/已下載的照片會保留/);
+ const calls=[];
+ await c.schedulePhotoBatch152(list,loaded,async ({key})=>{calls.push(key);return {bytes:new Uint8Array(1)}},()=>{},controller.signal,50);
+ assert.deepEqual(calls,['failed']);
+ let photoSignal;
+ await assert.rejects(c.scheduleTimed152(signal=>{photoSignal=signal;return new Promise(()=>{})},controller.signal,5,'photo timeout'),/photo timeout/);
+ assert.ok(photoSignal.aborted);
+ const pending=c.scheduleTimed152(signal=>{photoSignal=signal;return new Promise(()=>{})},controller.signal,1000,'photo timeout');
+ await Promise.resolve();controller.abort(Error('cancelled'));
+ await assert.rejects(pending,/cancelled/);assert.ok(photoSignal.aborted);
+});

@@ -3,7 +3,7 @@ html.cloud-saving941 button:not(#close-modal):not(#cancel-modal),html.cloud-savi
 @media(max-width:700px){.wire-restock-head941{align-items:stretch;flex-direction:column}.wire-restock-head941 .wire-tools{display:grid;grid-template-columns:1fr 1fr}.wire-restock-head941 .wire-tools button{width:100%;min-width:0}#cloud-status.cloud-saving941{font-size:14px}.restock-table{min-width:760px}}
 
 /* v94.2: keep the live form and its values, but shrink its busy presentation. */
-#modal[open]:has(#dialog-form[data-busy="1"]){width:min(280px,calc(100vw - 32px))!important;min-width:0!important;height:fit-content!important;min-height:0!important;max-height:calc(100dvh - 32px)!important;inset:0!important;margin:auto!important;padding:24px!important;border-radius:14px;background:#f7f5eb;color:#234e3c;}
-#modal #dialog-form[data-busy="1"]{height:auto!important;min-height:0!important;max-height:none!important;display:block!important;}
-#modal #dialog-form[data-busy="1"]>*{display:none!important;}
-#modal #dialog-form[data-busy="1"]::after{content:"處理中…";display:block;text-align:center;font-weight:700;font-size:18px;line-height:1.6;}
+#modal[open]:has(#dialog-form[data-busy="1"]:not([data-schedule-export152])){width:min(280px,calc(100vw - 32px))!important;min-width:0!important;height:fit-content!important;min-height:0!important;max-height:calc(100dvh - 32px)!important;inset:0!important;margin:auto!important;padding:24px!important;border-radius:14px;background:#f7f5eb;color:#234e3c;}
+#modal #dialog-form[data-busy="1"]:not([data-schedule-export152]){height:auto!important;min-height:0!important;max-height:none!important;display:block!important;}
+#modal #dialog-form[data-busy="1"]:not([data-schedule-export152])>*{display:none!important;}
+#modal #dialog-form[data-busy="1"]:not([data-schedule-export152])::after{content:"處理中…";display:block;text-align:center;font-weight:700;font-size:18px;line-height:1.6;}

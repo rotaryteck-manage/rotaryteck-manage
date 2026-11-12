@@ -65,19 +65,69 @@ function scheduleWorkbook151(data,mode,types){
  }
  return new Uint8Array(XLSX.write(book,{type:'array',bookType:'xlsx',compression:true}));
 }
-async function schedulePhotoZip151(data,xlsx,name,status,signal){
- const list=data.reports.flatMap(report=>(report.photoIndexes||[]).map(index=>({report,index})));
+async function scheduleTimed152(task,signal,ms,message){
+ if(signal.aborted)throw signal.reason;
+ const controller=new AbortController();
+ let timer,stop;
+ const interrupt=new Promise((_,reject)=>{
+  stop=()=>{controller.abort(signal.reason);reject(signal.reason)};
+  signal.addEventListener('abort',stop,{once:true});
+  timer=setTimeout(()=>{
+   const error=Object.assign(Error(message),{retryable:true});
+   controller.abort(error);reject(error);
+  },ms);
+ });
+ try{return await Promise.race([interrupt,Promise.resolve().then(()=>task(controller.signal))])}
+ finally{clearTimeout(timer);signal.removeEventListener('abort',stop)}
+}
+async function schedulePhotoBatch152(list,loaded,getPhoto,show,signal,maxBytes){
+ const queue=list.filter(item=>!loaded.has(item.key)),active=new Map(),attempts=new Map();
+ let limit=10,errors=0,size=list.reduce((sum,item)=>sum+(loaded.get(item.key)?.bytes.length||0),0),completed=list.length-queue.length;
+ show(completed,list.length);
+ if(size>maxBytes)throw Error('照片總量超過 120 MB，請縮短日期範圍或取消勾選照片');
+ for(let cursor=0;cursor<queue.length||active.size;){
+  if(signal.aborted)throw signal.reason;
+  while(cursor<queue.length&&active.size<limit){
+   const item=queue[cursor++];attempts.set(item.key,(attempts.get(item.key)||0)+1);
+   active.set(item.key,Promise.resolve().then(()=>getPhoto(item)).then(value=>({item,value}),error=>({item,error})));
+  }
+  const {item,value,error}=await Promise.race(active.values());
+  active.delete(item.key);
+  if(signal.aborted)throw signal.reason;
+  if(error){
+   if(error.retryable||error.name==='TypeError'){
+    if(++errors>=2)limit=4;
+    if(attempts.get(item.key)<2){queue.splice(cursor,0,item);show(completed,list.length,limit===4?'連線較慢，正在重試':'正在重試照片');continue}
+    throw Error('有照片下載逾時或連線失敗。按「下載 Excel」可重試，已下載的照片會保留。');
+   }
+   throw error;
+  }
+  size+=value.bytes.length;
+  if(size>maxBytes)throw Error('照片總量超過 120 MB，請縮短日期範圍或取消勾選照片');
+  loaded.set(item.key,value);show(++completed,list.length,limit===4?'已降低同時下載數':'');
+ }
+}
+async function schedulePhotoZip151(data,xlsx,name,status,signal,loaded){
+ const list=data.reports.flatMap(report=>(report.photoIndexes||[]).map(index=>({report,index,key:report.id+':'+index})));
  if(list.length>800)throw Error('照片超過 800 張，請縮短日期範圍或取消勾選照片');
  if(!list.length){scheduleFile151(xlsx,scheduleXlsxType151,name+'.xlsx');return false}
+ const limit=120*1024*1024-xlsx.length,available=new Set(list.map(item=>item.key));
+ for(const key of loaded.keys())if(!available.has(key))loaded.delete(key);
+ const getPhoto=({report,index})=>scheduleTimed152(async photoSignal=>{
+  const query=new URLSearchParams({id:report.id,index,export:'schedule'}),response=await apiFetch('/api/schedule-photo?'+query,{signal:photoSignal}),type=response.headers.get('content-type')||'';
+  if(!response.ok||!/^image\/(jpeg|png|webp)(?:;|$)/.test(type)){
+   if([401,403].includes(response.status))throw Error('照片下載權限已變更，請重新整理後再試');
+   throw Object.assign(Error('部分照片無法讀取，請重試或取消勾選照片'),{retryable:response.status===408||response.status===429||response.status>=500});
+  }
+  return {bytes:new Uint8Array(await response.arrayBuffer()),ext:type.includes('png')?'png':type.includes('webp')?'webp':'jpg'};
+ },signal,20000,'單張照片下載逾時');
+ await schedulePhotoBatch152(list,loaded,getPhoto,(done,total,extra)=>{status.textContent='照片已下載 '+done+'／'+total+(extra?' · '+extra:'')},signal,limit);
+ status.textContent='正在打包 Excel 和照片…';
+ await new Promise(resolve=>setTimeout(resolve,0));
+ if(signal.aborted)throw signal.reason;
  const entries=[{name:name+'.xlsx',data:xlsx}],manifest=[['日期','回報人','工作項目','照片檔案']];
- let size=xlsx.length;
- for(const [i,{report,index}] of list.entries()){
-  status.textContent='正在下載照片 '+(i+1)+'／'+list.length;
-  const query=new URLSearchParams({id:report.id,index,export:'schedule'}),response=await apiFetch('/api/schedule-photo?'+query,{signal}),type=response.headers.get('content-type')||'';
-  if(!response.ok||!/^image\/(jpeg|png|webp)(?:;|$)/.test(type))throw Error('部分照片讀取失敗，請重試或取消勾選照片');
-  const bytes=new Uint8Array(await response.arrayBuffer());size+=bytes.length;
-  if(size>120*1024*1024)throw Error('照片總量超過 120 MB，請縮短日期範圍或取消勾選照片');
-  const ext=type.includes('png')?'png':type.includes('webp')?'webp':'jpg';
+ for(const [i,{report,key}] of list.entries()){
+  const {bytes,ext}=loaded.get(key);
   const path='工作回報照片/'+report.day+'/'+String(i+1).padStart(3,'0')+'_'+safeFileName(report.author_name||'回報人')+'.'+ext;
   entries.push({name:path,data:bytes});manifest.push([report.day,report.author_name,report.work_title,path]);
  }
@@ -86,11 +136,12 @@ async function schedulePhotoZip151(data,xlsx,name,status,signal){
 }
 function scheduleExportDialog151(mode){
  if(!canDo('schedule.download')||!canDo('schedule.view'))return;
+ let current=null,cacheKey='';const loaded=new Map();
  const weekly=mode==='weekly',month=scheduleAnchor56.slice(0,7),title=weekly?'匯出每週排程':'匯出每日紀錄';
  const dateFields=weekly
   ?'<div class="form-grid">'+field('開始月份','first',month,'type="month" required')+field('結束月份','last',month,'type="month" required')+'</div><div class="schedule-export-year151"><label>年度 <input name="year" aria-label="全年匯出的年度" type="number" min="1900" max="9998" step="1" value="'+month.slice(0,4)+'"></label><button type="button" data-export-year151>全年</button></div><p class="muted">最多 12 個月，每月一張工作表。跨月保留整週，放在所選範圍內最早涵蓋該週的月份。</p>'
   :'<div class="form-grid">'+field('開始日期','from',month+'-01','type="date" required')+field('結束日期','to',scheduleMonthEnd151(month),'type="date" required')+'</div><fieldset class="schedule-export-types151"><legend>紀錄類型</legend>'+scheduleDailyTypes151.filter(([, ,key])=>!key||canDo(key)).map(([key,label,,checked])=>'<label><input type="checkbox" name="types" value="'+key+'" '+(checked?'checked':'')+'> '+label+'</label>').join('')+'</fieldset><label class="schedule-export-photos151"><input type="checkbox" name="photos"> 包含工作回報照片（Excel 和照片打包成 ZIP）</label>';
- modal(title,'<div class="schedule-export151">'+dateFields+'<p role="status" data-export-status151></p></div>','下載 Excel',async form=>{
+ modal(title,'<div class="schedule-export151"><div class="schedule-export-fields152">'+dateFields+'</div><p role="status" data-export-status151></p></div>','下載 Excel',async form=>{
   const dialog=$('#modal'),status=dialog.querySelector('[data-export-status151]'),params=new URLSearchParams({mode});
   const types=weekly?[]:form.getAll('types'),photos=!weekly&&form.has('photos');
   if(weekly){
@@ -103,19 +154,38 @@ function scheduleExportDialog151(mode){
    if(!types.length)throw Error('請至少勾選一種紀錄');
    params.set('from',from);params.set('to',to);params.set('types',types.join(','));if(photos)params.set('photos','1');
   }
-  const controller=new AbortController(),cancel=()=>controller.abort();
+  const controller=new AbortController(),cancel=()=>controller.abort(),fields=dialog.querySelector('.schedule-export-fields152'),cancelButton=dialog.querySelector('#cancel-modal');
+  current=controller;fields.inert=true;cancelButton.textContent='取消下載';
   dialog.addEventListener('close',cancel,{once:true});
+  const key=String(currentUser?.id||'')+'|'+params.toString();
+  if(cacheKey!==key){loaded.clear();cacheKey=key}
   try{
    status.textContent='正在整理紀錄…';
-   const response=await apiFetch('/api/schedule-download?'+params,{signal:controller.signal}),data=await response.json();if(!response.ok)throw Error(data.error||'匯出失敗');
+   const data=await scheduleTimed152(async signal=>{
+    const response=await apiFetch('/api/schedule-download?'+params,{signal}),payload=await response.json();
+    if(!response.ok){if([401,403].includes(response.status))loaded.clear();throw Error(payload.error||'匯出失敗')}
+    return payload;
+   },controller.signal,30000,'讀取匯出資料逾時，請重試或縮短日期範圍');
    const xlsx=scheduleWorkbook151(data,mode,types),name=title+'_'+(weekly?params.get('first')+'_'+params.get('last'):params.get('from')+'_'+params.get('to'));
-   if(photos){const zipped=await schedulePhotoZip151(data,xlsx,name,status,controller.signal);toast(zipped?'已下載 Excel 與工作回報照片':'已下載 Excel，所選紀錄沒有工作回報照片')}
+   if(photos){const zipped=await schedulePhotoZip151(data,xlsx,name,status,controller.signal,loaded);toast(zipped?'已下載 Excel 與工作回報照片':'已下載 Excel，所選紀錄沒有工作回報照片')}
    else{scheduleFile151(xlsx,scheduleXlsxType151,name+'.xlsx');toast('已下載 Excel')}
    dialog.close();
-  }catch(error){if(!controller.signal.aborted)throw error}
-  finally{dialog.removeEventListener('close',cancel);status.textContent=''}
+  }catch(error){
+   if(controller.signal.aborted){status.textContent='已取消下載，可重新開始。'}
+   else{status.textContent='';if(/權限/.test(error.message||''))loaded.clear();throw error}
+  }finally{
+   controller.abort();
+   current=null;fields.inert=false;cancelButton.textContent='取消';
+   dialog.removeEventListener('close',cancel);
+   if(!dialog.open)loaded.clear();
+  }
  });
- const form=$('#dialog-form');
+ const form=$('#dialog-form'),dialog=$('#modal');
+ form.dataset.scheduleExport152='';
+ const cancelOrClose=()=>{if(current){current.abort();return}loaded.clear();dialog.close()};
+ form.querySelector('#cancel-modal').onclick=cancelOrClose;
+ form.querySelector('#close-modal').onclick=cancelOrClose;
+ dialog.oncancel=event=>{event.preventDefault();cancelOrClose()};
  if(weekly)form.querySelector('[data-export-year151]').onclick=()=>{
   const year=form.elements.year.value;
   if(!/^\d{4}$/.test(year)||!form.elements.year.reportValidity())return;
@@ -248,4 +318,4 @@ meetingRead120=function(item,...args){
  };
  return result;
 };
-document.documentElement.dataset.appVersion='15.1v';
+document.documentElement.dataset.appVersion='15.2v';
