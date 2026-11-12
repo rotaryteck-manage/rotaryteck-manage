@@ -114,11 +114,11 @@ function paintPlatingReminders156(){
   const p=platingFind(tile.dataset.id);
   set(tile.querySelector('[data-plating-reminder156]'),p?platingProjectReminder156(p,items):'');
  }
- const records=$('#modal .plating-shipments[data-project-reminder156]');
- if(!records)return;
- for(const button of records.querySelectorAll('[data-shipment]')){
-  const key=platingReminderKey156(records.dataset.projectReminder156,button.dataset.shipment);
-  set(button.querySelector('[data-plating-reminder156]'),platingReminderText156(items.get(key)));
+ for(const records of document.querySelectorAll('#modal .plating-shipments[data-project-reminder156]')){
+  for(const button of records.querySelectorAll('[data-shipment]')){
+   const key=platingReminderKey156(records.dataset.projectReminder156,button.dataset.shipment);
+   set(button.querySelector('[data-plating-reminder156]'),platingReminderText156(items.get(key)));
+  }
  }
 }
 function loadPlatingReminders156(force=false){
@@ -190,15 +190,31 @@ function editPlatingProject(id){
  const oldName=existing?.name;const p=existing||{id:crypto.randomUUID(),shipments:[]};p.name=name;if(!existing){state.platingProjects??=[];state.platingProjects.push(p);}await platingCommit(existing?'修改案名':'新增案件',p,existing?oldName+' → '+name:'');openPlating(p.id);
  });
 }
+function platingShipmentList(p,shipments){
+ const rows=shipments.map(s=>{
+  const status=platingStatus(s);
+  return '<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><span class="plating-shipment-label"><strong>'+esc(platingCount(s))+'</strong><span class="plating-shipment-date">'+esc(platingDate(s.sent))+'</span></span><span class="plating-shipment-meta"><span class="plating-shipment-status" data-status="'+status+'">'+pe(status)+'</span><small class="plating-reminder156" data-plating-reminder156 hidden></small><span class="plating-shipment-arrow" aria-hidden="true">›</span></span></button>';
+ }).join('');
+ return '<div class="plating-shipments" data-project-reminder156="'+esc(p.id)+'">'+(rows||'<p class="plating-project-empty">'+pe('empty')+'</p>')+'</div>';
+}
+function openPlatingShipmentHistory(p,shipments){
+ const dialog=document.createElement('dialog');
+ dialog.className='plating-project-history-dialog';
+ dialog.setAttribute('aria-labelledby','plating-project-history-title');
+ dialog.innerHTML='<div class="modal-head"><h2 id="plating-project-history-title">'+esc(p.name)+' · 全部送鍍紀錄</h2><button type="button" class="plating-history-close" data-history-close aria-label="'+pe('close')+'">×</button></div><div class="modal-body plating-project-detail">'+platingShipmentList(p,shipments)+'</div><div class="modal-foot"><button type="button" data-history-close>'+pe('close')+'</button></div>';
+ dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+ dialog.querySelectorAll('[data-history-close]').forEach(b=>b.onclick=()=>dialog.close());
+ dialog.querySelectorAll('[data-shipment]').forEach(b=>b.onclick=()=>{dialog.close();dialog.remove();editPlatingShipment(p.id,b.dataset.shipment);});
+ $('#modal').append(dialog);
+ dialog.showModal();
+ paintPlatingReminders156();
+}
 function openPlating(id){
  const p=platingFind(id);if(!p)return;
  const can=platingEditAllowed(),canExport=canExportPhotos(),canArchive=canDeleteProjectUI('plating');
  const logs=(state.logs||[]).filter(l=>l.project==='plating:'+id);
- const rows=p.shipments.map(s=>{
-  const status=platingStatus(s);
-  return '<button type="button" class="plating-shipment" data-shipment="'+esc(s.id)+'"><span class="plating-shipment-label"><strong>'+esc(platingCount(s))+'</strong><span class="plating-shipment-date">'+esc(platingDate(s.sent))+'</span></span><span class="plating-shipment-meta"><span class="plating-shipment-status" data-status="'+status+'">'+pe(status)+'</span><small class="plating-reminder156" data-plating-reminder156 hidden></small><span class="plating-shipment-arrow" aria-hidden="true">›</span></span></button>';
- }).join('');
- platingModal(p.name,'<div class="plating-project-detail"><section aria-labelledby="plating-shipments-title"><div class="plating-project-section-head"><h3 id="plating-shipments-title">送鍍紀錄</h3><div data-plating-copy></div></div><div class="plating-shipments" data-project-reminder156="'+esc(p.id)+'">'+(rows||'<p class="plating-project-empty">'+pe('empty')+'</p>')+'</div></section><p class="plating-project-feedback" data-photo-status role="status"></p><div class="plating-project-folds"><details class="plating-history plating-project-fold"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>textLogLine(l,receiptTime(l.time)+'｜'+(l.actor||'未記錄人員')+'｜'+concisePlatingLog(l))).join('')+'</details></div></div>','',null);
+ const shipments=[...p.shipments].sort((a,b)=>b.number-a.number),limit=5;
+ platingModal(p.name,'<div class="plating-project-detail"><section aria-labelledby="plating-shipments-title"><div class="plating-project-section-head"><h3 id="plating-shipments-title">送鍍紀錄</h3><div data-plating-copy></div></div>'+platingShipmentList(p,shipments.slice(0,limit))+(shipments.length>limit?'<div class="plating-project-expand"><button type="button" data-plating-history-open aria-haspopup="dialog">展開</button></div>':'')+'</section><p class="plating-project-feedback" data-photo-status role="status"></p><div class="plating-project-folds"><details class="plating-history plating-project-fold"><summary>'+pe('history')+'（'+logs.length+'）</summary>'+logs.map(l=>textLogLine(l,receiptTime(l.time)+'｜'+(l.actor||'未記錄人員')+'｜'+concisePlatingLog(l))).join('')+'</details></div></div>','',null);
  const form=$('#dialog-form'),body=form.querySelector('.plating-project-detail');
  if(can||canExport||canArchive){
   const close=form.querySelector('#close-modal'),actions=document.createElement('div');
@@ -220,6 +236,7 @@ function openPlating(id){
  }
  attachPlatingPhotoOverview(p,body);paintPlatingReminders156();void loadPlatingReminders156();
  body.querySelectorAll('[data-shipment]').forEach(b=>b.onclick=()=>editPlatingShipment(id,b.dataset.shipment));
+ body.querySelector('[data-plating-history-open]')?.addEventListener('click',()=>openPlatingShipmentHistory(p,shipments));
 }
 function editPlatingShipment(projectId,shipmentId,copy=false){
  const p=platingFind(projectId);if(!p)return;const source=p.shipments.find(s=>s.id===shipmentId),can=platingEditAllowed();

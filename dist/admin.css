@@ -108,3 +108,11 @@
  #modal .plating-project-detail{gap:14px}
  #modal .plating-project-detail .plating-shipment{padding:9px 10px}
 }
+
+/* All shipments open above the project without lengthening its preview. */
+#modal .plating-project-expand{display:flex;justify-content:center;margin-top:8px}
+#modal .plating-project-history-dialog{width:min(860px,calc(100vw - 32px));max-height:88dvh}
+#modal .plating-project-history-dialog[open]{display:flex;flex-direction:column}
+#modal .plating-project-history-dialog>.modal-head,#modal .plating-project-history-dialog>.modal-foot{flex:none}
+#modal .plating-project-history-dialog>.modal-body{min-height:0;overflow:auto;overscroll-behavior:contain}
+#modal .plating-project-history-dialog .plating-history-close{border:0;background:transparent;font-size:1.2rem;min-width:42px}
