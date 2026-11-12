@@ -9,15 +9,23 @@
 .material-table149 td{overflow-wrap:anywhere}
 .material-pager149{margin-top:.65rem}
 .calendar-search149{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;flex:0 1 auto;max-width:100%;min-width:0}
-.calendar-search149 input{width:clamp(9rem,16vw,15rem);min-width:0}
-.calendar-search149 select{width:auto}
-.calendar-search149 small{flex-basis:100%;color:var(--ui-muted,#506354)}
+.calendar-search-field149{position:relative;width:clamp(9rem,16vw,15rem);min-width:0}
+.calendar-search149 input{width:100%;min-width:0}
+.calendar-search149 input::-webkit-search-cancel-button{display:none}
+.calendar-search-field149[data-filled="true"] input{padding-inline-end:2.5rem}
+.calendar-search-field149[data-empty="true"] input{padding-inline-end:5.2rem}
+.calendar-search-end149{position:absolute;inset-inline-end:.65rem;inset-block:0;display:flex;align-items:center;gap:.25rem;pointer-events:none}
+.calendar-search149 small{color:var(--ui-muted,#506354);white-space:nowrap;font-size:.75rem}
 .calendar-search149 small:empty{display:none}
+.calendar-search149 .calendar-search-clear149:not([hidden]){display:inline-grid;place-items:center;width:1.75rem;min-width:0;height:1.75rem;min-height:0;padding:0;border:0;background:transparent;color:var(--ui-muted,#506354);font-size:1.15rem;line-height:1;pointer-events:auto}
+.calendar-search149 .calendar-search-clear149[hidden]{display:none}
+.calendar-search149 select{width:auto}
 .schedule-calendar-links67 .schedule-day-link67.schedule-issue149,body .mobile-slots79 .mobile-issues14979{background:#e9f2ff;color:#244f81;border:1px solid #c2d6ed}
 .schedule-calendar-links67 .calendar-hit149,body .mobile-slots79 .calendar-hit149{outline:2px solid #e47d23;outline-offset:-2px}
+.calendar-record-hit149{background:#ffe0a3;color:#513008;border-radius:2px}
 @media(max-width:700px){
  .calendar-search149{width:100%}
- .calendar-search149 input{flex:1;width:0}
+ .calendar-search-field149{flex:1 1 9rem}
 }
 @media(min-width:1050px){
  .schedule-toolbar:has(>.calendar-search149){grid-template-columns:max-content minmax(0,1fr);justify-content:stretch}

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const source=fs.readFileSync(new URL('../dist/material-history149.js',import.meta.url),'utf8').split('const calendarRowsBefore149')[0];
+const script=fs.readFileSync(new URL('../dist/material-history149.js',import.meta.url),'utf8');
+const source=script.split('const calendarRowsBefore149')[0];
 const context=(extra={})=>vm.createContext({taipeiDate:value=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei'}).format(new Date(value)),...extra});
 const item=(name,qty,category)=>({name,qty,category});
 test('warehouse history keeps receipts and issues separate and uses Taipei day and newest time',()=>{
@@ -35,4 +36,43 @@ test('calendar highlights the existing chips without changing their labels or by
  assert.equal(c.calendarSearchHits149(root,'甲','leaves'),1);assert.equal(leave.active,true);
  c.canDo=()=>false;assert.equal(c.calendarSearchHits149(root,'甲','leaves'),0);assert.equal(leave.active,false);
  assert.equal(c.calendarSearchHits149(root,'','all'),0);
+});
+test('work details highlight the exact original text including full-width matches',()=>{
+ let output;
+ const c=context({document:{
+  createDocumentFragment:()=>({parts:[],append(value){this.parts.push(value)}}),
+  createElement:tag=>({tag}),
+ }});
+ vm.runInContext(source,c);
+ const node={data:'先記錄，９２６２試堆疊，另外有9262 <文字>',replaceWith(frag){output=frag.parts}};
+ const first=c.calendarHighlightText149(node,'9262');
+ assert.equal(first.textContent,'９２６２');
+ assert.deepEqual(Array.from(output,p=>p.tag?[p.tag,p.textContent]:p),[
+  '先記錄，',['mark','９２６２'],'試堆疊，另外有',['mark','9262'],' <文字>',
+ ]);
+});
+test('desktop and mobile insert issues after jobs and leaves without reordering existing material chips',()=>{
+ const day='2026-11-12',entries=['收料','送貨','收料'].map((category,id)=>({kind:'material',category,id:String(id)}));
+ const button=(key,textContent,id)=>({textContent,dataset:{dayMaterialId:id},style:{},
+  hasAttribute(name){return name===key||(name==='data-day-issues149'&&!!this.dataset.dayIssues149)},
+  classList:{contains:name=>name===key},
+ });
+ for(const [jobs,leaves] of [[true,true],[true,false],[false,false]]){
+  const prior=[...(jobs?['jobs']:[]),...(leaves?['leaves']:[])];
+  const original=[...(jobs?[button('data-day-jobs','jobs')]:[]),...(leaves?[button('leave-link72','leaves')]:[]),
+   ...entries.map(e=>button('data-day-material-id',e.id,e.id))];
+  const sorted=[],links={querySelectorAll:()=>original,append:b=>sorted.push(b)};
+  const cell={dataset:{day},querySelector:()=>links},root={querySelectorAll:()=>[cell]};
+  const c=context({scheduleDraw56(){},mobileRows78:()=>[...prior.map(section=>({section,title:section})),...entries.map(e=>({section:'material',title:e.id,materialType:e.category==='收料'?'receipt':'delivery'}))],
+   mobileOpen79(){},mobileCalendar78(){},canDo:()=>true,scheduleTab56:'daily',scheduleAnchor56:day,
+   scheduleMonth56:()=>day,scheduleShift56:(_,n)=>n<0?'2026-11-01':'2026-12-01',
+   scheduleData56:{entries},confirmed:{projects:[{name:'demo',materialLogs:[{time:day+'T00:00:00Z',issued:[item('固定座',1)]}]}]},
+   $:selector=>selector==='#schedule-content56'?root:null,document:{createElement:()=>button()},
+  });
+  vm.runInContext(script,c);
+  c.scheduleDraw56();
+  const expected=[...prior,'領料 · 1 筆','0','2','1'];
+  assert.deepEqual(sorted.map(b=>b.textContent),expected);
+  assert.deepEqual(Array.from(c.mobileRows78(day),r=>r.title),expected);
+ }
 });

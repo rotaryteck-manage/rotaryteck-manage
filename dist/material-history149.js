@@ -51,6 +51,60 @@ function calendarMaterialRank149(entry){return entry?.category==='收料'?0:1}
 function calendarMaterialOrder149(entries){
  return new Map(entries.filter(e=>e.kind==='material').map(e=>[String(e.id),e]));
 }
+function calendarJobMatch149(day,query,data){
+ return (data.entries||[]).some(e=>e.kind==='daily'&&e.day<=day&&(e.end_day||e.day)>=day&&materialMatches149(query,e.title,e.category,...scheduleAssignees56(e)))||
+  (data.reports||[]).some(r=>r.day===day&&materialMatches149(query,r.author_name,r.body,r.work_title,r.work_content));
+}
+function calendarJobQuery149(day){
+ const q=materialText149(calendarSearch149);
+ return q&&['all','jobs'].includes(calendarSearchKind149)&&day.slice(0,7)===scheduleMonth56(scheduleAnchor56).slice(0,7)&&calendarJobMatch149(day,q,scheduleData56)?q:'';
+}
+function calendarHighlightText149(node,query){
+ const value=node.data,folded=value.normalize('NFKC').toLowerCase();
+ if(!folded.includes(query))return null;
+ const parts=typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter().segment(value),p=>p.segment):value.match(/\P{M}\p{M}*|\p{M}+/gu)||[];
+ const starts=[],ends=[];
+ let offset=0;
+ for(const part of parts){
+  const width=part.normalize('NFKC').toLowerCase().length;
+  for(let i=0;i<width;i++){starts.push(offset);ends.push(offset+part.length)}
+  offset+=part.length;
+ }
+ if(starts.length!==folded.length)return null;
+ const frag=document.createDocumentFragment();
+ let first=null,last=0;
+ for(let at=folded.indexOf(query);at!==-1;at=folded.indexOf(query,at+query.length)){
+  const start=starts[at],end=ends[at+query.length-1];
+  if(start<last)continue;
+  frag.append(value.slice(last,start));
+  const mark=document.createElement('mark');
+  mark.className='calendar-record-hit149';mark.textContent=value.slice(start,end);
+  frag.append(mark);first||=mark;last=end;
+ }
+ frag.append(value.slice(last));node.replaceWith(frag);
+ return first;
+}
+function calendarRevealJobMatch149(query){
+ if(!query)return;
+ const dialog=$('#modal[open]'),list=dialog?.querySelector('.schedule-daily-list67');
+ if(!list)return;
+ const nodes=document.createTreeWalker(list,NodeFilter.SHOW_TEXT,{
+  acceptNode:node=>node.parentElement.closest('.schedule-person-summary80,.schedule-avatar67,.schedule-bubble67>strong,.schedule-bubble67>p')?
+   NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT,
+ }),matches=[];
+ while(nodes.nextNode())if(materialMatches149(query,nodes.currentNode.data))matches.push(nodes.currentNode);
+ let first=null;
+ for(const node of matches){const mark=calendarHighlightText149(node,query);first||=mark}
+ if(!first)return;
+ requestAnimationFrame(()=>{
+  if(!dialog.open||!first.isConnected)return;
+  for(let parent=first.parentElement;parent&&parent!==dialog;parent=parent.parentElement){
+   if(parent.scrollHeight<=parent.clientHeight||!['auto','scroll'].includes(getComputedStyle(parent).overflowY))continue;
+   const mark=first.getBoundingClientRect(),frame=parent.getBoundingClientRect();
+   parent.scrollTop+=mark.top-frame.top+(mark.height-parent.clientHeight)/2;
+  }
+ });
+}
 function calendarSearchHits149(root,query,kind){
  const month=scheduleMonth56(scheduleAnchor56).slice(0,7),data=scheduleData56,entries=data.entries||[],materials=calendarMaterialOrder149(entries),hits=new Set();
  const allowed=key=>query&&(kind==='all'||kind===key);
@@ -61,9 +115,7 @@ function calendarSearchHits149(root,query,kind){
  };
  for(const cell of root.querySelectorAll('.schedule-calendar-day67[data-day],.mobile-day78[data-mobile-day]')){
   const day=cell.dataset.day||cell.dataset.mobileDay;
-  const jobs=allowed('jobs')&&(
-   entries.some(e=>e.kind==='daily'&&e.day<=day&&(e.end_day||e.day)>=day&&materialMatches149(query,e.title,e.category,...scheduleAssignees56(e)))||
-   (data.reports||[]).some(r=>r.day===day&&materialMatches149(query,r.author_name,r.body,r.work_title,r.work_content)));
+  const jobs=allowed('jobs')&&calendarJobMatch149(day,query,data);
   const leaves=allowed('leaves')&&canDo('schedule.leave.view')&&(data.leaves||[]).some(e=>leaveOnDay72(e,day)&&materialMatches149(query,e.reason,...(e.people||[]).map(p=>p.name)));
   check(cell.querySelector('[data-day-jobs],[data-mobile-section="jobs"]'),day,jobs,'jobs');
   check(cell.querySelector('.leave-link72,[data-mobile-section="leaves"]'),day,leaves,'leaves');
@@ -79,7 +131,11 @@ function calendarSearchDraw149(){
  const root=$('#schedule-content56'),status=$('[data-calendar-search-status149]');
  if(!root||!status)return;
  const q=materialText149(calendarSearch149),hits=calendarSearchHits149(root,q,calendarSearchKind149);
- status.textContent=q&&!hits?'本月無符合紀錄':'';
+ const missing=Boolean(q&&!hits),field=status.closest('.calendar-search-field149');
+ status.textContent=missing?'無結果':'';
+ field.dataset.empty=String(missing);
+ field.querySelector('.calendar-search-clear149').hidden=!q;
+ field.dataset.filled=String(Boolean(q));
 }
 function calendarTools149(){
  const toolbar=$('.schedule-workspace .schedule-toolbar');
@@ -88,12 +144,13 @@ function calendarTools149(){
  if(owner!==calendarSearchOwner149){calendarSearchOwner149=owner;calendarSearch149='';calendarSearchKind149='all'}
  if(toolbar.querySelector('[data-calendar-search149]'))return;
  const box=document.createElement('div');box.className='calendar-search149';
- box.innerHTML='<input type="search" data-calendar-search149 aria-label="搜尋本月紀錄" placeholder="搜尋本月紀錄"><select aria-label="搜尋類型"><option value="all">全部</option><option value="material">料件</option><option value="jobs">工作</option>'+(canDo('schedule.leave.view')?'<option value="leaves">請假</option>':'')+'</select><small data-calendar-search-status149 aria-live="polite"></small>';
+ box.innerHTML='<div class="calendar-search-field149"><input type="search" data-calendar-search149 aria-label="搜尋本月紀錄" placeholder="搜尋本月紀錄"><div class="calendar-search-end149"><button type="button" class="calendar-search-clear149" aria-label="清除搜尋" hidden>×</button><small data-calendar-search-status149 role="status"></small></div></div><select aria-label="搜尋類型"><option value="all">全部</option><option value="material">料件</option><option value="jobs">工作</option>'+(canDo('schedule.leave.view')?'<option value="leaves">請假</option>':'')+'</select>';
  const input=box.querySelector('input'),select=box.querySelector('select');
  input.value=calendarSearch149;select.value=calendarSearchKind149;
  if(!select.value)select.value=calendarSearchKind149='all';
  input.addEventListener('input',event=>{if(!event.isComposing){calendarSearch149=input.value;calendarSearchDraw149()}});
  input.addEventListener('compositionend',()=>{calendarSearch149=input.value;calendarSearchDraw149()});
+ box.querySelector('.calendar-search-clear149').onclick=()=>{input.value=calendarSearch149='';calendarSearchDraw149();input.focus()};
  select.onchange=()=>{calendarSearchKind149=select.value;calendarSearchDraw149()};
  toolbar.append(box);
 }
@@ -102,11 +159,16 @@ mobileRows78=function(day){
  const rows=calendarRowsBefore149(day),rank=r=>r.section==='material'&&r.materialType!=='receipt'?1:0;
  rows.sort((a,b)=>rank(a)-rank(b));
  const n=calendarIssues149(day).length;
- if(n)rows.push({title:'領料 · '+n+' 筆',section:'issues149'});
+ if(n)rows.splice(rows.filter(r=>r.section==='jobs'||r.section==='leaves').length,0,{title:'領料 · '+n+' 筆',section:'issues149'});
  return rows;
 };
 const mobileOpenBefore149=mobileOpen79;
 mobileOpen79=function(day,section,...args){
+ if(section==='jobs'){
+  const q=calendarJobQuery149(day),result=mobileOpenBefore149.call(this,day,section,...args);
+  calendarRevealJobMatch149(q);
+  return result;
+ }
  if(section!=='issues149')return mobileOpenBefore149(day,section,...args);
  mobileSelect78(day);return calendarOpenIssues149(day);
 };
@@ -132,12 +194,18 @@ scheduleDraw56=function(...args){
   const day=cell.dataset.day,links=cell.querySelector('.schedule-calendar-links67');
   if(!links)continue;
   const buttons=[...links.querySelectorAll('button')];
-  const rank=b=>b.hasAttribute('data-day-jobs')?0:b.classList.contains('leave-link72')?1:b.hasAttribute('data-day-material-id')?2+calendarMaterialRank149(materials.get(b.dataset.dayMaterialId)):4;
-  buttons.sort((a,b)=>rank(a)-rank(b));
+  const rank=b=>b.hasAttribute('data-day-jobs')?0:b.classList.contains('leave-link72')?1:b.hasAttribute('data-day-issues149')?2:b.hasAttribute('data-day-material-id')?3+calendarMaterialRank149(materials.get(b.dataset.dayMaterialId)):5;
+  const job=buttons.find(b=>b.hasAttribute('data-day-jobs'));
+  if(job)job.onclick=()=>{
+   const q=calendarJobQuery149(day);
+   scheduleDayRecord56(day,'jobs');
+   calendarRevealJobMatch149(q);
+  };
   const n=calendarIssues149(day).length;
   if(n){
    const b=document.createElement('button');b.type='button';b.className='schedule-day-link67 schedule-issue149';b.dataset.dayIssues149=day;b.textContent='領料 · '+n+' 筆';b.onclick=()=>calendarOpenIssues149(day);buttons.push(b);
   }
+  buttons.sort((a,b)=>rank(a)-rank(b));
   buttons.forEach((b,i)=>{b.style.gridRow=String(i+1);links.append(b)});
  }
  calendarTools149();calendarSearchDraw149();return result;
