@@ -55,7 +55,7 @@ export async function scheduleDownloadApi151(request,env,employee,readState){
  try{
   const run=(sql,...args)=>{const statement=env.DB.prepare(sql);return (args.length?statement.bind(...args):statement).all().then(r=>r.results)};
   const people=()=>run("SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,e.id),e.id");
-  const work=(kind,from,to)=>run('SELECT id,day,end_day,title,category,note,assignee,assignee_ids,sort_index,created_at FROM schedule_entries WHERE kind=? AND day<=? AND end_day>=? ORDER BY day,sort_index,created_at,id',kind,to,from);
+  const work=(kind,from,to)=>run('SELECT id,day,end_day,title,category,note,color,assignee,assignee_ids,sort_index,created_at FROM schedule_entries WHERE kind=? AND day<=? AND end_day>=? ORDER BY day,sort_index,created_at,id',kind,to,from);
   const named=(entries,staff)=>{
    const names=new Map(staff.map(p=>[String(p.id),p.name]));
    return entries.map(({assignee_ids,assignee,...e})=>{

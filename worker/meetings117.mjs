@@ -36,6 +36,13 @@ export function meetingPayload117(settings,meeting,person){
  return{ruleId:'meeting-first117',notificationType:'meeting',category:settings.category||'週會紀錄',title:replace(settings.title),message:replace(settings.message),targetUrl:'/?notificationMeeting='+encodeURIComponent(meeting.id)+'#schedule',sourceKey:key,dedupeKey:key};
 }
 async function meetingCommit117(env,statements){try{return await env.DB.batch(statements)}catch(error){if(/meeting_guards117|CHECK constraint|UNIQUE constraint.*meetings117/i.test(String(error)))throw meetingError117('紀錄已由他人修改，請重新載入；未存內容仍保留。',409);throw error}}
+export function meetingMonthRange153(first,last){
+ const valid=value=>typeof value==='string'&&/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(value)&&value>='1900-01'&&value<='9998-12';
+ if(!valid(first)||!valid(last))return null;
+ const idx=value=>12*Number(value.slice(0,4))+Number(value.slice(5,7))-1;
+ if(idx(last)<idx(first)||idx(last)-idx(first)>=12)return null;
+ return [first+'-01',new Date(Date.UTC(Number(last.slice(0,4)),Number(last.slice(5,7)),1)).toISOString().slice(0,10)];
+}
 export async function meetingApi117(request,env,employee,services={}){
  try{
   if(!employee||employee.status!=='active')return meetingJSON117({error:'請先登入啟用帳號'},401);
@@ -43,6 +50,14 @@ export async function meetingApi117(request,env,employee,services={}){
   if(request.method==='GET'){
    if(url.searchParams.get('view')==='labels')return meetingJSON117({text:settings.text});
    if(url.searchParams.get('view')==='settings'){if(!manager||!employee.permissions?.includes('admin.settings'))throw meetingError117('沒有設定權限',403);return meetingJSON117({...settings,...await meetingAudienceSettings133(env)})}
+   if(url.searchParams.get('view')==='export'){
+    if(!employee.permissions?.includes('schedule.download'))throw meetingError117('沒有週會下載權限',403);
+    const range=meetingMonthRange153(url.searchParams.get('first'),url.searchParams.get('last'));
+    if(!range)throw meetingError117('請選擇連續 1 到 12 個月');
+    const {results}=await env.DB.prepare("SELECT id,day,time,place,attendees,notes,updated_at,editor_name FROM meetings117 WHERE deleted_at='' AND day>=? AND day<? ORDER BY day,time,created_at,id LIMIT 121").bind(...range).all();
+    if(results.length>120)throw meetingError117('週會紀錄超過 120 場，請縮短月份範圍');
+    return meetingJSON117({items:results.map(meetingRead117),text:settings.text});
+   }
    const id=url.searchParams.get('id');
    if(url.searchParams.get('download')==='1'&&(!id||!employee.permissions?.includes('schedule.download')))throw meetingError117('沒有週會下載權限',403);
    if(id){const item=meetingRead117(await env.DB.prepare("SELECT * FROM meetings117 WHERE id=? AND deleted_at=''").bind(id).first());if(!item)throw meetingError117('此週會紀錄已刪除或不存在',404);return meetingJSON117({item,text:settings.text,canEdit:manager})}

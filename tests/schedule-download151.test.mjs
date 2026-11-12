@@ -15,7 +15,7 @@ const fixture=()=>{const {db,DB}=database();migrations85(db);return {db,env:{DB}
 const files=new URL('../dist/',import.meta.url);
 const clientSource=fs.readFileSync(new URL('schedule-download151.js',files),'utf8');
 function workbookClient(extra={}){
- const context=vm.createContext({receiptTime:v=>v,Uint8Array,TextEncoder,Blob,mobileQuery78:{addEventListener(){}},scheduleRender56(){},scheduleDraw56(){},meetingRead120(){},document:{documentElement:{dataset:{}}},...extra});
+ const context=vm.createContext({receiptTime:v=>v,Uint8Array,TextEncoder,Blob,mobileQuery78:{addEventListener(){}},scheduleRender56(){},scheduleDraw56(){},meetingRender117(){},meetingRead120(){},document:{documentElement:{dataset:{}}},...extra});
  vm.runInContext(fs.readFileSync(new URL('xlsx.full.min.js',files),'utf8'),context);context.window=context;
  vm.runInContext(clientSource,context);return context;
 }
@@ -122,4 +122,39 @@ test('photo retries keep completed files after a repeat failure; cancellation an
  const pending=c.scheduleTimed152(signal=>{photoSignal=signal;return new Promise(()=>{})},controller.signal,1000,'photo timeout');
  await Promise.resolve();controller.abort(Error('cancelled'));
  await assert.rejects(pending,/cancelled/);assert.ok(photoSignal.aborted);
+});
+
+test('meeting batch export validates permission and month boundaries, sorting visible meetings oldest first',async()=>{
+ const {db,env}=fixture();
+ const insert=db.prepare("INSERT INTO meetings117(id,day,time,place,attendees,notes,author_id,author_name,editor_id,editor_name,created_at,updated_at,deleted_at) VALUES(?,?,?,'會議室','[]','[]',1,'主管',1,'主管','now','now',?)");
+ for(const [id,day,time,deleted] of [['a','2026-12-31','09:00',''],['b','2027-01-02','10:00',''],['c','2027-01-02','08:00',''],['deleted','2027-01-03','09:00','now'],['outside','2027-02-01','09:00','']])insert.run(id,day,time,deleted);
+ const user={id:1,name:'員工',role:'viewer',status:'active',permissions:cap.permissions};
+ const req=route('meetings','?view=export&first=2026-12&last=2027-01');
+ assert.equal((await meetingApi117(req,env,{...user,permissions:['schedule.view']})).status,403);
+ assert.equal((await meetingApi117(route('meetings','?view=export&first=2026-01&last=2027-01'),env,user)).status,400);
+ assert.equal((await meetingApi117(route('meetings','?view=export&first=2026-13&last=2027-01'),env,user)).status,400);
+ const result=await meetingApi117(req,env,user);assert.equal(result.status,200);
+ assert.deepEqual((await result.json()).items.map(i=>i.id),['a','c','b']);
+});
+
+test('weekly landscape PDF uses web scheduling lanes, weekday columns and colors, with a fresh page per week',async()=>{
+ const pages=[],drawing=[];
+ const ctx={fillRect(x,y,w,h){drawing.push({x,y,w,h,color:this.fillStyle})},fillText(text){drawing.push({text})},strokeRect(){},measureText(s){return {width:[...s].length*22}}};
+ const document={documentElement:{dataset:{}},fonts:{ready:Promise.resolve()},createElement:()=>({getContext:()=>ctx,toBlob:fn=>{pages.push(drawing.splice(0));fn(new Blob([new Uint8Array([255,216,255,217])]))}})};
+ const c=workbookClient({document,meetingWrap120:(ctx,s)=>String(s).split('\n'),scheduleShift56:(d,n)=>new Date(Date.parse(d)+n*86400000).toISOString().slice(0,10),weeklyContent903:e=>e.content||''});
+ vm.runInContext(fs.readFileSync(new URL('enhancements-v904.js',files),'utf8').split('function weeklyRunDialog904')[0],c);
+ const job=(id,day,end_day,title,color,people)=>({id,day,end_day,title,color,people,content:'組裝'});
+ const data={from:'2026-11-23',to:'2026-12-13',people:['甲','乙'],notes:[{week_start:'2026-11-30',body:'週末確認'}],entries:[
+  job('1','2026-11-23','2026-11-24','任務甲','#00ff00',['甲']),
+  job('2','2026-11-25','2026-11-27','任務甲','#00ff00',['甲']),
+  job('3','2026-11-25','2026-11-26','重疊工作','#ff0000',['甲']),
+  job('4','2026-12-06','2026-12-06','週末工作','#00ffff',['乙']),
+ ]};
+ const weeks=c.weeklyPdfWeeks153(data);
+ assert.equal(weeks.length,2);assert.equal(weeks[0].days.length,5);assert.equal(weeks[1].days.length,7);
+ assert.equal(weeks[0].rows[0].lanes,2);assert.equal(weeks[0].rows[0].runs[0].end,'2026-11-27');
+ const pdf=await c.weeklyPdf153(data,'sans-serif',{},new AbortController().signal),raw=Buffer.from(await pdf.arrayBuffer()).toString('latin1');
+ assert.match(raw,/\/MediaBox \[0 0 841\.89 595\.28\]/);assert.match(raw,/\/Count 2\b/);
+ assert.ok(pages[0].some(op=>op.color==='#00ff00')&&pages[0].some(op=>op.color==='#ff0000'));
+ assert.ok(pages[1].some(op=>op.text==='週末確認')&&pages[1].some(op=>op.text==='日｜12/06'));
 });

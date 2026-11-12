@@ -11,3 +11,4 @@
 .schedule-export-fields152{display:grid;gap:.8rem}
 .schedule-export-fields152[inert]{opacity:.65}
 .schedule-export151 [data-export-status151]{margin:0;padding:.6rem .75rem;border-radius:6px;background:var(--ui-rowAlt,#f2f6ee);color:var(--ui-text,#234e3c)}
+.meeting-workspace117 .meeting-tools117{display:flex;align-items:center;flex-wrap:wrap;gap:.55rem}
