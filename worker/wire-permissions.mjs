@@ -2,7 +2,7 @@ import {restockChangeAllowed} from './workflows.mjs';
 export const qcCapabilities124={'qc.view':'品檢報告：查看','qc.manage':'品檢報告：新增、編輯、上傳及替換PDF','qc.delete':'品檢報告：刪除案件、登記或附件','qc.restore':'品檢報告：查看歷史及復原','qc.export':'品檢報告：匯出此案及全部','schedule.daily.copy':'每日排程：複製至其他日期'};
 export const capabilityNames={"schedule.people":"排程設定：調整人員排序","warehouse.historyEdit":"庫房：修改既有收領料紀錄（會校正庫存）","warehouse.purge":"庫房：永久刪除已刪專案","schedule.view": "工作排程：查看", "schedule.report": "工作排程：填寫每日回報", "records.export": "後台：匯出排程、工作紀錄與照片", "cases.deleteProject": "案件：刪除專案", "warehouse.deleteProject": "庫房：刪除專案", "plating.deleteProject": "電鍍：刪除專案", "wire.deleteProject": "線材：刪除專案", "cases.view": "案件：查看", "cases.manage": "案件：新增、修改、排序", "warehouse.view": "庫房：查看", "warehouse.manage": "庫房：建立、修改專案與管理零件", "warehouse.photos": "庫房：上傳、刪除照片", "plating.view": "電鍍：查看", "plating.manage": "電鍍：新增、修改、刪除送鍍紀錄", "plating.photos": "電鍍：上傳、刪除照片", "wire.view": "線材：查看", "wire.create": "線材：新增線材與線捆", "wire.edit": "線材：修改線材與線捆", "wire.delete": "線材：刪除空白線材與線捆", "wire.cut": "線材：新增裁線紀錄", "wire.editOwn": "線材：修改自己的裁線紀錄", "wire.photos": "線材：上傳照片", "warehouse.receive": "庫房：收料", "warehouse.issue": "庫房：領料", "warehouse.receivedDate": "庫房：修改／清除收料日期", "warehouse.issuedDate": "庫房：修改／清除領料日期", "warehouse.stockAdjust": "庫房：修正現有庫存", "warehouse.preparedAdjust": "庫房：修正本次已備", "warehouse.options": "庫房：管理櫃／層選單", "schedule.weekly.create": "每週排程：新增", "schedule.weekly.edit": "每週排程：編輯", "schedule.weekly.delete": "每週排程：刪除", "schedule.daily.create": "每日排程：新增", "schedule.daily.edit": "每日排程：編輯", "schedule.daily.delete": "每日排程：刪除", "schedule.copy": "每週排程：複製上週", "schedule.reset": "每週排程：重置本週", "schedule.dedupe": "每週排程：整理重複", "schedule.note": "每週排程：修改備註", "schedule.options": "排程設定：管理工作選單", "schedule.palette": "排程設定：共用常用色", "schedule.material.create": "每日料件：新增", "schedule.material.edit": "每日料件：編輯", "schedule.material.delete": "每日料件：刪除", "schedule.material.author": "每日料件：修改登記人", "schedule.report.editOwn": "工作回報：修改自己的", "schedule.report.editAll": "工作回報：修改所有人的", "schedule.report.deleteOwn": "工作回報：刪除自己的", "schedule.report.deleteAll": "工作回報：刪除所有人的", "schedule.leave.view": "請假：查看", "schedule.leave.create": "請假：新增", "schedule.leave.edit": "請假：編輯", "schedule.leave.delete": "請假：刪除", "schedule.text.daily": "文字紀錄：查看每日", "schedule.text.weekly": "文字紀錄：查看每週", "schedule.text.delete": "文字紀錄：刪除", "wire.restock": "線材：訂購、入庫、撤銷補貨", "wire.editAll": "線材：修改所有人的裁線紀錄", "plating.options": "電鍍：管理廠商選單", "admin.view": "後台：進入", "admin.settings": "後台：網站、文字、外觀設定", "admin.employees": "後台：人員管理（不能授予自己沒有的權限）", "admin.permissions": "後台：權限管理（限主管）", "admin.export": "後台：資料及照片匯出", "admin.import": "後台：匯入資料", "admin.audit": "後台：查看操作紀錄", "admin.auditDelete": "後台：刪除操作紀錄", "admin.photoPurge": "後台：永久刪除全部照片", "warehouse.restore": "庫房：復原已刪除專案", "plating.restore": "電鍍：復原已刪除專案", "wire.restore": "線材：復原已刪除專案"};
 
-Object.assign(capabilityNames,qcCapabilities124);
+Object.assign(capabilityNames,qcCapabilities124,{'schedule.download':'排程與週會：下載／匯出'});
 export function migratePermissions75(values,role){
  const old=new Set(values),out=new Set(values.filter(k=>Object.hasOwn(capabilityNames,k)));
  for(const kind of ['cases','warehouse','plating','wire'])if(!(['wire','plating'].includes(kind)?['warehouse','supervisor'].includes(role):role==='supervisor'))out.delete(kind+'.deleteProject');
@@ -56,6 +56,16 @@ async function ensurePermissionsCore76(env){await env.DB.batch([
   stmts.push(env.DB.prepare("INSERT OR IGNORE INTO app_permission_migrations(id) VALUES('granular-v75')"));
   await env.DB.batch(stmts);
  }
+ if(!await env.DB.prepare("SELECT id FROM app_permission_migrations WHERE id='schedule-download-v151'").first()){
+  const supervisor=await env.DB.prepare("SELECT permissions FROM app_permission_profiles WHERE id='supervisor'").first(),statements=[];
+  if(supervisor){
+   const permissions=JSON.parse(supervisor.permissions);
+   if(!permissions.includes('schedule.download'))statements.push(env.DB.prepare("UPDATE app_permission_profiles SET permissions=? WHERE id='supervisor' AND permissions=?").bind(JSON.stringify([...permissions,'schedule.view','schedule.download'].filter((key,i,all)=>all.indexOf(key)===i)),supervisor.permissions));
+  }
+  statements.push(env.DB.prepare("INSERT OR IGNORE INTO app_permission_migrations(id) VALUES('schedule-download-v151')"));
+  await env.DB.batch(statements);
+ }
+
 
 }
 export async function employeePermissions(env,e){

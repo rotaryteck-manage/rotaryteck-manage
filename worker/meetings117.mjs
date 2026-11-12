@@ -43,7 +43,9 @@ export async function meetingApi117(request,env,employee,services={}){
   if(request.method==='GET'){
    if(url.searchParams.get('view')==='labels')return meetingJSON117({text:settings.text});
    if(url.searchParams.get('view')==='settings'){if(!manager||!employee.permissions?.includes('admin.settings'))throw meetingError117('沒有設定權限',403);return meetingJSON117({...settings,...await meetingAudienceSettings133(env)})}
-   const id=url.searchParams.get('id');if(id){const item=meetingRead117(await env.DB.prepare("SELECT * FROM meetings117 WHERE id=? AND deleted_at=''").bind(id).first());if(!item)throw meetingError117('此週會紀錄已刪除或不存在',404);return meetingJSON117({item,text:settings.text,canEdit:manager})}
+   const id=url.searchParams.get('id');
+   if(url.searchParams.get('download')==='1'&&(!id||!employee.permissions?.includes('schedule.download')))throw meetingError117('沒有週會下載權限',403);
+   if(id){const item=meetingRead117(await env.DB.prepare("SELECT * FROM meetings117 WHERE id=? AND deleted_at=''").bind(id).first());if(!item)throw meetingError117('此週會紀錄已刪除或不存在',404);return meetingJSON117({item,text:settings.text,canEdit:manager})}
    const page=Math.max(1,Math.min(10000,Number(url.searchParams.get('page'))||1)),rows=await env.DB.prepare("SELECT id,day,time,place,editor_name,updated_at FROM meetings117 WHERE deleted_at='' ORDER BY day DESC,time DESC,created_at DESC,id DESC LIMIT 51 OFFSET ?").bind((page-1)*50).all(),people=await env.DB.prepare("SELECT e.id,e.name FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id WHERE e.status='active' ORDER BY COALESCE(x.position,e.id),e.id").all();
    return meetingJSON117({items:rows.results.slice(0,50),hasMore:rows.results.length>50,page,people:people.results,text:settings.text,canEdit:manager,notificationEnabled:settings.enabled&&!settings.deleted,notificationAudience:settings.recipientMode==='selected'?'指定人員：'+people.results.filter(person=>settings.recipientIds.map(String).includes(String(person.id))).map(person=>person.name).join('、'):'全公司啟用帳號'});
   }

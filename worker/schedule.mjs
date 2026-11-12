@@ -175,7 +175,8 @@ async function scheduleApiCore71(request,env,employee){
 export async function schedulePhotoApi(request,env,employee){
  try{
   const url=new URL(request.url);
-  if(url.searchParams.get('export')==='1'?!scheduleAllowed(employee,'records.export'):!scheduleAllowed(employee,'schedule.view'))return scheduleJSON({error:'沒有查看權限'},403);
+  const mode=url.searchParams.get('export');
+  if(mode==='1'?!scheduleAllowed(employee,'records.export'):!scheduleAllowed(employee,'schedule.view')||(mode==='schedule'&&!scheduleAllowed(employee,'schedule.download')))return scheduleJSON({error:'沒有查看權限'},403);
 
   const id=url.searchParams.get('id');
   const index=Number(url.searchParams.get('index')||0);
@@ -199,7 +200,7 @@ export async function schedulePhotoApi(request,env,employee){
 
   return new Response(file.body,{headers:{
    'Content-Type':file.httpMetadata?.contentType||'image/jpeg',
-   'Cache-Control':'private, max-age=300',
+   'Cache-Control':mode==='schedule'?'private, no-store':'private, max-age=300',
    'X-Content-Type-Options':'nosniff'
   }});
  }catch(e){

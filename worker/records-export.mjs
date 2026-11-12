@@ -33,3 +33,66 @@ export async function recordsExportApi(request,env,employee,readState,ownerKey){
   return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
  }catch(e){return fail(e.message||'匯出資料讀取失敗',500)}
 }
+
+// This permission is separate from the existing back-office bulk export.
+const exportDayMs151=86400000;
+const exportDate151=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
+const exportShift151=(day,days)=>new Date(Date.parse(day)+days*exportDayMs151).toISOString().slice(0,10);
+const exportMonday151=day=>exportShift151(day,-((new Date(day).getUTCDay()+6)%7));
+const exportList151=(value)=>{try{const parsed=JSON.parse(value);if(Array.isArray(parsed))return parsed}catch{}return value?[value]:[]};
+export function scheduleMonths151(first,last){
+ if(!exportDate151(first+'-01')||!exportDate151(last+'-01')||first<'1900-01'||last>'9998-12')return [];
+ const monthIndex=value=>Number(value.slice(0,4))*12+Number(value.slice(5))-1;
+ const start=monthIndex(first),end=monthIndex(last);
+ return end<start||end-start>=12?[]:Array.from({length:end-start+1},(_,n)=>new Date(Date.UTC(Math.floor((start+n)/12),(start+n)%12,1)).toISOString().slice(0,7));
+}
+export async function scheduleDownloadApi151(request,env,employee,readState){
+ const send=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store'}});
+ if(request.method!=='GET')return send({error:'不支援的操作'},405);
+ const allowed=key=>employee.permissions?.includes(key)===true;
+ if(!allowed('schedule.download')||!allowed('schedule.view'))return send({error:'沒有排程下載權限'},403);
+ const q=new URL(request.url).searchParams,mode=q.get('mode');
+ try{
+  const run=(sql,...args)=>{const statement=env.DB.prepare(sql);return (args.length?statement.bind(...args):statement).all().then(r=>r.results)};
+  const people=()=>run("SELECT e.id,e.name,e.status FROM employees e LEFT JOIN app_employee_settings x ON x.employee_id=e.id ORDER BY COALESCE(x.position,e.id),e.id");
+  const work=(kind,from,to)=>run('SELECT id,day,end_day,title,category,note,assignee,assignee_ids,sort_index,created_at FROM schedule_entries WHERE kind=? AND day<=? AND end_day>=? ORDER BY day,sort_index,created_at,id',kind,to,from);
+  const named=(entries,staff)=>{
+   const names=new Map(staff.map(p=>[String(p.id),p.name]));
+   return entries.map(({assignee_ids,assignee,...e})=>{
+    const old=exportList151(assignee),ids=exportList151(assignee_ids);
+    return {...e,people:ids.length?ids.map((id,i)=>names.get(String(id))||old[i]||'已離職人員 #'+id):old,content:exportList151(e.category).join('、')};
+   });
+  };
+  if(mode==='weekly'){
+   const months=scheduleMonths151(q.get('first'),q.get('last'));
+   if(!months.length)return send({error:'請選擇連續 1 到 12 個月'},400);
+   const start=months[0]+'-01',last=months.at(-1)+'-01',end=new Date(Date.UTC(Number(last.slice(0,4)),Number(last.slice(5,7)),0)).toISOString().slice(0,10),from=exportMonday151(start),to=exportShift151(exportMonday151(end),6);
+   const [rows,staff,notes]=await Promise.all([work('weekly',from,to),people(),run('SELECT week_start,body FROM schedule_weekly_notes WHERE week_start BETWEEN ? AND ? ORDER BY week_start',from,to)]);
+   return send({months,start,end,from,to,entries:named(rows,staff),people:staff.filter(p=>p.status==='active').map(p=>p.name),notes});
+  }
+  if(mode!=='daily')return send({error:'匯出類型不正確'},400);
+  const from=q.get('from'),to=q.get('to'),types=(q.get('types')||'').split(','),selected=new Set(types),photos=q.get('photos')==='1';
+  if(!exportDate151(from)||!exportDate151(to)||to<from||Date.parse(to)-Date.parse(from)>=366*exportDayMs151||selected.size!==types.length||types.some(t=>!['plans','reports','received','issued','leaves'].includes(t))||photos&&!selected.has('reports'))return send({error:'請選擇紀錄類型與一年內的日期範圍'},400);
+  if(selected.has('leaves')&&!allowed('schedule.leave.view')||selected.has('issued')&&!allowed('warehouse.view'))return send({error:'沒有查看所選紀錄的權限'},403);
+  const canReadWarehouse=allowed('warehouse.view')&&(selected.has('received')||selected.has('issued'));
+  const [plans,staff,reports,manual,leaves,saved,extras]=await Promise.all([
+   selected.has('plans')?work('daily',from,to):[],selected.has('plans')?people():[],
+   selected.has('reports')?run('SELECT id,day,body,CASE WHEN photo_key IS NULL OR photo_key=\'\' THEN 0 ELSE 1 END AS has_photo,author_name,created_at,work_title,work_content FROM schedule_reports WHERE day BETWEEN ? AND ? ORDER BY day,created_at,id',from,to):[],
+   selected.has('received')?run("SELECT day,project_name,title,quantity,author_name,created_at FROM schedule_entries WHERE kind='material' AND category='收料' AND day BETWEEN ? AND ? ORDER BY day,created_at,id",from,to):[],
+   selected.has('leaves')?run('SELECT * FROM schedule_leave72 WHERE start_at<? AND end_at>? ORDER BY start_at,id',exportShift151(to,1)+'T00:00',from+'T00:00'):[],
+   canReadWarehouse?readState(env):null,
+   photos?run('SELECT p.report_id,COUNT(*) AS amount FROM schedule_report_photos p JOIN schedule_reports r ON r.id=p.report_id WHERE r.day BETWEEN ? AND ? GROUP BY p.report_id',from,to):[],
+  ]);
+  const received=manual.map(r=>[r.day,r.project_name,r.title,r.quantity,r.author_name,r.created_at,'每日排程']),issued=[];
+  for(const p of saved?.projects||[])for(const log of p.materialLogs||[]){
+   const time=Date.parse(log.time);if(!Number.isFinite(time))continue;
+   const day=exportDay85(log.time);if(day<from||day>to)continue;
+   for(const [key,list] of [['received',received],['issued',issued]])if(selected.has(key))for(const item of log[key]||[]){
+    if(key==='issued'&&item.category&&item.category!=='領料')continue;
+    list.push([day,p.name,item.name,item.qty,log.actor,log.time,'庫房管理']);
+   }
+  }
+  const counts=new Map(extras.map(r=>[r.report_id,Number(r.amount)]));
+  return send({plans:named(plans,staff),reports:reports.map(({has_photo,...r})=>({...r,...(photos?{photoIndexes:[...(has_photo?[0]:[]),...Array.from({length:Math.min(counts.get(r.id)||0,9)},(_,i)=>i+1)]}:{})})),received:received.sort((a,b)=>a[0].localeCompare(b[0])||String(a[5]).localeCompare(String(b[5]))),issued:issued.sort((a,b)=>a[0].localeCompare(b[0])||String(a[5]).localeCompare(String(b[5]))),leaves:leaves.map(r=>[r.start_at.replace('T',' '),r.end_at.replace('T',' '),exportList151(r.people).map(p=>p.name).join('、'),r.reason,r.reason==='其他'?r.reason_note:'',r.author_name])});
+ }catch(error){console.error('schedule download',error);return send({error:'無法讀取匯出資料，請重試或縮短日期範圍'},500)}
+}
