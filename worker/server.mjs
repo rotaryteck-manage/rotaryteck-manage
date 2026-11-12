@@ -326,6 +326,36 @@ async function supabaseAdmin(env,path,method,body){
  check(supabaseReady(env),'登入服務尚未完成設定');const response=await fetch(env.SUPABASE_URL+path,{method,headers:{apikey:env.SUPABASE_SECRET_KEY,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(response.status===204)return{};const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.msg||data.message||data.error_description||'員工登入帳號設定失敗');return data;
 }
 async function scopeKey(user){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(user)))).map(x=>x.toString(16).padStart(2,'0')).join('');}
+export async function platingPhotoSummary156(env,prefix){
+ await ensureRecordStorage(env);
+ const {results}=await env.DB.prepare('SELECT body FROM state_records WHERE body IS NOT NULL AND record_key>=? AND record_key<?').bind('["platingProjects",','["platingProjects"-').all();
+ const shipments=new Map();
+ for(const {body} of results){
+  const p=JSON.parse(body);
+  if(p.archived)continue;
+  for(const shipment of p.shipments||[]){
+   const key=prefix+encodeURIComponent(p.id)+'/'+encodeURIComponent(shipment.id)+'/';
+   shipments.set(key,[p.id,shipment.id,0]);
+  }
+ }
+ if(!shipments.size)return [];
+ let cursor,remaining=shipments.size;
+ const seen=new Set();
+ do{
+  const page=await env.UPLOADS.list({prefix,limit:1000,cursor,include:['customMetadata']});
+  for(const photo of page.objects){
+   const slash=photo.key.lastIndexOf('/'),row=shipments.get(photo.key.slice(0,slash+1));
+   if(!row||row[2]===3||!/^[a-f0-9-]{36}$/.test(photo.key.slice(slash+1)))continue;
+   row[2]|=photo.customMetadata?.kind==='area'?2:1;
+   if(row[2]===3)remaining--;
+  }
+  if(!page.truncated||!remaining)break;
+  cursor=page.cursor;
+  if(!cursor||seen.has(cursor))throw Error('照片狀態清單不完整');
+  seen.add(cursor);
+ }while(cursor);
+ return [...shipments.values()];
+}
 export async function images(request,env){
  if(!hasCredentials(request))return json({error:'請先登入'},401);
  if(!env.UPLOADS||!env.DB)return json({error:'圖片儲存空間尚未就緒'},503);
@@ -335,6 +365,10 @@ export async function images(request,env){
   if(url.searchParams.get('export')==='1'&&!(permitted(employee,'records.export')||permitted(employee,'admin.export')))return json({error:'沒有匯出權限'},403);
   if(!logo&&!(url.searchParams.get('export')==='1'&&(permitted(employee,'records.export')||permitted(employee,'admin.export')))&&!permitted(employee,(plating?'plating':'warehouse')+'.view'))return json({error:'沒有查看權限'},403);
   const root='images/'+await scopeKey(STORAGE_OWNER)+'/',prefix=root+(plating?'plating/':'receipts/')+encodeURIComponent(projectId||'')+'/'+(plating?encodeURIComponent(shipmentId||'')+'/':'');
+  if(plating&&request.method==='GET'&&url.searchParams.get('summary')==='1'){
+   if(!permitted(employee,'plating.view'))return json({error:'沒有查看權限'},403);
+   return Response.json({items:await platingPhotoSummary156(env,root+'plating/')},{headers:{'Cache-Control':'private, no-store'}});
+  }
   if(!logo){
    const row=await companyRow(env);
    const s=row?JSON.parse(row.body):null;

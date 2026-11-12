@@ -62,3 +62,9 @@
 .plating-upload-count155[data-photo-state="empty"]{color:#b42318}
 .plating-upload-count155[data-photo-state="uploaded"]{color:#276044}
 @media(max-width:600px){.plating-upload-actions155{flex-direction:row;align-items:center}}
+
+.plating-reminder156{display:inline-block;padding:2px 7px;border-radius:999px;background:#ffedd5;color:#8d3b13;font-size:.72rem;font-weight:700;line-height:1.4}
+.plating-reminder156[hidden]{display:none!important}
+.plating-open:has(.plating-reminder156:not([hidden])){position:relative;padding-top:25px}
+.plating-open .plating-reminder156{position:absolute;inset-block-start:5px;inset-inline-end:6px;max-width:calc(100% - 12px)}
+.plating-shipment strong .plating-reminder156{display:table;margin-top:3px;text-align:left}

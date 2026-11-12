@@ -4,10 +4,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
-import {validate,validatePlating,warehouseChangeAllowed} from '../worker/server.mjs';
+import {database} from './helpers/d1.mjs';
+import {validate,validatePlating,warehouseChangeAllowed,platingPhotoSummary156} from '../worker/server.mjs';
 const shipment=()=>({id:'s1',number:1,vendor:'廠商',sent:'2026-09-23',returned:'',inspection:'pending',note:'',groups:[{sets:2,rings:[{name:'A',qty:10},{name:'B',qty:10},{name:'C',qty:10}]},{sets:3,rings:[{name:'B',qty:15},{name:'C',qty:15}]}]});
 const project=()=>({id:'p1',name:'SJ1111',shipments:[shipment()]});
-function context(){const ctx={taipeiDate,state:{platingProjects:[project()]},currentUser:{role:'supervisor'},render(){},renderAdmin(){},crypto:webcrypto,authorizeExport:async()=>true};ctx.canDo=key=>ctx.currentUser.role==='supervisor'||(ctx.currentUser.role==='warehouse'&&key==='plating.manage');ctx.canExportPhotos=()=>ctx.currentUser.role==='supervisor';vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('../dist/plating.js',import.meta.url),'utf8'),ctx);return ctx;}
+function context(){const ctx={taipeiDate,document:{querySelectorAll:()=>[]},$:()=>null,state:{platingProjects:[project()]},currentUser:{role:'supervisor'},render(){},renderAdmin(){},crypto:webcrypto,authorizeExport:async()=>true};ctx.canDo=key=>ctx.currentUser.role==='supervisor'||(ctx.currentUser.role==='warehouse'&&key==='plating.manage');ctx.canExportPhotos=()=>ctx.currentUser.role==='supervisor';vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('../dist/plating.js',import.meta.url),'utf8'),ctx);return ctx;}
 test('plating mixed configurations total five fixtures and 150 rings',()=>{const c=context();assert.deepEqual(JSON.parse(JSON.stringify(c.platingTotals(shipment().groups))),{sets:5,pieces:150});validate({projects:[],platingProjects:[project()]});});
 test('repeat plating has independent quantities and cleared receipt/QC',()=>{const c=context(),p=project(),source=p.shipments[0];source.returned='2026-09-24';source.inspection='passed';const next=c.platingShipmentDraft(p,source,true);assert.equal(next.number,2);assert.notEqual(next.id,source.id);assert.equal(next.returned,'');assert.equal(next.inspection,'pending');next.groups[0].sets=8;next.groups[0].rings[0].qty=12;assert.equal(source.groups[0].sets,2);assert.equal(source.groups[0].rings[0].qty,10);p.shipments.push(next);validatePlating([p]);});
 test('validation rejects duplicate shipment numbers, invalid return dates and unreceived inspection',()=>{for(const mutate of [s=>s.number=0,s=>s.sent='2026-02-30',s=>s.returned='2026-09-22',s=>s.groups=[],s=>s.groups[0].sets=-1,s=>s.groups[0].rings[0].qty=1.5]){const p=project();mutate(p.shipments[0]);assert.throws(()=>validatePlating([p]));}const p=project();p.shipments.push({...shipment(),id:'s2'});assert.throws(()=>validatePlating([p]));});
@@ -45,4 +46,31 @@ test('an in-flight photo list cannot overwrite an active upload or its refreshed
  await status.refresh();
  resolve({ok:true,json:async()=>({items:[]})});await old;
  assert.equal(area.textContent,'已上傳 1 張');assert.equal(dispatch.textContent,'尚未上傳');
+});
+
+test('photo summary reads all pages and separates uploads across shipments, ignoring archived and orphaned photos',async()=>{
+ const {db,DB}=database();
+ db.exec('CREATE TABLE IF NOT EXISTS state_records(record_id INTEGER PRIMARY KEY AUTOINCREMENT,record_key TEXT NOT NULL UNIQUE,body TEXT,revision INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS state_storage_meta(singleton INTEGER PRIMARY KEY,revision INTEGER NOT NULL,source_revision INTEGER NOT NULL,migrated_at TEXT NOT NULL);INSERT INTO state_storage_meta VALUES(1,1,1,\'now\');');
+ const save=(id,shipments,archived=false)=>db.prepare('INSERT INTO state_records(record_key,body,revision) VALUES(?,?,1)').run(JSON.stringify(['platingProjects',id]),JSON.stringify({id,shipments:shipments.map(id=>({id})),archived}));
+ save('project/1',['a','b','none']);save('archived',['c'],true);
+ const prefix='images/test/plating/',id='a'.repeat(36);
+ const photo=(path,kind)=>({key:prefix+path+'/'+id,customMetadata:{kind}});
+ const pages=[
+  {objects:[photo('project%2F1/a',undefined),photo('project%2F1/b','area'),photo('archived/c','area')],truncated:true,cursor:'page2'},
+  {objects:[photo('project%2F1/a','area'),photo('project%2F1/orphan','dispatch')],truncated:false},
+ ];
+ let index=0;
+ const rows=await platingPhotoSummary156({DB,UPLOADS:{list:async options=>{assert.equal(options.prefix,prefix);if(index===1)assert.equal(options.cursor,'page2');return pages[index++]}}},prefix);
+ assert.deepEqual(rows,[['project/1','a',3],['project/1','b',2],['project/1','none',0]]);
+ await assert.rejects(platingPhotoSummary156({DB,UPLOADS:{list:async()=>({objects:[],truncated:true,cursor:'repeat'})}},prefix),/不完整/);
+});
+test('the project badge combines missing categories across separate shipments until all are complete',()=>{
+ const c=context(),p=project();p.shipments.push({id:'s2',returned:'2026-10-01'});
+ const key=s=>JSON.stringify([p.id,s]);
+ const items=new Map([[key('s1'),1],[key('s2'),2]]);
+ assert.equal(c.platingProjectReminder156(p,items),'缺出貨單、表面積');
+ items.set(key('s1'),3);assert.equal(c.platingProjectReminder156(p,items),'缺出貨單');
+ items.set(key('s2'),3);assert.equal(c.platingProjectReminder156(p,items),'');
+ assert.equal(c.platingProjectReminder156(p,new Map()),'');
+ assert.equal(c.platingReminderText156(0),'缺出貨單、表面積');
 });
