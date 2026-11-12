@@ -343,24 +343,75 @@ function attachPlatingPhotos(p,s,saved){
  });
 }
 function attachPlatingPhotoOverview(p,body){
+ const batches=[...p.shipments].sort((a,b)=>b.number-a.number);
  const fold=document.createElement('details');fold.className='receipt-files-fold plating-project-fold';
- fold.innerHTML='<summary>'+pe('photoOverview')+' <span data-photo-count></span></summary><div data-photo-list></div>';
+ const options=batches.map(s=>'<option value="'+esc(s.id)+'">'+esc(platingCount(s))+'</option>').join('');
+ fold.innerHTML='<summary>'+pe('photoOverview')+'</summary><div data-photo-list class="plating-photo-browser">'+
+  (batches.length?'<label class="plating-photo-batch">送鍍批次<select>'+options+'</select></label><div data-photo-batch-content aria-live="polite"></div>':'<p class="plating-photo-empty">'+pe('photoEmpty')+'</p>')+'</div>';
  body.querySelector('.plating-project-folds').prepend(fold);
- const list=fold.querySelector('[data-photo-list]'),status=body.querySelector('[data-photo-status]');let loaded=false,loading=false;
- async function load(){
-  if(loading)return;loading=true;list.textContent=pt('photoLoading');
-  try{
-   const rows=[];for(const s of [...p.shipments].sort((a,b)=>a.number-b.number))for(const item of await listPlatingPhotos(p,s))rows.push({s,item});
-   rows.sort((a,b)=>String(b.item.created).localeCompare(String(a.item.created))||String(b.item.id).localeCompare(String(a.item.id)));
-   list.replaceChildren();fold.querySelector('[data-photo-count]').textContent='（'+rows.length+'）';
-   for(const {s,item}of rows){
-    const row=document.createElement('div');row.className='receipt-file-row';const link=document.createElement('a');link.textContent=platingPhotoLabel(s,item);link.href=platingPhotoUrl(p,s)+'&id='+encodeURIComponent(item.id);link.target='_blank';link.rel='noopener';row.append(link);
-    if(canDo('plating.photos')){const b=document.createElement('button');b.type='button';b.className='small danger-button';b.textContent=pt('delete');b.onclick=async()=>{if(!await confirmAction(pt('photoDelete')))return;await platingPhotoOperation(status,async()=>{const r=await apiFetch(link.getAttribute('href'),{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'照片刪除失敗');void loadPlatingReminders156(true);addAudit('刪除'+pt(platingPhotoKind(item)),platingPhotoLabel(s,item),pt('title')+' > '+p.name,'plating:'+p.id);await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');});await load();};row.append(b);}list.append(row);
-   }if(!rows.length)list.textContent=pt('photoEmpty');loaded=true;
-  }catch(e){list.textContent=e.message;const retry=document.createElement('button');retry.type='button';retry.textContent=pt('photoRetry');retry.onclick=load;list.append(retry);}
-  finally{loading=false;}
+ if(!batches.length)return;
+ const select=fold.querySelector('select'),list=fold.querySelector('[data-photo-batch-content]'),status=body.querySelector('[data-photo-status]');
+ const byId=new Map(batches.map(s=>[s.id,s]));
+ let request=0,loadedId=null,pendingId=null;
+ function message(value){
+  const node=document.createElement('p');node.className='plating-photo-empty';node.textContent=value;return node;
  }
- fold.ontoggle=()=>{if(fold.open&&!loaded)load();};
+ function photoRow(s,item,label){
+  const row=document.createElement('div');row.className='plating-photo-row';
+  const link=document.createElement('a'),name=document.createElement('strong'),meta=document.createElement('small');
+  name.textContent=label;meta.textContent=(item.actor||pt('photoUnknownActor'))+' · '+receiptTime(item.created);
+  const url=platingPhotoUrl(p,s)+'&id='+encodeURIComponent(item.id);
+  link.href=url;link.target='_blank';link.rel='noopener';link.append(name,meta);row.append(link);
+  if(canDo('plating.photos')){
+   const more=document.createElement('details');more.className='plating-photo-more';
+   const toggle=document.createElement('summary');toggle.textContent='⋯';toggle.setAttribute('aria-label',label+'：更多操作');
+   const button=document.createElement('button');button.type='button';button.className='danger-button';button.textContent=pt('delete');
+   more.append(toggle,button);row.append(more);
+   toggle.onclick=()=>{for(const other of list.querySelectorAll('.plating-photo-more[open]'))if(other!==more)other.open=false;};
+   more.onkeydown=e=>{if(e.key==='Escape'&&more.open){e.preventDefault();e.stopPropagation();more.open=false;toggle.focus();}};
+   button.onclick=async()=>{
+    more.open=false;toggle.focus();
+    if(!await confirmAction(pt('photoDelete')))return;
+    let deleted=false;
+    await platingPhotoOperation(status,async()=>{
+     const r=await apiFetch(url,{method:'DELETE'}),d=await r.json();if(!r.ok)throw Error(d.error||'照片刪除失敗');
+     deleted=true;void loadPlatingReminders156(true);
+     addAudit('刪除'+pt(platingPhotoKind(item)),platingPhotoLabel(s,item),pt('title')+' > '+p.name,'plating:'+p.id);
+     await saveCloud(state);if(failedCandidate)throw Error('照片已刪除，但紀錄未儲存，請處理上方提示');status.textContent=pt('photoDeleted');
+    });
+    if(deleted&&fold.isConnected&&select.value===s.id){select.focus();await load();}
+   };
+  }
+  return row;
+ }
+ function showBatch(s,items){
+  const groups=document.createElement('div');groups.className='plating-photo-groups';
+  const newest=[...items].sort((a,b)=>String(b.created).localeCompare(String(a.created))||String(b.id).localeCompare(String(a.id)));
+  for(const kind of ['dispatch','area']){
+   const section=document.createElement('section'),title=document.createElement('h4'),photos=newest.filter(item=>platingPhotoKind(item)===kind);
+   section.className='plating-photo-group';title.textContent=pt(kind)+'（'+photos.length+' 張）';section.append(title);
+   if(!photos.length)section.append(message('尚未上傳'));
+   else photos.forEach((item,i)=>section.append(photoRow(s,item,pt(kind)+' '+(i+1))));
+   groups.append(section);
+  }
+  list.replaceChildren(groups);
+ }
+ async function load(){
+  const id=select.value,s=byId.get(id);if(!s)return;
+  const seq=++request;pendingId=id;loadedId=null;list.replaceChildren(message(pt('photoLoading')));
+  const active=()=>seq===request&&fold.isConnected&&select.value===id;
+  try{
+   const items=await listPlatingPhotos(p,s);
+   if(active()){showBatch(s,items);loadedId=id;}
+  }catch(e){
+   if(!active())return;
+   const retry=document.createElement('button');retry.type='button';retry.textContent=pt('photoRetry');retry.onclick=load;
+   list.replaceChildren(message(e.message||'照片讀取失敗'),retry);
+  }finally{if(seq===request)pendingId=null;}
+ }
+ select.onchange=load;
+ fold.ontoggle=()=>{if(fold.open&&select.value!==loadedId&&select.value!==pendingId)void load();};
+ body.addEventListener('click',e=>{for(const more of list.querySelectorAll('.plating-photo-more[open]'))if(!more.contains(e.target))more.open=false;});
 }
 function platingCsv(rows){return new TextEncoder().encode('\ufeff'+rows.map(row=>row.map(value=>{const v=String(value??'');return csvCell(/^[\s]*[=+@-]/.test(v)?"'"+v:v);}).join(',')).join('\r\n'));}
 function platingRecordEntries(projects,logs){

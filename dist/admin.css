@@ -116,3 +116,25 @@
 #modal .plating-project-history-dialog>.modal-head,#modal .plating-project-history-dialog>.modal-foot{flex:none}
 #modal .plating-project-history-dialog>.modal-body{min-height:0;overflow:auto;overscroll-behavior:contain}
 #modal .plating-project-history-dialog .plating-history-close{border:0;background:transparent;font-size:1.2rem;min-width:42px}
+
+/* One shipment's photo list at a time, with the two document types side by side. */
+#modal .plating-photo-browser{display:grid;gap:12px;padding:12px}
+#modal .plating-photo-batch{display:flex;align-items:center;gap:10px;font-size:.9rem}
+#modal .plating-photo-batch select{width:auto;min-width:min(165px,100%);max-width:100%}
+#modal .plating-photo-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px}
+#modal .plating-photo-group{border:1px solid var(--ui-border,var(--border));border-radius:7px;min-width:0}
+#modal .plating-photo-group h4{margin:0;padding:9px 12px;border-radius:6px 6px 0 0;background:var(--ui-rowAlt,#f3f7ef);font-size:.9rem}
+#modal .plating-photo-row{display:flex;align-items:center;min-width:0;border-top:1px solid var(--ui-border,var(--border))}
+#modal .plating-photo-row>a{flex:1;min-width:0;display:grid;gap:3px;padding:8px 12px;color:inherit;text-decoration:none;overflow-wrap:anywhere}
+#modal .plating-photo-row>a:hover{background:var(--ui-rowAlt,#f3f7ef)}
+#modal .plating-photo-row>a small,#modal .plating-photo-empty{color:var(--ui-muted,#516950)}
+#modal .plating-photo-empty{margin:0;padding:8px 12px}
+#modal .plating-photo-more{position:relative;flex:none;margin-inline-end:6px}
+#modal .plating-photo-more>summary{display:grid;place-items:center;min-width:42px;min-height:42px;list-style:none;cursor:pointer;border-radius:6px}
+#modal .plating-photo-more>summary::-webkit-details-marker{display:none}
+#modal .plating-photo-more>summary:hover,#modal .plating-photo-more[open]>summary{background:var(--ui-rowAlt,#f3f7ef)}
+#modal .plating-photo-more>button{position:absolute;z-index:1;inset-inline-end:0;bottom:calc(100% + 3px);white-space:nowrap;background:var(--ui-surface,#fff);box-shadow:0 4px 12px #18362824}
+@media(max-width:600px){
+ #modal .plating-photo-groups{grid-template-columns:1fr}
+ #modal .plating-photo-batch{flex-wrap:wrap}
+}
