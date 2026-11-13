@@ -154,12 +154,13 @@ function calendarTools149(){
  select.onchange=()=>{calendarSearchKind149=select.value;calendarSearchDraw149()};
  toolbar.append(box);
 }
+function calendarIssueLabel149(count){return '領料紀錄('+count+')';}
 const calendarRowsBefore149=mobileRows78;
 mobileRows78=function(day){
  const rows=calendarRowsBefore149(day),rank=r=>r.section==='material'&&r.materialType!=='receipt'?1:0;
  rows.sort((a,b)=>rank(a)-rank(b));
  const n=calendarIssues149(day).length;
- if(n)rows.splice(rows.filter(r=>r.section==='jobs'||r.section==='leaves').length,0,{title:'領料 · '+n+' 筆',section:'issues149'});
+ if(n)rows.splice(rows.filter(r=>r.section==='jobs'||r.section==='leaves').length,0,{title:calendarIssueLabel149(n),section:'issues149'});
  return rows;
 };
 const mobileOpenBefore149=mobileOpen79;
@@ -203,7 +204,7 @@ scheduleDraw56=function(...args){
   };
   const n=calendarIssues149(day).length;
   if(n){
-   const b=document.createElement('button');b.type='button';b.className='schedule-day-link67 schedule-issue149';b.dataset.dayIssues149=day;b.textContent='領料 · '+n+' 筆';b.onclick=()=>calendarOpenIssues149(day);buttons.push(b);
+   const b=document.createElement('button');b.type='button';b.className='schedule-day-link67 schedule-issue149';b.dataset.dayIssues149=day;b.textContent=calendarIssueLabel149(n);b.onclick=()=>calendarOpenIssues149(day);buttons.push(b);
   }
   buttons.sort((a,b)=>rank(a)-rank(b));
   buttons.forEach((b,i)=>{b.style.gridRow=String(i+1);links.append(b)});

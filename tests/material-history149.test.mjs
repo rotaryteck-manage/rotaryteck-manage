@@ -20,7 +20,7 @@ test('warehouse history keeps receipts and issues separate and uses Taipei day a
 });
 test('calendar highlights the existing chips without changing their labels or bypassing permissions',()=>{
  const button=textContent=>({textContent,dataset:{},active:false,classList:{toggle(_,value){this.owner.active=value}},});
- const [job,leave,receive,issue,adjacent]=['工作紀錄','請假紀錄','SJ70-40固定座','領料 · 3 筆','工作紀錄'].map(button);
+ const [job,leave,receive,issue,adjacent]=['工作紀錄','請假紀錄','SJ70-40固定座','領料紀錄(3)','工作紀錄'].map(button);
  for(const b of [job,leave,receive,issue,adjacent])b.classList.owner=b;
  receive.dataset.dayMaterialId='receive';
  const cell=(day,buttons,material=[])=>({dataset:{day},querySelector:s=>buttons.find(([prefix])=>s.startsWith(prefix))?.[1],querySelectorAll:()=>material});
@@ -32,7 +32,7 @@ test('calendar highlights the existing chips without changing their labels or by
  vm.runInContext(source+'\ncalendarMaterialDays149.set("2026-11-12",[{name:"固定座",project:"SJ70-40"}]);',c);
  assert.equal(c.calendarSearchHits149(root,'固定座','all'),4);
  assert.deepEqual([job,leave,receive,issue,adjacent].map(b=>b.active),[true,false,true,true,true]);
- assert.equal(issue.textContent,'領料 · 3 筆');
+ assert.equal(issue.textContent,'領料紀錄(3)');
  assert.equal(c.calendarSearchHits149(root,'甲','leaves'),1);assert.equal(leave.active,true);
  c.canDo=()=>false;assert.equal(c.calendarSearchHits149(root,'甲','leaves'),0);assert.equal(leave.active,false);
  assert.equal(c.calendarSearchHits149(root,'','all'),0);
@@ -72,7 +72,7 @@ test('desktop and mobile insert issues after jobs and leaves without reordering 
   });
   vm.runInContext(script,c);
   c.scheduleDraw56();
-  const expected=[...prior,'領料 · 1 筆','0','2','1'];
+  const expected=[...prior,'領料紀錄(1)','0','2','1'];
   assert.deepEqual(sorted.map(b=>b.textContent),expected);
   assert.deepEqual(Array.from(c.mobileRows78(day),r=>r.title),expected);
  }
