@@ -152,7 +152,9 @@ function calendarTools149(){
  input.addEventListener('compositionend',()=>{calendarSearch149=input.value;calendarSearchDraw149()});
  box.querySelector('.calendar-search-clear149').onclick=()=>{input.value=calendarSearch149='';calendarSearchDraw149();input.focus()};
  select.onchange=()=>{calendarSearchKind149=select.value;calendarSearchDraw149()};
- toolbar.querySelector('.schedule-action-controls').before(box);
+ const queryRow=toolbar.querySelector('.schedule-daily-query163');
+ if(queryRow)queryRow.append(box);
+ else toolbar.querySelector('.schedule-action-controls').before(box);
 }
 function calendarIssueLabel149(count){return '領料紀錄('+count+')';}
 const calendarRowsBefore149=mobileRows78;
