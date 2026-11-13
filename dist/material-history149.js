@@ -144,7 +144,7 @@ function calendarTools149(){
  if(owner!==calendarSearchOwner149){calendarSearchOwner149=owner;calendarSearch149='';calendarSearchKind149='all'}
  if(toolbar.querySelector('[data-calendar-search149]'))return;
  const box=document.createElement('div');box.className='calendar-search149';
- box.innerHTML='<div class="calendar-search-field149"><input type="search" data-calendar-search149 aria-label="搜尋目前畫面上的紀錄" placeholder="搜尋目前畫面上的紀錄"><div class="calendar-search-end149"><button type="button" class="calendar-search-clear149" aria-label="清除搜尋" hidden>×</button><small data-calendar-search-status149 role="status"></small></div></div><select aria-label="搜尋類型"><option value="all">全部</option><option value="material">料件</option><option value="jobs">工作</option>'+(canDo('schedule.leave.view')?'<option value="leaves">請假</option>':'')+'</select>';
+ box.innerHTML='<div class="calendar-search-field149"><input type="search" data-calendar-search149 aria-label="搜尋本頁紀錄" placeholder="搜尋本頁紀錄"><div class="calendar-search-end149"><button type="button" class="calendar-search-clear149" aria-label="清除搜尋" hidden>×</button><small data-calendar-search-status149 role="status"></small></div></div><select aria-label="搜尋類型"><option value="all">全部</option><option value="material">料件</option><option value="jobs">工作</option>'+(canDo('schedule.leave.view')?'<option value="leaves">請假</option>':'')+'</select>';
  const input=box.querySelector('input'),select=box.querySelector('select');
  input.value=calendarSearch149;select.value=calendarSearchKind149;
  if(!select.value)select.value=calendarSearchKind149='all';
@@ -152,7 +152,7 @@ function calendarTools149(){
  input.addEventListener('compositionend',()=>{calendarSearch149=input.value;calendarSearchDraw149()});
  box.querySelector('.calendar-search-clear149').onclick=()=>{input.value=calendarSearch149='';calendarSearchDraw149();input.focus()};
  select.onchange=()=>{calendarSearchKind149=select.value;calendarSearchDraw149()};
- toolbar.append(box);
+ toolbar.querySelector('.schedule-action-controls').before(box);
 }
 function calendarIssueLabel149(count){return '領料紀錄('+count+')';}
 const calendarRowsBefore149=mobileRows78;
