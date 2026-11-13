@@ -30,8 +30,8 @@
 
 /* Daily schedule: date and search above the action and export row. */
 body .schedule-workspace>.schedule-daily-toolbar161{
- display:grid;grid-template-columns:minmax(0,1fr) minmax(16rem,23rem);gap:.65rem 1rem;
- align-items:center;justify-content:stretch
+ display:grid;grid-template-columns:max-content minmax(0,23rem);gap:.65rem 1rem;
+ align-items:center;justify-content:start
 }
 body .schedule-daily-toolbar161>.schedule-period-controls{
  display:flex!important;flex-wrap:nowrap;justify-self:start;justify-content:start;
@@ -48,25 +48,31 @@ body .schedule-daily-toolbar161 .schedule-period-controls>button{
 body .schedule-daily-toolbar161 .schedule-period-controls>[data-schedule-shift]{width:38px!important;padding:0!important}
 .schedule-daily-toolbar161 [data-schedule-shift] span{font-size:1.5rem;line-height:1}
 .schedule-daily-toolbar161>.calendar-search149{
- grid-column:2;grid-row:1;justify-self:end;display:flex;flex-wrap:nowrap;gap:.4rem;
- width:min(100%,23rem);min-width:min(16rem,100%)
+ grid-column:2;grid-row:1;justify-self:start;display:flex;flex-wrap:nowrap;gap:.4rem;
+ width:100%;min-width:0
 }
 .schedule-daily-toolbar161 .calendar-search-field149{flex:1 1 auto;width:100%}
 .schedule-daily-toolbar161 .calendar-search149 input,.schedule-daily-toolbar161 .calendar-search149 select{
  box-sizing:border-box;min-height:42px
 }
-body .schedule-daily-toolbar161>.schedule-action-controls{grid-column:1;grid-row:2;min-width:0;gap:.45rem}
+.schedule-daily-toolbar161 .calendar-search149 select{flex:0 0 auto;min-width:6rem}
+body .schedule-daily-toolbar161>.schedule-action-controls{
+ display:flex;flex-wrap:wrap;grid-column:1/-1;grid-row:2;min-width:0;gap:.45rem
+}
 body .schedule-daily-toolbar161>.schedule-action-controls>button:not([hidden]),
 body .schedule-daily-toolbar161>.schedule-day-export151{
  width:auto!important;min-width:0!important;min-height:42px!important;height:42px!important;
  max-width:100%;padding:0 .85rem!important;margin:0!important;flex:0 0 auto;font-size:.9rem!important
 }
 .schedule-daily-toolbar161 [data-schedule-new]::before{content:'＋';margin-inline-end:.3em}
-.schedule-daily-toolbar161>.schedule-day-export151{grid-column:2;grid-row:2;justify-self:end}
+body .schedule-daily-toolbar161>.schedule-action-controls:has(>button:not([hidden]):not(.schedule-day-export151))>.schedule-day-export151{
+ margin-inline-start:.55rem!important
+}
 @media(max-width:760px){
  body .schedule-workspace>.schedule-daily-toolbar161{grid-template-columns:minmax(0,1fr);gap:.55rem}
  body .schedule-daily-toolbar161>.schedule-period-controls{grid-column:1;grid-row:1}
  .schedule-daily-toolbar161>.calendar-search149{grid-column:1;grid-row:2;width:100%;min-width:0}
  body .schedule-daily-toolbar161>.schedule-action-controls{grid-column:1;grid-row:3}
- .schedule-daily-toolbar161>.schedule-day-export151{grid-column:1;grid-row:4}
+ body .schedule-daily-toolbar161>.schedule-action-controls>button:not([hidden]){white-space:normal}
+ .schedule-daily-toolbar161>.schedule-day-export151{grid-column:1;grid-row:4;justify-self:start}
 }

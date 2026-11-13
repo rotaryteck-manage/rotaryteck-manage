@@ -220,7 +220,10 @@ function scheduleAddDownload151(){
  if(weekly){
   if(mobileQuery78.matches){if(button.parentElement!==toolbar)toolbar.append(button)}
   else{const copy=toolbar.querySelector('[data-schedule-image]');if(copy&&copy.nextElementSibling!==button)copy.after(button)}
- }else if(button.parentElement!==toolbar)toolbar.append(button);
+ }else{
+  const host=mobileQuery78.matches?toolbar:toolbar.querySelector('.schedule-action-controls');
+  if(host&&button.parentElement!==host)host.append(button);
+ }
 }
 mobileQuery78.addEventListener('change',scheduleAddDownload151);
 const scheduleRenderBefore151=scheduleRender56;
@@ -500,4 +503,4 @@ meetingRender117=function(...args){
  }
  return result;
 };
-document.documentElement.dataset.appVersion='16.1v';
+document.documentElement.dataset.appVersion='16.2v';
