@@ -42,7 +42,7 @@ body .schedule-daily-toolbar161 .schedule-period-controls{
  background:var(--ui-rowAlt);border:1px solid var(--ui-border)
 }
 body .schedule-daily-toolbar161 .schedule-period-controls strong{
- grid-area:auto;min-width:0;margin:0!important;padding-inline:.25rem;font-size:1rem!important;white-space:nowrap
+ grid-area:auto;min-width:0;margin:0!important;padding-inline:.5rem;font-size:1.2rem!important;white-space:nowrap
 }
 body .schedule-daily-toolbar161 .schedule-period-controls>button{
  grid-area:auto;width:auto!important;min-width:0!important;min-height:38px!important;height:38px!important;
@@ -51,14 +51,14 @@ body .schedule-daily-toolbar161 .schedule-period-controls>button{
 body .schedule-daily-toolbar161 .schedule-period-controls>[data-schedule-shift]{width:38px!important;padding:0!important}
 .schedule-daily-toolbar161 [data-schedule-shift] span{font-size:1.5rem;line-height:1}
 .schedule-daily-toolbar161 .calendar-search149{
- display:flex;flex-wrap:nowrap;gap:.4rem;flex:0 1 23rem;
- width:100%;min-width:0
+ display:flex;flex-wrap:nowrap;gap:.4rem;flex:1 1 0;
+ min-width:0
 }
-.schedule-daily-toolbar161 .calendar-search-field149{flex:1 1 auto;width:100%}
+.schedule-daily-toolbar161 .calendar-search-field149{flex:1 1 0}
 .schedule-daily-toolbar161 .calendar-search149 input,.schedule-daily-toolbar161 .calendar-search149 select{
  box-sizing:border-box;height:42px;min-height:42px;margin:0
 }
-.schedule-daily-toolbar161 .calendar-search149 select{flex:0 0 auto;min-width:6rem}
+.schedule-daily-toolbar161 .calendar-search149 select{flex:0 0 auto;min-width:6.5rem}
 body .schedule-daily-toolbar161>.schedule-action-controls{
  display:flex;flex-wrap:wrap;grid-column:1/-1;grid-row:2;min-width:0;gap:.45rem
 }
@@ -74,6 +74,7 @@ body .schedule-daily-toolbar161>.schedule-action-controls:has(>button:not([hidde
 @media(max-width:760px){
  body .schedule-workspace>.schedule-daily-toolbar161{grid-template-columns:minmax(0,1fr);gap:.55rem}
  body .schedule-daily-toolbar161>.schedule-daily-query163{flex-direction:column;align-items:flex-start;gap:.55rem}
+ body .schedule-daily-toolbar161 .schedule-period-controls strong{padding-inline:.25rem;font-size:clamp(1rem,4.5vw,1.125rem)!important}
  .schedule-daily-toolbar161 .calendar-search149{flex:0 1 auto;width:100%}
  body .schedule-daily-toolbar161>.schedule-action-controls{grid-column:1;grid-row:2}
  body .schedule-daily-toolbar161>.schedule-action-controls>button:not([hidden]){white-space:normal}
