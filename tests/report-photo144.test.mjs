@@ -41,13 +41,13 @@ test('多張回報先全部檢查，第二張失敗不送出，保留文字及�
 
 test('the unplanned report fields follow the selected date, and assigned reports keep the original fields',async()=>{
  const element=()=>({hidden:false,disabled:false,isConnected:true,value:'',innerHTML:'',addEventListener(){}});
- const selectors=['[name=day]','[name=entryId]','[name=title]','[name=projectName]','#schedule-report-assigned166','#schedule-report-unassigned166','[name=photo-report80]','#schedule-paste-hint','#schedule-upload-preview80'];
+ const selectors=['[name=day]','[name=entryId]','[name=title]','#schedule-report-assigned166','#schedule-report-unassigned166','[name=photo-report80]','#schedule-paste-hint','#schedule-upload-preview80'];
  const fields=Object.fromEntries(selectors.map(s=>[s,element()]));
  const date=fields['[name=day]'],entry=fields['[name=entryId]'],unassigned=fields['#schedule-report-unassigned166'];
  const job={id:'work',kind:'daily',day:'2026-11-18',end_day:'2026-11-18',assignee_ids:'["2"]'};
  let html,complete;
  const f=fixture({
-  $:()=>({querySelector:s=>fields[s]}),state:{projects:[{name:'SJ105'}]},currentUser:{id:2,name:'小明'},scheduleData56:{entries:[job]},
+  $:()=>({querySelector:s=>fields[s]}),currentUser:{id:2,name:'小明'},scheduleData56:{entries:[job],options:{items:['SJ105','治具維護']}},
   scheduleLoadedRange56:'daily:2026-11-01:2026-11-30',scheduleEsc56:String,scheduleLabel63:()=> '環片整理',
   modal:(_,body)=>{html=body},apiFetch:()=>new Promise(resolve=>{complete=resolve})
  });
@@ -55,7 +55,8 @@ test('the unplanned report fields follow the selected date, and assigned reports
  assert.equal(unassigned.hidden,true);assert.match(entry.innerHTML,/value="work"/);
  date.value='2026-11-19';date.onchange();
  assert.equal(entry.disabled,true);assert.equal(unassigned.hidden,false);assert.equal(fields['[name=title]'].disabled,false);
- assert.match(html,/案件名稱（選填）/);assert.match(html,/value="SJ105"/);
+ assert.match(html,/回報未排程工作<select name="title"/);assert.doesNotMatch(html,/name="projectName"|placeholder="工作名稱"/);
+ assert.match(fields['[name=title]'].innerHTML,/value="SJ105".*value="治具維護"/);
  date.value='2026-12-02';const lookup=date.onchange();
  assert.equal(unassigned.hidden,true);
  complete(Response.json({entries:[{...job,day:date.value,end_day:date.value}]}));await lookup;

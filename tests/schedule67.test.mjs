@@ -71,11 +71,12 @@ test('only an unassigned employee can submit an unplanned report, even if a job 
  const day='2026-11-18',origin='https://example.test',objects=new Map(),put=async(key,file)=>objects.set(key,file);
  const UPLOADS={put,delete:async key=>objects.delete(key)},env={DB,UPLOADS},employee={id:2,name:'小明',role:'viewer',permissions:builtinProfiles[2].permissions};
  const job=db.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,assignee_ids,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'now','now')");
+ db.prepare('INSERT INTO schedule_options(id,items,contents) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET items=excluded.items').run(JSON.stringify(['SJ105']),'[]');
  job.run('other','daily','2026-11-17',day,'其他人的工作','["小華"]','["3"]');
  job.run('weekly','weekly','2026-11-17',day,'週安排','["小明"]','["2"]');
  const upload=(id,overrides={},person=employee)=>{
   const form=new FormData();
-  for(const [key,value]of Object.entries({mode:'create',id,day,entryId:'',body:'完成 30 片',unassigned:'1',title:'環片整理',projectName:'SJ105',...overrides}))form.append(key,value);
+  for(const [key,value]of Object.entries({mode:'create',id,day,entryId:'',body:'完成 30 片',unassigned:'1',title:'SJ105',...overrides}))form.append(key,value);
   form.append('photo',new File(['picture'],'job.png',{type:'image/png'}));
   return schedulePhotoUpload(new Request(origin+'/api/schedule-photo-upload',{method:'POST',headers:{origin},body:form}),env,person);
  };
@@ -83,11 +84,12 @@ test('only an unassigned employee can submit an unplanned report, even if a job 
  assert.equal((await upload('mixed',{entryId:'other'})).status,400);
  assert.equal((await upload('legacy',{unassigned:''})).status,400);
  assert.equal((await upload('assigned',{}, {...employee,id:3,name:'小華'})).status,409);
+ assert.equal((await upload('unknown-item',{title:'不在清單的案件'})).status,409);
  assert.equal((await upload('valid')).status,200);
  const row=db.prepare("SELECT entry_id,work_title,work_content,author_id FROM schedule_reports WHERE id='valid'").get();
- assert.deepEqual({...row},{entry_id:'',work_title:'環片整理',work_content:'["SJ105"]',author_id:'2'});
+ assert.deepEqual({...row},{entry_id:'',work_title:'SJ105',work_content:'',author_id:'2'});
  const result=await scheduleApi(new Request(origin+'/api/schedule?from='+day+'&to='+day),env,employee);
- assert.equal((await result.json()).reports[0].work_title,'環片整理');
+ assert.equal((await result.json()).reports[0].work_title,'SJ105');
  UPLOADS.put=async(key,file)=>{
   await put(key,file);
   job.run('new-assignment','daily',day,day,'新排程','["其他人"]','["2"]');

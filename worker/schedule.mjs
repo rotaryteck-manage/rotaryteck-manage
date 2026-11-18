@@ -215,9 +215,9 @@ if(!photos.length||photos.length>10||!env.UPLOADS||photos.some(photo=>!(photo in
 if(form.get('mode')==='create'){
   if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);
   const day=String(form.get('day')||''),body=String(form.get('body')||'').trim(),entryId=String(form.get('entryId')||'');
-  const unassigned=form.get('unassigned')==='1',title=String(form.get('title')||'').trim(),projectName=String(form.get('projectName')||'').trim();
+  const unassigned=form.get('unassigned')==='1',title=String(form.get('title')||'').trim();
   if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(body,3000)||
-     (unassigned?(entryId||!scheduleText(title,160)||projectName.length>160):!scheduleText(entryId,80)))
+     (unassigned?(entryId||!scheduleText(title,80)):!scheduleText(entryId,80)))
    return scheduleJSON({error:'請填寫日期、工作與回報內容'},400);
   const assignedSQL=`SELECT 1 FROM schedule_entries e
     WHERE e.kind='daily' AND e.day<=? AND e.end_day>=? AND CASE
@@ -229,7 +229,8 @@ if(form.get('mode')==='create'){
   let entry;
   if(unassigned){
    if(await hasAssignment())return scheduleJSON({error:'當天已有指派工作，請重新開啟回報並選擇工作項目'},409);
-   entry={title,category:projectName?JSON.stringify([projectName]):''};
+   if(!(await scheduleOptionsRead60(env)).items.includes(title))return scheduleJSON({error:'這個工作項目已更新，請重新開啟回報再選擇'},409);
+   entry={title,category:''};
   }else{
    entry=await env.DB.prepare("SELECT kind,day,end_day,assignee,assignee_ids,title,category FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
    if(entry?.kind!=='daily'||day<entry.day||day>entry.end_day||!Array.isArray(people)||!(entry.assignee_ids&&entry.assignee_ids!=='[]'?JSON.parse(entry.assignee_ids).includes(String(employee.id)):people.includes(employee.name)&&(await env.DB.prepare("SELECT COUNT(*) AS n FROM employees WHERE name=? AND status='active'").bind(employee.name).first()).n===1))return scheduleJSON({error:'只能回報當天安排給自己的工作'},403);
