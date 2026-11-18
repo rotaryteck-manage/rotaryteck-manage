@@ -63,3 +63,41 @@ import {migratePermissions75} from '../worker/wire-permissions.mjs';
 const scheduleApi=(request,env,e)=>raw_scheduleApi(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});
 const schedulePhotoUpload=(request,env,e)=>raw_schedulePhotoUpload(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});
 const scheduleMaterialUpload=(request,env,e)=>raw_scheduleMaterialUpload(request,env,{...e,permissions:migratePermissions75(e.permissions||[],e.role)});
+
+test('only an unassigned employee can submit an unplanned report, even if a job is added during upload',async()=>{
+ const {db,DB}=database();
+ migrations85(db);
+ db.exec("INSERT INTO employees(id,email,name,role,status,created_at,updated_at) VALUES(2,'min@t.test','小明','viewer','active','now','now'),(3,'hua@t.test','小華','viewer','active','now','now')");
+ const day='2026-11-18',origin='https://example.test',objects=new Map(),put=async(key,file)=>objects.set(key,file);
+ const UPLOADS={put,delete:async key=>objects.delete(key)},env={DB,UPLOADS},employee={id:2,name:'小明',role:'viewer',permissions:builtinProfiles[2].permissions};
+ const job=db.prepare("INSERT INTO schedule_entries(id,kind,day,end_day,title,assignee,assignee_ids,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'now','now')");
+ job.run('other','daily','2026-11-17',day,'其他人的工作','["小華"]','["3"]');
+ job.run('weekly','weekly','2026-11-17',day,'週安排','["小明"]','["2"]');
+ const upload=(id,overrides={},person=employee)=>{
+  const form=new FormData();
+  for(const [key,value]of Object.entries({mode:'create',id,day,entryId:'',body:'完成 30 片',unassigned:'1',title:'環片整理',projectName:'SJ105',...overrides}))form.append(key,value);
+  form.append('photo',new File(['picture'],'job.png',{type:'image/png'}));
+  return schedulePhotoUpload(new Request(origin+'/api/schedule-photo-upload',{method:'POST',headers:{origin},body:form}),env,person);
+ };
+ assert.equal((await upload('no-title',{title:''})).status,400);
+ assert.equal((await upload('mixed',{entryId:'other'})).status,400);
+ assert.equal((await upload('legacy',{unassigned:''})).status,400);
+ assert.equal((await upload('assigned',{}, {...employee,id:3,name:'小華'})).status,409);
+ assert.equal((await upload('valid')).status,200);
+ const row=db.prepare("SELECT entry_id,work_title,work_content,author_id FROM schedule_reports WHERE id='valid'").get();
+ assert.deepEqual({...row},{entry_id:'',work_title:'環片整理',work_content:'["SJ105"]',author_id:'2'});
+ const result=await scheduleApi(new Request(origin+'/api/schedule?from='+day+'&to='+day),env,employee);
+ assert.equal((await result.json()).reports[0].work_title,'環片整理');
+ UPLOADS.put=async(key,file)=>{
+  await put(key,file);
+  job.run('new-assignment','daily',day,day,'新排程','["其他人"]','["2"]');
+ };
+ assert.equal((await upload('race')).status,409);
+ assert.equal(db.prepare('SELECT count(*) AS n FROM schedule_reports').get().n,1);
+ assert.equal(objects.size,1);
+ assert.equal(db.prepare('SELECT count(*) AS n FROM schedule_write_guards').get().n,0);
+ UPLOADS.put=put;
+ assert.equal((await upload('already-assigned')).status,409);
+ db.prepare("UPDATE schedule_entries SET assignee_ids='[]',assignee='[\"小明\"]' WHERE id='new-assignment'").run();
+ assert.equal((await upload('legacy-assignment')).status,409);
+});

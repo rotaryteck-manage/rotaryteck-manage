@@ -30,11 +30,37 @@ test('無法讀取或壓縮的照片顯示檔名及原因，壓縮失敗不會�
 });
 test('多張回報先全部檢查，第二張失敗不送出，保留文字及待上傳照片供重試',async()=>{
  const element=()=>({style:{},children:[],value:'',files:[],disabled:false,dataset:{},setAttribute(){},append(...items){this.children.push(...items)},appendChild(item){this.children.push(item)},addEventListener(){},set innerHTML(v){this.children=[]},get innerHTML(){return ''}});
- const input=element(),hint=element(),preview=element(),day=element(),entry=element();let save,posted=0,closed=0,fail=true,upload;
- const dialog={querySelector:s=>s.includes('photo-report80')?input:s.includes('paste-hint')?hint:s.includes('upload-preview')?preview:s.includes('entryId')?entry:day,close(){closed++}};
- const f=fixture({$:()=>dialog,currentUser:{name:'小明'},scheduleData56:{entries:[{id:'work',kind:'daily',day:'2026-11-05',end_day:'2026-11-05'}]},scheduleAssignees56:()=>['小明'],scheduleEsc56:String,scheduleLabel63:()=> 'FAA',modal:(_title,_body,_label,callback)=>{save=callback},alert(){},scheduleRender56(){},document:{createElement:element},compressReceiptImage:async(file,limit)=>{assert.equal(limit,750*1024);if(fail&&file.name==='second.jpg')throw Error('裝置無法讀取');return file},apiFetch:async(_url,options)=>{posted++;upload=options.body;return Response.json({ok:true})}});
+ const input=element(),hint=element(),preview=element(),day=element(),entry=element();day.isConnected=true;let save,posted=0,closed=0,fail=true,upload;
+ const dialog={querySelector:s=>s.includes('photo-report80')?input:s.includes('paste-hint')?hint:s.includes('upload-preview')?preview:s.includes('entryId')?entry:s.includes('name=day')?day:element(),close(){closed++}};
+ const f=fixture({$:()=>dialog,currentUser:{name:'小明'},state:{projects:[]},scheduleLoadedRange56:'daily:2026-11-01:2026-11-30',scheduleData56:{entries:[{id:'work',kind:'daily',day:'2026-11-05',end_day:'2026-11-05'}]},scheduleAssignees56:()=>['小明'],scheduleEsc56:String,scheduleLabel63:()=> 'FAA',modal:(_title,_body,_label,callback)=>{save=callback},alert(){},scheduleRender56(){},document:{createElement:element},compressReceiptImage:async(file,limit)=>{assert.equal(limit,750*1024);if(fail&&file.name==='second.jpg')throw Error('裝置無法讀取');return file},apiFetch:async(_url,options)=>{posted++;upload=options.body;return Response.json({ok:true})}});
  f.ctx.scheduleReportDialog56('2026-11-05');input.files=[new File(['a'],'first.jpg',{type:'image/jpeg'}),new File(['b'],'second.jpg',{type:'image/jpeg'})];input.onchange();
  const fd=new FormData();fd.set('day','2026-11-05');fd.set('entryId','work');fd.set('body','保留我的回報內容');
  await assert.rejects(save(fd),/second.jpg：裝置無法讀取/);assert.equal(posted,0);assert.equal(closed,0);assert.equal(preview.children.length,2);assert.equal(fd.get('body'),'保留我的回報內容');
  fail=false;await save(fd);assert.equal(posted,1);assert.equal(upload.getAll('photo').length,2);assert.equal(upload.get('body'),'保留我的回報內容');assert.equal(closed,1);
+});
+
+test('the unplanned report fields follow the selected date, and assigned reports keep the original fields',async()=>{
+ const element=()=>({hidden:false,disabled:false,isConnected:true,value:'',innerHTML:'',addEventListener(){}});
+ const selectors=['[name=day]','[name=entryId]','[name=title]','[name=projectName]','#schedule-report-assigned166','#schedule-report-unassigned166','[name=photo-report80]','#schedule-paste-hint','#schedule-upload-preview80'];
+ const fields=Object.fromEntries(selectors.map(s=>[s,element()]));
+ const date=fields['[name=day]'],entry=fields['[name=entryId]'],unassigned=fields['#schedule-report-unassigned166'];
+ const job={id:'work',kind:'daily',day:'2026-11-18',end_day:'2026-11-18',assignee_ids:'["2"]'};
+ let html,complete;
+ const f=fixture({
+  $:()=>({querySelector:s=>fields[s]}),state:{projects:[{name:'SJ105'}]},currentUser:{id:2,name:'小明'},scheduleData56:{entries:[job]},
+  scheduleLoadedRange56:'daily:2026-11-01:2026-11-30',scheduleEsc56:String,scheduleLabel63:()=> '環片整理',
+  modal:(_,body)=>{html=body},apiFetch:()=>new Promise(resolve=>{complete=resolve})
+ });
+ f.ctx.scheduleReportDialog56('2026-11-18');
+ assert.equal(unassigned.hidden,true);assert.match(entry.innerHTML,/value="work"/);
+ date.value='2026-11-19';date.onchange();
+ assert.equal(entry.disabled,true);assert.equal(unassigned.hidden,false);assert.equal(fields['[name=title]'].disabled,false);
+ assert.match(html,/案件名稱（選填）/);assert.match(html,/value="SJ105"/);
+ date.value='2026-12-02';const lookup=date.onchange();
+ assert.equal(unassigned.hidden,true);
+ complete(Response.json({entries:[{...job,day:date.value,end_day:date.value}]}));await lookup;
+ assert.equal(unassigned.hidden,true);assert.match(entry.innerHTML,/value="work"/);
+ date.value='2026-12-03';const failed=date.onchange();
+ complete(Response.json({error:'unavailable'},{status:503}));await failed;
+ assert.equal(unassigned.hidden,true);assert.match(entry.innerHTML,/無法確認工作項目/);
 });

@@ -83,11 +83,11 @@ test('mobile camera and gallery append to one report queue, preserve cancellatio
   addEventListener(){},after(...items){this.afterItems=items},click(){this.clicks=(this.clicks||0)+1},
   set innerHTML(v){this.children=[];this.html=v},get innerHTML(){return this.html||''}});
  const input=element(),preview=element(),hint=element(),day=element(),entry=element();
- const dialog={querySelector:s=>s.includes('photo-report80')?input:s.includes('paste-hint')?hint:s.includes('upload-preview')?preview:s.includes('entryId')?entry:day,close(){}};
+ const dialog={querySelector:s=>s.includes('photo-report80')?input:s.includes('paste-hint')?hint:s.includes('upload-preview')?preview:s.includes('entryId')?entry:s.includes('name=day')?day:element(),close(){}};
  let save,html,uploaded;
  const ctx=vm.createContext({File,Blob,FormData,URL,crypto:webcrypto,console,
   matchMedia:()=>({matches:true}),document:{createElement:element,querySelector:s=>s.includes('photo-report80')?input:null},
-  $:()=>dialog,currentUser:{name:'小明'},scheduleData56:{entries:[{id:'work',kind:'daily',day:'2026-10-01',end_day:'2026-10-01',assignee:'小明'}]},
+  $:()=>dialog,currentUser:{name:'小明'},state:{projects:[]},scheduleLoadedRange56:'daily:2026-10-01:2026-10-31',scheduleData56:{entries:[{id:'work',kind:'daily',day:'2026-10-01',end_day:'2026-10-01',assignee:'小明'}]},
   scheduleDraw56(){},scheduleDayRecord56(){},scheduleReportDialog56(){},scheduleMaterialDialog61(){},
   scheduleAssignees56:()=>['小明'],scheduleEsc56:String,scheduleLabel63:()=> 'FAA（製作）',
   modal:(title,body,label,callback)=>{html=body;save=callback},alert(){},scheduleRender56(){},

@@ -215,9 +215,25 @@ if(!photos.length||photos.length>10||!env.UPLOADS||photos.some(photo=>!(photo in
 if(form.get('mode')==='create'){
   if(!scheduleAllowed(employee,'schedule.report'))return scheduleJSON({error:'沒有回報權限'},403);
   const day=String(form.get('day')||''),body=String(form.get('body')||'').trim(),entryId=String(form.get('entryId')||'');
-  if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(body,3000)||!scheduleText(entryId,80))return scheduleJSON({error:'請填寫日期、工作與回報內容'},400);
-  const entry=await env.DB.prepare("SELECT kind,day,end_day,assignee,assignee_ids,title,category FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
-  if(entry?.kind!=='daily'||day<entry.day||day>entry.end_day||!Array.isArray(people)||!(entry.assignee_ids&&entry.assignee_ids!=='[]'?JSON.parse(entry.assignee_ids).includes(String(employee.id)):people.includes(employee.name)&&(await env.DB.prepare("SELECT COUNT(*) AS n FROM employees WHERE name=? AND status='active'").bind(employee.name).first()).n===1))return scheduleJSON({error:'只能回報當天安排給自己的工作'},403);
+  const unassigned=form.get('unassigned')==='1',title=String(form.get('title')||'').trim(),projectName=String(form.get('projectName')||'').trim();
+  if(!scheduleText(id,80)||!scheduleDate(day)||!scheduleText(body,3000)||
+     (unassigned?(entryId||!scheduleText(title,160)||projectName.length>160):!scheduleText(entryId,80)))
+   return scheduleJSON({error:'請填寫日期、工作與回報內容'},400);
+  const assignedSQL=`SELECT 1 FROM schedule_entries e
+    WHERE e.kind='daily' AND e.day<=? AND e.end_day>=? AND CASE
+      WHEN e.assignee_ids<>'' AND e.assignee_ids<>'[]' THEN EXISTS(SELECT 1 FROM json_each(e.assignee_ids) WHERE value=?)
+      ELSE EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(e.assignee) THEN e.assignee ELSE json_array(e.assignee) END) WHERE value=?)
+    END`;
+  const assignmentArgs=[day,day,String(employee.id),employee.name];
+  const hasAssignment=()=>env.DB.prepare(assignedSQL+' LIMIT 1').bind(...assignmentArgs).first();
+  let entry;
+  if(unassigned){
+   if(await hasAssignment())return scheduleJSON({error:'當天已有指派工作，請重新開啟回報並選擇工作項目'},409);
+   entry={title,category:projectName?JSON.stringify([projectName]):''};
+  }else{
+   entry=await env.DB.prepare("SELECT kind,day,end_day,assignee,assignee_ids,title,category FROM schedule_entries WHERE id=?").bind(entryId).first();let people=[];try{people=JSON.parse(entry?.assignee||'[]')}catch{}
+   if(entry?.kind!=='daily'||day<entry.day||day>entry.end_day||!Array.isArray(people)||!(entry.assignee_ids&&entry.assignee_ids!=='[]'?JSON.parse(entry.assignee_ids).includes(String(employee.id)):people.includes(employee.name)&&(await env.DB.prepare("SELECT COUNT(*) AS n FROM employees WHERE name=? AND status='active'").bind(employee.name).first()).n===1))return scheduleJSON({error:'只能回報當天安排給自己的工作'},403);
+  }
 
   const stored=[];
   try{
@@ -233,10 +249,20 @@ if(form.get('mode')==='create'){
       env.DB.prepare('INSERT INTO schedule_reports(id,entry_id,day,body,photo_key,photo_name,author_id,author_name,created_at,updated_at,work_title,work_content) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,entryId,day,body,first.key,first.name,String(employee.id),employee.name,now,now,entry.title,entry.category),
       ...stored.slice(1).map(p=>env.DB.prepare('INSERT INTO schedule_report_photos(id,report_id,photo_key,photo_name,sort_index,created_at) VALUES (?,?,?,?,?,?)').bind(p.id,id,p.key,p.name,p.sortIndex,now))
     ];
+    // Recheck inside the transaction in case work was assigned during photo upload.
+    if(unassigned){
+     const guard=crypto.randomUUID();
+     statements.unshift(
+      env.DB.prepare('INSERT INTO schedule_write_guards(id,valid) VALUES (?,NOT EXISTS('+assignedSQL+'))').bind(guard,...assignmentArgs),
+      env.DB.prepare('DELETE FROM schedule_write_guards WHERE id=?').bind(guard)
+     );
+    }
     await env.DB.batch(statements);
     return scheduleJSON({saved:true,photoCount:stored.length});
   }catch(e){
     await scheduleDiscardPhotos85(env,stored.map(p=>p.key));
+    if(unassigned&&/CHECK constraint/i.test(String(e.message))&&await hasAssignment())
+     return scheduleJSON({error:'當天已有指派工作，請重新開啟回報並選擇工作項目'},409);
     throw e;
   }
 }

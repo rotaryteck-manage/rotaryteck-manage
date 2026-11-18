@@ -42,7 +42,7 @@ body='<div class="schedule-daily-list67">'+
     return '<article class="schedule-message67" data-report-id75="'+scheduleEsc56(r.id)+'">'+
      '<span class="schedule-avatar67">'+scheduleEsc56(r.author_name)+'</span>'+
      '<div class="schedule-bubble67">'+
-      (job?'<strong>'+scheduleEsc56(scheduleLabel63(job))+'</strong>':'')+
+      (job?'<strong>'+(!r.entry_id&&r.work_title?'<span class="schedule-unassigned-badge166" title="未排程">未</span> ':'')+scheduleEsc56(scheduleLabel63(job))+'</strong>':'')+
       '<p>'+scheduleEsc56(r.body)+'</p>'+
       (r.photo_count>0?'<div class="schedule-report-photos80">'+Array.from({length:Math.min(Number(r.photo_count)||1,10)},(_,i)=>'<img class="schedule-report-photo80" data-schedule-photo="'+scheduleEsc56(r.id)+'" data-photo-index="'+i+'" alt="'+scheduleEsc56(r.author_name)+' 的工作照片 '+(i+1)+'">').join('')+'</div>':'')+
       '<small>回報時間：'+scheduleEsc56(receiptTime(r.created_at))+(r.updated_at&&r.updated_at!==r.created_at?' · 最後修改：'+scheduleEsc56(receiptTime(r.updated_at)):'')+'</small>'+
@@ -100,7 +100,13 @@ body='<div class="schedule-daily-list67">'+
 });
 };
 
-function scheduleAssigned67(day){return(scheduleData56.entries||[]).filter(e=>e.kind==='daily'&&e.day<=day&&e.end_day>=day&&scheduleAssignees56(e).includes(currentUser.name)).sort((a,b)=>(a.sort_index||0)-(b.sort_index||0)||String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id))}
+function scheduleAssigned67(day,entries=scheduleData56.entries||[]){
+ return entries.filter(e=>{
+  if(e.kind!=='daily'||e.day>day||e.end_day<day)return false;
+  if(e.assignee_ids&&e.assignee_ids!=='[]')return JSON.parse(e.assignee_ids).includes(String(currentUser.id));
+  return scheduleAssignees56(e).includes(currentUser.name);
+ }).sort((a,b)=>(a.sort_index||0)-(b.sort_index||0)||String(a.created_at).localeCompare(String(b.created_at))||a.id.localeCompare(b.id));
+}
 // Work-report-only fallback; other upload areas keep their existing compressor.
 async function compressReportPhoto144(file){
  const limit=750*1024,name=file?.name||'工作照片';
@@ -128,20 +134,16 @@ async function compressReportPhoto144(file){
 }
 scheduleReportDialog56=function(day){
  day=day||new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'});
- let pendingPhotos=[];
-
- const choices=chosen=>{
-  const jobs=scheduleAssigned67(chosen);
-  return jobs.length
-   ?jobs.map(e=>'<option value="'+scheduleEsc56(e.id)+'">'+scheduleEsc56(scheduleLabel63(e))+'</option>').join('')
-   :'<option value="">當日沒有指派給你的工作</option>';
- };
-
+ let pendingPhotos=[],selectedDay='',jobs=null,requestNumber=0;
+ const projects=[...new Set((state.projects||[]).map(p=>p.name).filter(Boolean))];
  modal(
   '新增工作回報',
   '<p class="muted">回報人：'+scheduleEsc56(currentUser.name)+'</p>'
   +'<label class="field">紀錄日期<input name="day" type="date" value="'+scheduleEsc56(day)+'" required></label>'
-  +'<label class="field">工作項目<select name="entryId" required>'+choices(day)+'</select></label>'
+  +'<div id="schedule-report-assigned166"><label class="field">工作項目<select name="entryId" required><option value="">正在確認工作項目…</option></select></label></div>'
+  +'<div id="schedule-report-unassigned166" hidden><label class="field">回報未排程工作<input name="title" placeholder="工作名稱" maxlength="160" required disabled></label>'
+  +'<label class="field">案件名稱（選填）<input name="projectName" list="schedule-report-projects166" maxlength="160" disabled>'
+  +'<datalist id="schedule-report-projects166">'+projects.map(name=>'<option value="'+scheduleEsc56(name)+'"></option>').join('')+'</datalist></label></div>'
   +'<label class="field">工作進度<textarea name="body" maxlength="3000" required></textarea></label>'
   +'<label class="field">工作照片（必填，最多10張，可重複選照片或 Ctrl+V 貼上）'
   +'<input name="photo-report80" type="file" accept="image/jpeg,image/png,image/webp" multiple>'
@@ -153,8 +155,10 @@ scheduleReportDialog56=function(day){
    const date=String(fd.get('day'));
    const entryId=String(fd.get('entryId')||'');
 
-   if(!scheduleAssigned67(date).some(e=>e.id===entryId)){
-    throw Error('請選擇當天安排給自己的工作');
+   if(!jobs||date!==selectedDay)throw Error('請先確認當日工作項目');
+   const unassigned=!jobs.length,title=String(fd.get('title')||'').trim();
+   if(unassigned?!title:!jobs.some(e=>e.id===entryId)){
+    throw Error(unassigned?'請填寫工作名稱':'請選擇當天安排給自己的工作');
    }
 
    if(!pendingPhotos.length){
@@ -165,7 +169,12 @@ scheduleReportDialog56=function(day){
    form.append('mode','create');
    form.append('id',crypto.randomUUID());
    form.append('day',date);
-   form.append('entryId',entryId);
+   form.append('entryId',unassigned?'':entryId);
+   if(unassigned){
+    form.append('unassigned','1');
+    form.append('title',title);
+    form.append('projectName',String(fd.get('projectName')||'').trim());
+   }
    form.append('body',String(fd.get('body')||'').trim());
 
    for(const photo of pendingPhotos){
@@ -272,9 +281,36 @@ scheduleReportDialog56=function(day){
  // Camera and gallery both append to this same queue; no synthetic FileList needed.
  input.scheduleAddPhotos83=addPhotos;
 
- dialog.querySelector('[name=day]').onchange=e=>{
-  dialog.querySelector('[name=entryId]').innerHTML=choices(e.target.value);
+ const dateInput=dialog.querySelector('[name=day]'),entrySelect=dialog.querySelector('[name=entryId]');
+ const assignedFields=dialog.querySelector('#schedule-report-assigned166'),unassignedFields=dialog.querySelector('#schedule-report-unassigned166');
+ const titleInput=dialog.querySelector('[name=title]'),projectInput=dialog.querySelector('[name=projectName]');
+ const showChoices=(entries,message)=>{
+  jobs=entries;
+  const unassigned=entries?.length===0;
+  assignedFields.hidden=entrySelect.disabled=unassigned;
+  unassignedFields.hidden=titleInput.disabled=projectInput.disabled=!unassigned;
+  entrySelect.innerHTML=entries?.length
+   ?entries.map(e=>'<option value="'+scheduleEsc56(e.id)+'">'+scheduleEsc56(scheduleLabel63(e))+'</option>').join('')
+   :'<option value="">'+scheduleEsc56(message||'')+'</option>';
  };
+ const refreshChoices=async date=>{
+  const number=++requestNumber;
+  selectedDay=date;
+  if(!date){showChoices(null,'請先選擇紀錄日期');return;}
+  const [,from,to]=scheduleLoadedRange56.split(':');
+  if(from&&date>=from&&date<=to){showChoices(scheduleAssigned67(date));return;}
+  showChoices(null,'正在確認工作項目…');
+  try{
+   const response=await apiFetch('/api/schedule?from='+encodeURIComponent(date)+'&to='+encodeURIComponent(date));
+   const data=await response.json();
+   if(!response.ok||!Array.isArray(data.entries))throw Error();
+   if(number===requestNumber&&dateInput.isConnected)showChoices(scheduleAssigned67(date,data.entries));
+  }catch{
+   if(number===requestNumber&&dateInput.isConnected)showChoices(null,'無法確認工作項目，請重新開啟');
+  }
+ };
+ dateInput.onchange=()=>refreshChoices(dateInput.value);
+ refreshChoices(day);
 
  input.onchange=()=>{
   const files=[...input.files];
