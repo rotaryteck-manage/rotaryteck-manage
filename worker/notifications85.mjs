@@ -30,29 +30,45 @@ export function notificationValidRules103(rules,onInvalid=()=>{}){
  }
  return valid;
 }
+export function notificationReportCheck168(entries,reports,people,day){
+ const peopleById=new Map(people.map(person=>[String(person.id),person])),assigned=new Map(),assignedIds=new Set();
+ for(const entry of entries.filter(item=>item.kind==='daily'&&item.day<=day&&(item.end_day||item.day)>=day)){
+  let ids=[];try{ids=JSON.parse(entry.assignee_ids||'[]').map(String)}catch{}
+  for(const id of ids){
+   const person=peopleById.get(id);
+   if(!person)continue;
+   assignedIds.add(id);
+   if(person.enabled===0)continue;
+   const current=assigned.get(id)||{person,titles:[]};
+   if(entry.title&&!current.titles.includes(entry.title))current.titles.push(entry.title);
+   assigned.set(id,current);
+  }
+ }
+ const completed=new Set(),extra=new Set();
+ for(const report of reports){
+  if(!String(report.body||'').trim()||(!report.photo_key&&!(Number(report.photo_count)>0)))continue;
+  const id=String(report.author_id);
+  if(report.entry_id!=='')completed.add(id);
+  else if(peopleById.has(id)&&!assignedIds.has(id))extra.add(id);
+ }
+ const missing=[...assigned.entries()].filter(([id])=>!completed.has(id)).map(([,item])=>item.person.name+'：尚未回報「'+item.titles.join('、')+'」');
+ const total=assigned.size,done=total-missing.length,unplanned=extra.size;
+ return {total,done,missing,unplanned,values:{
+  完成數:done,總人數:total,核對結果:missing.length?missing.join('\n'):total?'全員皆已完成工作回報。':'今日沒有排程工作。',
+  未排程說明:unplanned?'另有 '+unplanned+' 人回報未排程工作':''
+ }};
+}
 export function notificationPlan85(rules,state,entries,reports,people,now=Date.now()){
  const {day,time}=notificationClock85(now),plans=[];const age=date=>Math.floor((Date.parse(day)-Date.parse(String(date||'').slice(0,10)))/86400000);
  for(const rule of rules||[]){
   if(!rule.enabled||time<rule.time)continue;
   if(rule.type==='report-check'){
-   const peopleById=new Map(people.filter(person=>person.enabled!==0).map(person=>[String(person.id),person]));
-   const assigned=new Map();
-   for(const entry of entries.filter(item=>item.kind==='daily'&&item.day<=day&&(item.end_day||item.day)>=day)){
-    let ids=[];try{ids=JSON.parse(entry.assignee_ids||'[]').map(String)}catch{}
-    for(const id of ids)if(peopleById.has(id)){
-     const current=assigned.get(id)||{person:peopleById.get(id),titles:[]};
-     if(entry.title&&!current.titles.includes(entry.title))current.titles.push(entry.title);
-     assigned.set(id,current);
-    }
-   }
-   if(!assigned.size)continue;
-   const completed=new Set(reports.filter(report=>String(report.body||'').trim()&&(report.photo_key||Number(report.photo_count)>0)).map(report=>String(report.author_id)));
-   const missing=[...assigned.entries()].filter(([id])=>!completed.has(id)).map(([,item])=>item.person.name+'：尚未回報「'+item.titles.join('、')+'」');
-   const completedCount=assigned.size-missing.length;
-   const values={完成數:completedCount,總人數:assigned.size,核對結果:missing.length?missing.join('\n'):'全員皆已完成工作回報。',日期:day,通知名稱:rule.name||'回報核對通知'};
+   const {total,done,missing,unplanned,values:summary}=notificationReportCheck168(entries,reports,people,day);
+   if(!total&&!unplanned)continue;
+   const {未排程說明,...values}={...summary,日期:day,通知名稱:rule.name||'回報核對通知'};
    const replace=value=>{let output=String(value||'');for(const [key,replacement]of Object.entries(values))output=output.replaceAll('{'+key+'}',String(replacement));return output};
    const selected=new Set((rule.recipientIds||[]).map(String));
-   for(const person of people.filter(item=>item.enabled!==0&&selected.has(String(item.id))))plans.push({ruleId:rule.id,employeeId:person.id,notificationType:'report-check',category:rule.category||'回報核對',title:replace(rule.title),message:replace(rule.message),targetUrl:'/?notificationDay='+encodeURIComponent(day)+'&notificationSection=jobs#schedule',dedupeKey:'auto:'+rule.id+':'+person.id+':report-check:'+day,eventCount:missing.length,reportCheck:{total:assigned.size,completed:completedCount,missing:missing.length}});
+   for(const person of people.filter(item=>item.enabled!==0&&selected.has(String(item.id))))plans.push({ruleId:rule.id,employeeId:person.id,notificationType:'report-check',category:rule.category||'回報核對',title:replace(rule.title),message:[replace(rule.message),未排程說明].filter(Boolean).join('\n'),targetUrl:'/?notificationDay='+encodeURIComponent(day)+'&notificationSection=jobs#schedule',dedupeKey:'auto:'+rule.id+':'+person.id+':report-check:'+day,eventCount:missing.length,reportCheck:{total,completed:done,missing:missing.length,unplanned}});
    continue;
   }
   const chosen=new Set((rule.recipientIds||[]).map(String));

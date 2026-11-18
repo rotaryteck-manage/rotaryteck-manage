@@ -8,7 +8,7 @@ import {leaveMinutes124,leaveUnits124,leaveLabel124} from './leave-duration124.m
 import {notificationFreezeDevices121,notificationScopesRead121,notificationLogRows121} from './notifications121.mjs';
 import {meetingApi117,runMeetingNotifications117,auditStatements117,queueMeetingNotifications117,meetingDispatchApi117} from './meetings117.mjs';
 import {backupData85,backupPhotos85} from './backup85.mjs';
-import {notificationClock85,notificationPlan85,notificationRulesValid85,notificationValidRules103,notificationBatchContent944,notificationTarget945} from './notifications85.mjs';
+import {notificationClock85,notificationPlan85,notificationRulesValid85,notificationValidRules103,notificationBatchContent944,notificationTarget945,notificationReportCheck168} from './notifications85.mjs';
 import webpush from 'web-push';
 import {sendNativePush116} from './push116.mjs';
 import {createECDH} from 'node:crypto';
@@ -1021,11 +1021,13 @@ async function previewValues90(type,employee,env){
   return{available:true,note:'預覽使用 '+employee.name+' 今日的實際'+(type==='report'?'待回報':'排程')+'資料。',values:{...base,數量:own.length,工作清單:list.join('、'),工作名稱:own.map(e=>e.title).join('、'),工作內容:own.map(entryContent90).filter(Boolean).join('、')},targetDate:day};
  }
  if(type==='report-check'){
-  const entries=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=? ORDER BY created_at,id").bind(day,day).all(),reports=await env.DB.prepare("SELECT r.author_id,r.body,r.photo_key,(SELECT COUNT(*) FROM schedule_report_photos p WHERE p.report_id=r.id) AS photo_count FROM schedule_reports r WHERE r.day=?").bind(day).all(),people=await env.DB.prepare("SELECT id,name FROM employees WHERE status='active' ORDER BY id").all(),map=new Map((people.results||[]).map(person=>[String(person.id),{...person,titles:[]} ]));
-  for(const entry of entries.results||[])for(const id of entryPeople90(entry)){const item=map.get(id);if(item&&entry.title&&!item.titles.includes(entry.title))item.titles.push(entry.title)}
-  const assigned=[...map.values()].filter(item=>item.titles.length);if(!assigned.length)return{available:false,note:'今天沒有安排工作的人員，正式通知不會發送。',values:base,targetDate:day};
-  const completed=new Set((reports.results||[]).filter(report=>String(report.body||'').trim()&&(report.photo_key||Number(report.photo_count)>0)).map(report=>String(report.author_id))),missing=assigned.filter(item=>!completed.has(String(item.id))),lines=missing.map(item=>item.name+'：尚未回報「'+item.titles.join('、')+'」');
-  return{available:true,note:'依今日實際排程與工作回報核對；同一人有多項工作仍只需一份含文字及照片的回報。',values:{...base,完成數:assigned.length-missing.length,總人數:assigned.length,核對結果:lines.join('\n')||'全員皆已完成工作回報。'},targetDate:day};
+  const [entries,reports,people]=await Promise.all([
+   env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='daily' AND day<=? AND end_day>=? ORDER BY created_at,id").bind(day,day).all(),
+   env.DB.prepare("SELECT r.entry_id,r.author_id,r.body,r.photo_key,(SELECT COUNT(*) FROM schedule_report_photos p WHERE p.report_id=r.id) AS photo_count FROM schedule_reports r WHERE r.day=?").bind(day).all(),
+   env.DB.prepare("SELECT e.id,e.name,COALESCE(n.enabled,1) AS enabled FROM employees e LEFT JOIN notification_people n ON n.employee_id=e.id WHERE e.status='active' ORDER BY e.id").all()
+  ]);
+  const summary=notificationReportCheck168(entries.results||[],reports.results||[],people.results||[],day),available=Boolean(summary.total||summary.unplanned);
+  return{available,note:available?'依今日實際排程與回報核對。未排程回報人數另外顯示。':'今天沒有應核對的排程與未排程回報，正式通知不會發送。',values:{...base,...summary.values},targetDate:day};
  }
  if(type==='material'){const row=await env.DB.prepare("SELECT * FROM schedule_entries WHERE kind='material' ORDER BY created_at DESC LIMIT 1").first();if(!row)return{available:false,note:'目前沒有可預覽的料件資料。',values:base,targetDate:day};return{available:true,note:'預覽使用最近一筆料件資料。',values:{...base,案件名稱:row.project_name||'',料件名稱:row.title,類型:row.category,登記人:row.author_name||employee.name},targetDate:row.day};}
  if(type==='wire-cut')return{available:true,note:'示意預覽；只有成功新增裁線紀錄才通知。',values:{...base,案名:'SJ7040',登記人員:employee.name,明細筆數:3},targetDate:day};

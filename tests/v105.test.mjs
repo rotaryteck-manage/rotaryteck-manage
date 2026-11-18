@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import fs from 'node:fs';
 import {notificationPlan85,notificationRulesValid85} from '../worker/notifications85.mjs';
 
@@ -40,10 +41,33 @@ test('10.5v admin settings explain recipients, scenarios and multiline display',
  const ui=fs.readFileSync('dist/enhancements-v88.js','utf8'),preview=fs.readFileSync('dist/enhancements-v903.js','utf8'),css=fs.readFileSync('dist/enhancements-v88.css','utf8');
  assert.match(ui,/回報核對通知/);
  assert.match(ui,/每位指定接收者只會收到一則完整合併通知/);
- for(const label of ['模擬全員完成','模擬部分未完成','模擬全員未完成','模擬只有文字、沒有照片','模擬只有照片、沒有文字'])assert.match(preview,new RegExp(label));
+ for(const label of ['模擬全員完成','模擬部分未完成','模擬全員未完成','模擬只有文字、沒有照片','模擬只有照片、沒有文字'])assert.match(preview+ui,new RegExp(label));
  assert.match(css,/white-space:pre-line/);
 });
 
 test('11.6v version label is consistent',()=>{
  for(const file of ['dist/cloud.js','dist/enhancements-v943.js','dist/enhancements-v944.js','dist/enhancements-v945.js'])assert.match(fs.readFileSync(file,'utf8'),/12\.3v/,file);
+});
+
+test('extra completed reports count distinct people separately from the scheduled ratio',()=>{
+ const complete=id=>({entry_id:id==='4'?'':'job',author_id:id,body:'完成',photo_key:'photo.jpg'});
+ const reports=[complete('2'),complete('3'),complete('4'),complete('4'),{...complete('2'),entry_id:''},{...complete('1'),entry_id:'',body:''}];
+ const at='2026-10-06T10:05:00Z';
+ const [full]=notificationPlan85([rule],{},entries,reports,people,at);
+ assert.equal(full.message,'今日工作回報：2/2 人完成工作回報。\n全員皆已完成工作回報。\n另有 1 人回報未排程工作');
+ const [partial]=notificationPlan85([{...rule,message:'今日：{完成數}/{總人數}'}],{},entries,[complete('4'),{...complete('2'),entry_id:''}],people,at);
+ assert.equal(partial.message,'今日：0/2\n另有 1 人回報未排程工作');
+ const [alone]=notificationPlan85([rule],{},[],[complete('4')],people,at);
+ assert.match(alone.message,/0\/0.*\n今日沒有排程工作。\n另有 1 人/);
+ assert.deepEqual(notificationPlan85([rule],{},[],[],people,at),[]);
+});
+
+test('admin simulations use the same numbers and extra line layout as the report-check notice',()=>{
+ const ui=fs.readFileSync('dist/enhancements-v88.js','utf8');
+ const ctx=vm.createContext({notificationTypeNames88:{}});
+ vm.runInContext(ui.slice(ui.indexOf('const notificationTokens89='),ui.indexOf('function notificationRuleTargetUrl89')),ctx);
+ const sample=mode=>vm.runInContext(`notificationPreviewMessage168('【{完成數}/{總人數}】','report-check','回報',notificationReportExample168('${mode}'))`,ctx);
+ assert.equal(sample('extra-all'),'【6/6】\n另有 1 人回報未排程工作');
+ assert.equal(sample('extra-partial'),'【5/6】\n另有 1 人回報未排程工作');
+ assert.equal(sample('all'),'【5/5】');
 });
