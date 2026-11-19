@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {database} from './helpers/d1.mjs';
-import {api} from '../worker/server.mjs';
+import {api,images,wireImages} from '../worker/server.mjs';
+import fs from 'node:fs';
 import {diffRecords,splitState,joinRecords,normalizeLogIds,stableJSON} from '../worker/state-codec.mjs';
 globalThis.fetch=async()=>Response.json({id:'owner',email:'owner@example.com',user_metadata:{name:'主管'}});
 const project=id=>({id,name:id,parts:[],inventory:{},archivedParts:[]});
@@ -58,4 +59,70 @@ test('first plating case can be created while a profile without plating manageme
  env.db.prepare('UPDATE app_permission_profiles SET permissions=? WHERE id=?').run(JSON.stringify(['plating.view','plating.manage']),'supervisor');
  assert.equal((await put(env,p)).status,200);
  assert.deepEqual((await get(env)).state.platingProjects,next.platingProjects);
+});
+
+test('affected-collection saves avoid whole-state and unrelated history reads across creation, rename, sorting and deletion',async()=>{
+ const c={id:'case',name:'原案',vendor:'',status:'尚未開始',batch:1,quantity:1,acceptedDate:'2026-11-19',closedDate:''};
+ const initial={projects:Array.from({length:60},(_,i)=>({...project('P'+i),custom:{note:'x'.repeat(10000)},materialLogs:[]})),
+  cases:[c],platingProjects:[{id:'plate1',name:'電鍍1',shipments:[]},{id:'plate2',name:'電鍍2',shipments:[]}],
+  wireTypes:[{id:'t',name:'AWG26'}],wireReels:[{id:'r',wireId:'t',number:'1',color:'黑',status:'enough',photos:[]}],wireCuts:[],
+  logs:Array.from({length:300},(_,i)=>({id:'log'+i,time:'2026-11-19',action:'舊資料',detail:'x'.repeat(1000)}))};
+ for(const [label,change]of [
+  ['新增庫房',s=>s.projects.push({...project('new'),materialLogs:[]})],
+  ['庫房排序',s=>s.projects.reverse()],
+  ['電鍍排序',s=>s.platingProjects.reverse()],
+  ['新增管理案件',s=>s.cases.push({...c,id:'new-case',name:'新案'})],
+  ['管理案件改名',s=>s.cases[0].name='改名'],
+  ['管理案件刪除',s=>s.cases=[]],
+  ['新增線材種類',s=>s.wireTypes.push({id:'t2',name:'AWG28'})],
+  ['線捆改編號',s=>s.wireReels[0].number='2']
+ ]){
+  const env=setup(initial),base=await get(env),next=structuredClone(base.state);change(next);
+  next.logs.unshift({id:'new-log',time:'2026-11-19',action:label,detail:''});
+  const native=env.DB.prepare;let loadedBytes=0;
+  env.DB.prepare=sql=>{
+   assert.notEqual(sql,'SELECT record_key,body,revision FROM state_records ORDER BY record_id',label);
+   const wrap=stmt=>({bind(...args){return wrap(stmt.bind(...args))},first:()=>stmt.first(),all:()=>stmt.all(),run:()=>stmt.run(),execute(){
+    const result=stmt.execute();
+    if(sql.includes('FROM state_records'))loadedBytes+=(result.results||[]).reduce((n,row)=>n+Buffer.byteLength(row.body||''),0);
+    return result;
+   }});
+   return wrap(native(sql));
+  };
+  const response=await put(env,payload(base,next));assert.equal(response.status,200,label+JSON.stringify(await response.clone().json()));
+  assert.ok(loadedBytes<100000,label+' read '+loadedBytes+' bytes');
+  env.DB.prepare=native;assert.deepEqual((await get(env)).state,next,label);
+  env.db.close();
+ }
+});
+
+test('photo endpoints use exact record lookups and reject nonexistent shipments',async()=>{
+ const env=setup({projects:[project('A')],logs:[],
+  platingProjects:[{id:'plate',name:'電鍍',shipments:[{id:'shipment'}]}],
+  wireTypes:[{id:'t',name:'線材'}],wireReels:[{id:'r',wireId:'t',photos:[]}]});
+ await get(env);env.UPLOADS={list:async()=>({objects:[],truncated:false}),get:async()=>null};
+ const native=env.DB.prepare;
+ env.DB.prepare=sql=>{assert.notEqual(sql,'SELECT record_key,body,revision FROM state_records ORDER BY record_id');return native(sql)};
+ const imageRequest=path=>new Request('https://test.local'+path,{headers:{authorization:'Bearer owner'}});
+ assert.equal((await images(imageRequest('/api/plating-photos?project=plate&shipment=shipment'),env)).status,200);
+ assert.equal((await images(imageRequest('/api/plating-photos?project=plate&shipment=missing'),env)).status,404);
+ assert.equal((await images(imageRequest('/api/receipts?project=A'),env)).status,200);
+ assert.equal((await images(imageRequest('/api/receipts?project=missing'),env)).status,404);
+ assert.equal((await wireImages(imageRequest('/api/wire-images?reel=r'),env)).status,200);
+ assert.equal((await wireImages(imageRequest('/api/wire-images?reel=missing'),env)).status,404);
+});
+
+test('material and cut history lookups use migration indexes and preserve tombstones',async()=>{
+ const env=setup(),base=await get(env);
+ env.db.exec(fs.readFileSync('drizzle/0043_record_lookup170.sql','utf8'));
+ const queries=[
+  ["SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]') IN ('materialLog','materialLogOrder') AND json_extract(json_extract(record_key,'$[1]'),'$[0]') IN (SELECT value FROM json_each(?))",'state_material_parent170'],
+  ["SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]')='wireCuts' AND json_extract(body,'$.reelId') IN (SELECT value FROM json_each(?))",'state_wire_history170']
+ ];
+ for(const [sql,index]of queries){
+  const plan=env.db.prepare('EXPLAIN QUERY PLAN '+sql).all('["A"]');
+  assert.ok(plan.some(row=>row.detail.includes(index)&&row.detail.includes('SEARCH')),JSON.stringify(plan));
+  assert.ok(!plan.some(row=>row.detail==='SCAN state_records'));
+ }
+ assert.deepEqual((await get(env)).state,base.state);
 });

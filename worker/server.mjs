@@ -226,6 +226,40 @@ async function readScopedRecordStorage941(env,changes){
  const state=joinRecords(records);state.projects??=[];state.logs??=[];
  return {state,records,versions,revision:result[0].results[0].revision,scoped:true};
 }
+// Validate cross-record rules within the affected collections, without loading
+// unrelated warehouse data, configuration, or accumulated audit history.
+async function readAffectedRecordStorage170(env,changes){
+ const kinds=new Set(),keys=new Set(changes.map(c=>c.key)),materialProjects=new Set();
+ let allLogs=false;
+ for(const c of changes){
+  const [kind,id]=JSON.parse(c.key);
+  if(recordCollections.includes(kind))kinds.add(kind);
+  if(kind==='order')kinds.add(id);
+  if(kind==='log'&&(c.deleted||c.version>0))allLogs=true;
+  if(['projects','deletedProjects'].includes(kind))materialProjects.add(id);
+  if(recordAuxiliary85.includes(kind)){const projectId=JSON.parse(id)[0];materialProjects.add(projectId);keys.add(recordKey('projects',projectId));keys.add(recordKey('deletedProjects',projectId));}
+ }
+ if(kinds.has('projects')||kinds.has('deletedProjects')){kinds.add('projects');kinds.add('deletedProjects');}
+ if(['wireTypes','wireReels','wireCuts'].some(k=>kinds.has(k)))for(const k of ['wireTypes','wireReels','wireCuts'])kinds.add(k);
+ for(const k of kinds)keys.add(recordKey('order',k));
+ const projection=kind=>kind==='projects'
+  ?"json_object('id',json_extract(body,'$.id'),'name',json_extract(body,'$.name'),'parts',json('[]'),'inventory',json('{}'))"
+  :kind==='deletedProjects'
+  ?"json_object('project',json_object('id',json_extract(body,'$.project.id'),'name',json_extract(body,'$.project.name'),'parts',json('[]'),'inventory',json('{}')))"
+  :kind==='platingProjects'
+  ?"json_object('id',json_extract(body,'$.id'),'name',json_extract(body,'$.name'),'archived',json_extract(body,'$.archived'),'shipments',json('[]'))"
+  :'body';
+ const queries=[env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1')];
+ for(const kind of kinds)queries.push(env.DB.prepare('SELECT record_key,revision,'+projection(kind)+' AS body FROM state_records WHERE body IS NOT NULL AND record_key>=? AND record_key<?').bind('["'+kind+'",','["'+kind+'"-'));
+ if(allLogs)queries.push(env.DB.prepare('SELECT record_key,body,revision FROM state_records WHERE body IS NOT NULL AND record_key>=? AND record_key<?').bind('["log",','["log"-'));
+ // Exact records replace the read-only summaries for every touched ID.
+ queries.push(env.DB.prepare('SELECT record_key,body,revision FROM state_records WHERE record_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify([...keys])));
+ if(materialProjects.size)queries.push(env.DB.prepare("SELECT record_key,body,revision FROM state_records WHERE json_extract(record_key,'$[0]') IN ('materialLog','materialLogOrder') AND json_extract(json_extract(record_key,'$[1]'),'$[0]') IN (SELECT value FROM json_each(?))").bind(JSON.stringify([...materialProjects])));
+ const results=await env.DB.batch(queries),records=Object.create(null),versions=Object.create(null);
+ for(const result of results.slice(1))for(const row of result.results){records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;}
+ for(const kind of kinds)records[recordKey('order',kind)]??=[];
+ return{state:joinRecords(records),records,versions,revision:results[0].results[0].revision,scoped:true,completeContext170:true};
+}
 async function scheduleExportProjects151(env){
  await ensureRecordStorage(env);
  // Use the record-key index to read only projects and material activity.
@@ -287,11 +321,11 @@ export async function api(request,env,ctx){
   for(let attempt=0;attempt<4;attempt++){
    const committed=await env.DB.prepare('SELECT signature,result FROM state_commits WHERE request_id=?').bind(input.requestId).first();
    if(committed){if(committed.signature!==signature)return json({error:'儲存編號重複，請重新載入'},409);return json(JSON.parse(committed.result));}
-   let current=await readPlatingCreate169(env,input.changes)||await readScopedRecordStorage941(env,input.changes)||await readRecordStorage(env);
+   let current=await readPlatingCreate169(env,input.changes)||await readScopedRecordStorage941(env,input.changes)||await readAffectedRecordStorage170(env,input.changes);
    // Name/number edits need collection-wide uniqueness checks.  They are much
    // less frequent than quantity, status and note edits, so keep the strict
    // full validation path for those operations.
-   if(current.scoped){let requiresFull=false;for(const c of input.changes){const [kind]=JSON.parse(c.key),old=current.records[c.key];if(kind==='cases'&&old&&(old.name!==c.value?.name||Number(old.batch||1)!==Number(c.value?.batch||1)))requiresFull=true;if(kind==='wireReels'&&old&&(old.number!==c.value?.number||old.wireId!==c.value?.wireId))requiresFull=true;}if(requiresFull)current=await readRecordStorage(env);}
+   if(current.scoped&&!current.completeContext170){let requiresFull=false;for(const c of input.changes){const [kind]=JSON.parse(c.key),old=current.records[c.key];if(kind==='cases'&&old&&(old.name!==c.value?.name||Number(old.batch||1)!==Number(c.value?.batch||1)))requiresFull=true;if(kind==='wireReels'&&old&&(old.number!==c.value?.number||old.wireId!==c.value?.wireId))requiresFull=true;}if(requiresFull)current=await readAffectedRecordStorage170(env,input.changes);}
    const conflicts=input.changes.filter(c=>(current.versions[c.key]||0)!==c.version);
    if(conflicts.length)return json({error:'你修改的同一筆資料已被其他人更新。請先下載未儲存資料，再重新載入。',code:'RECORD_CONFLICT',keys:conflicts.map(c=>c.key)},409);
    const nextRecords={...current.records};for(const c of input.changes)nextRecords[c.key]=c.deleted?undefined:c.value;
@@ -400,10 +434,11 @@ export async function images(request,env){
    return Response.json({items:await platingPhotoSummary156(env,root+'plating/')},{headers:{'Cache-Control':'private, no-store'}});
   }
   if(!logo){
-   const row=await companyRow(env);
-   const s=row?JSON.parse(row.body):null;
-   if(plating){if(!s?.platingProjects?.some(p=>p.id===projectId&&p.shipments.some(x=>x.id===shipmentId)))return json({error:'找不到送鍍紀錄，請先儲存'},404);}
-   else if(!s||![...s.projects,...(s.deletedProjects||[]).map(x=>x.project)].some(p=>p.id===projectId))return json({error:'找不到專案'},404);
+   await ensureRecordStorage(env);
+   const found=plating
+    ?await env.DB.prepare("SELECT 1 AS found FROM state_records WHERE record_key=? AND body IS NOT NULL AND EXISTS(SELECT 1 FROM json_each(body,'$.shipments') WHERE json_extract(value,'$.id')=?)").bind(recordKey('platingProjects',projectId||''),shipmentId||'').first()
+    :await env.DB.prepare('SELECT 1 AS found FROM state_records WHERE record_key IN (?,?) AND body IS NOT NULL LIMIT 1').bind(recordKey('projects',projectId||''),recordKey('deletedProjects',projectId||'')).first();
+   if(!found)return json({error:plating?'找不到送鍍紀錄，請先儲存':'找不到專案'},404);
   }
   const id=url.searchParams.get('id');
   if(id&&!/^[a-f0-9-]{36}$/.test(id))return json({error:'圖片編號不正確'},400);
@@ -1205,7 +1240,7 @@ async function notificationState115(env,now=Date.now(),context={}){
  const records=Object.create(null);records[ruleKey]=rules;
  if(context.rulesOnly125){const row=await env.DB.prepare('SELECT body FROM state_records WHERE record_key=?').bind(recordKey('root','notificationVersion102')).first();if(row?.body)records[recordKey('root','notificationVersion102')]=JSON.parse(row.body)}
  if(!kinds.length)return joinRecords(records);
- const projection125=context.ruleId125?"CASE json_extract(record_key,'$[0]') WHEN 'wireTypes' THEN json_object('id',json_extract(body,'$.id'),'name',json_extract(body,'$.name')) WHEN 'wireReels' THEN json_object('id',json_extract(body,'$.id'),'wireId',json_extract(body,'$.wireId'),'status',json_extract(body,'$.status'),'restock',json_extract(body,'$.restock')) WHEN 'platingProjects' THEN json_object('id',json_extract(body,'$.id'),'name',json_extract(body,'$.name'),'archived',json_extract(body,'$.archived'),'shipments',(SELECT json_group_array(json_object('id',json_extract(value,'$.id'),'number',json_extract(value,'$.number'),'sent',json_extract(value,'$.sent'),'returned',json_extract(value,'$.returned'),'note',json_extract(value,'$.note'))) FROM json_each(json_extract(body,'$.shipments')) WHERE json_extract(value,'$.sent')<>'' AND COALESCE(json_extract(value,'$.returned'),'')='')) ELSE body END":"body";
+ const projection125=context.ruleId125?"CASE json_extract(record_key,'$[0]') WHEN 'wireTypes' THEN json_object('id',json_extract(body,'$.id'),'name',json_extract(body,'$.name')) WHEN 'wireReels' THEN json_object('id',json_extract(body,'$.id'),'wireId',json_extract(body,'$.wireId'),'status',json_extract(body,'$.status'),'restock',json_extract(body,'$.restock')) WHEN 'platingProjects' THEN json_object('id',json_extract(body,'$.id'),'name',json_extract(body,'$.name'),'archived',json_extract(body,'$.archived'),'shipments',json((SELECT json_group_array(json_object('id',json_extract(value,'$.id'),'number',json_extract(value,'$.number'),'sent',json_extract(value,'$.sent'),'returned',json_extract(value,'$.returned'),'note',json_extract(value,'$.note'))) FROM json_each(json_extract(body,'$.shipments')) WHERE json_extract(value,'$.sent')<>'' AND COALESCE(json_extract(value,'$.returned'),'')=''))) ELSE body END":"body";
  const result=await env.DB.prepare("SELECT record_key,"+projection125+" AS body FROM state_records WHERE body IS NOT NULL AND (json_extract(record_key,'$[0]') IN (SELECT value FROM json_each(?)) OR (json_extract(record_key,'$[0]')='order' AND json_extract(record_key,'$[1]') IN (SELECT value FROM json_each(?))))").bind(JSON.stringify(kinds),JSON.stringify(kinds)).all();
  for(const row of result.results||[])records[row.record_key]=JSON.parse(row.body);
  return joinRecords(records);
@@ -1421,7 +1456,9 @@ export async function wireImages(request,env){
  try{const employee=await employeeFor(request,env),url=new URL(request.url);if(!employee||(!permitted(employee,'wire.view')&&!(permitted(employee,'admin.export')&&url.searchParams.get('export')==='1')))return json({error:'沒有查看線材的權限'},403);
  if(url.searchParams.get('export')==='1'&&!permitted(employee,'admin.export'))return json({error:'沒有匯出權限'},403);
  if(!env.UPLOADS)return json({error:'照片儲存尚未就緒'},503);
- const data=await companyRow(env),s=JSON.parse(data.body),reel=(s.wireReels||[]).find(r=>r.id===url.searchParams.get('reel'));
+ await ensureRecordStorage(env);
+ const row=await env.DB.prepare("SELECT json_extract(body,'$.id') AS id,json_extract(body,'$.photos') AS photos FROM state_records WHERE record_key=? AND body IS NOT NULL").bind(recordKey('wireReels',url.searchParams.get('reel')||'')).first();
+ const reel=row?{id:row.id,photos:JSON.parse(row.photos||'[]')}:null;
  if(!reel)return json({error:'找不到線捆'},404);
  const id=url.searchParams.get('id');
  if(request.method==='GET'){
