@@ -18,3 +18,44 @@ test('SQL failure rolls back all writes and allows retry with same ID',async()=>
 test('legacy writes blocked; malformed order rejected; deleted records retain version',async()=>{const env=setup(),base=await get(env);assert.equal((await api(request('PUT',{state:base.state,revision:0}),env)).status,409);const next=structuredClone(base.state);next.projects.shift();const p=payload(base,next);assert.equal((await put(env,{...p,changes:p.changes.filter(c=>!c.deleted)})).status,400);assert.equal((await put(env,p)).status,200);const after=await get(env);assert.equal(after.state.projects.length,1);assert.equal((await put(env,payload(base,{...base.state,projects:[{...project('A'),name:'stale'},project('B')]}))).status,409);});
 test('codec preserves null settings and canonical no-op comparisons',()=>{const s=normalizeLogIds({projects:[],logs:[],optional:null});assert.equal(stableJSON(joinRecords(splitState(s))),stableJSON(s));assert.deepEqual(diffRecords(s,structuredClone(s)),[]);const next={projects:[],logs:[]};assert.equal(diffRecords(s,next)[0].deleted,true);});
 test('browser retries exact request after timeout and emits only changed records',async()=>{const {default:vm}=await import('node:vm'),{default:fs}=await import('node:fs');const ctx=vm.createContext({crypto,AbortSignal,structuredClone,console});vm.runInContext(fs.readFileSync('worker/state-codec.mjs','utf8').replace(/^export /gm,''),ctx);vm.runInContext(`let state={projects:[{id:'A',name:'A'}],logs:[]},confirmed=structuredClone(state),recordVersions={},pendingSave=null,failedCandidate=null,revision=0,cloudBusy=false,cloudReady=true,queuedToast='';let calls=[],fail=true;const cloudBar=()=>{},render=()=>{},oldToast=()=>{},routeAdmin=()=>{},$=()=>null;async function apiFetch(url,options){calls.push(JSON.parse(options.body));if(fail)throw Error('timeout');return {ok:true,json:async()=>({storageVersion:2,revision:1,versions:Object.fromEntries(calls.at(-1).changes.map(c=>[c.key,c.version+1]))})};}`,ctx);const cloud=fs.readFileSync('dist/cloud.js','utf8');vm.runInContext(cloud.slice(cloud.indexOf('async function sendRecordSave'),cloud.indexOf('persist=function')),ctx);await vm.runInContext('saveCloud(state)',ctx);assert.equal(vm.runInContext('calls.length',ctx),0);await vm.runInContext("state.projects[0].name='changed';saveCloud(state)",ctx);assert.equal(vm.runInContext('state.projects[0].name',ctx),'A');await vm.runInContext('fail=false;retryRecordSave()',ctx);assert.equal(vm.runInContext('JSON.stringify(calls[0])===JSON.stringify(calls[1])',ctx),true);assert.equal(vm.runInContext('state.projects[0].name',ctx),'changed');assert.equal(vm.runInContext('calls[0].changes.length',ctx),1);});
+
+test('new plating case reads summaries only and preserves unrelated history, order and retry identity',async()=>{
+ const shipment={id:'s',number:1,vendor:'廠商',sent:'2026-11-19',returned:'',inspection:'pending',note:'保留',groups:[{sets:1,rings:[{name:'環片',qty:2}]}]};
+ const env=setup({projects:Array.from({length:100},(_,i)=>({...project('P'+i),custom:{note:'x'.repeat(10000)}})),
+  platingProjects:[{id:'old',name:'原案件',shipments:[shipment],custom:'保留'}],
+  logs:Array.from({length:100},(_,i)=>({id:'log'+i,time:'2026-11-19',action:'舊紀錄',detail:'x'.repeat(1000)}))});
+ const base=await get(env),next=structuredClone(base.state);next.platingProjects.push({id:'new',name:'南非水氣',shipments:[]});
+ next.logs.unshift({id:'new-log',time:'2026-11-19',action:'新增案件',detail:'',actor:'主管'});
+ const p=payload(base,next),queries=[],original=env.DB.prepare;
+ env.DB.prepare=sql=>{queries.push(sql);if(sql==='SELECT record_key,body,revision FROM state_records ORDER BY record_id')throw Error('Full state read during plating create');return original(sql)};
+ const first=await put(env,p);assert.equal(first.status,200,JSON.stringify(await first.clone().json()));
+ assert.equal((await put(env,p)).status,200);assert.equal(env.db.prepare('SELECT count(*) n FROM state_commits').get().n,1);
+ assert.ok(queries.some(sql=>sql.includes("json_object('id'")));
+ env.DB.prepare=original;
+ const saved=await get(env);assert.deepEqual(saved.state,next);
+ const stale=structuredClone(next);stale.platingProjects.push({id:'stale',name:'過期操作',shipments:[]});
+ assert.equal((await put(env,payload(base,stale))).status,409);
+});
+
+test('plating create rejects duplicates, malformed orders and reused existing IDs without partial writes',async()=>{
+ const env=setup({projects:[],platingProjects:[{id:'old',name:'原案件',shipments:[]}],logs:[]}),base=await get(env);
+ const next=structuredClone(base.state);next.platingProjects.push({id:'new',name:'原案件',shipments:[]});
+ assert.equal((await put(env,payload(base,next))).status,400);
+ next.platingProjects[1].name='新案件';
+ const bad=payload(base,next);bad.changes.find(c=>c.key==='["order","platingProjects"]').value=['new'];
+ assert.equal((await put(env,bad)).status,400);
+ const forged={storageVersion:2,requestId:crypto.randomUUID(),changes:[{key:'["platingProjects","old"]',version:0,value:{id:'old',name:'改名',shipments:[]}}]};
+ assert.equal((await put(env,forged)).status,409);
+ assert.deepEqual((await get(env)).state,base.state);
+});
+
+test('first plating case can be created while a profile without plating management remains blocked',async()=>{
+ const env=setup({projects:[],logs:[]}),base=await get(env),next=structuredClone(base.state);
+ next.platingProjects=[{id:'first',name:'首件',shipments:[]}];
+ const p=payload(base,next);
+ env.db.prepare('INSERT INTO app_permission_profiles(id,name,permissions) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET permissions=excluded.permissions').run('supervisor','測試限制',JSON.stringify(['plating.view']));
+ assert.equal((await put(env,p)).status,403);
+ env.db.prepare('UPDATE app_permission_profiles SET permissions=? WHERE id=?').run(JSON.stringify(['plating.view','plating.manage']),'supervisor');
+ assert.equal((await put(env,p)).status,200);
+ assert.deepEqual((await get(env)).state.platingProjects,next.platingProjects);
+});

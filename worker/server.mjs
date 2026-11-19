@@ -160,6 +160,36 @@ async function readRecordStorage(env){
  for(const row of result[1].results){records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;}
  return {state:joinRecords(records),records,versions,revision:result[0].results[0].revision};
 }
+// Creating an empty plating case needs case names/order, not warehouse and audit history.
+// Existing summaries are read-only validation context; only request changes are written.
+async function readPlatingCreate169(env,changes){
+ const plating=changes.filter(c=>JSON.parse(c.key)[0]==='platingProjects');
+ if(!plating.length||!plating.every(c=>c.version===0&&!c.deleted&&Array.isArray(c.value?.shipments)&&c.value.shipments.length===0))return null;
+ if(!changes.every(c=>{
+  const [kind,id]=JSON.parse(c.key);
+  return !c.deleted&&(kind==='platingProjects'||kind==='order'&&id==='platingProjects'||kind==='log'&&c.version===0);
+ }))return null;
+ const keys=[...new Set([recordKey('order','platingProjects'),...changes.map(c=>c.key)])];
+ const result=await env.DB.batch([
+  env.DB.prepare('SELECT revision FROM state_storage_meta WHERE singleton=1'),
+  env.DB.prepare("SELECT record_key,revision,json_object('id',json_extract(body,'$.id'),'name',json_extract(body,'$.name'),'archived',json_extract(body,'$.archived'),'shipments',json('[]')) AS body FROM state_records WHERE body IS NOT NULL AND record_key>=? AND record_key<?").bind('["platingProjects",','["platingProjects"-'),
+  env.DB.prepare('SELECT record_key,body,revision FROM state_records WHERE record_key IN (SELECT value FROM json_each(?))').bind(JSON.stringify(keys))
+ ]);
+ const records=Object.create(null),versions=Object.create(null);
+ for(const group of result.slice(1))for(const row of group.results){
+  records[row.record_key]=row.body===null?undefined:JSON.parse(row.body);versions[row.record_key]=row.revision;
+ }
+ records[recordKey('order','platingProjects')]??=[];
+ const state=joinRecords(records);
+ const names=new Set((state.platingProjects||[]).filter(p=>!p.archived).map(p=>String(p.name).trim().toLowerCase()));
+ for(const c of plating){
+  // Existing IDs are handled as version conflicts by the normal commit path.
+  if(versions[c.key])continue;
+  const name=String(c.value.name||'').trim().toLowerCase();
+  check(!names.has(name),'已有同名電鍍案件，請使用其他案名');names.add(name);
+ }
+ return{state,records,versions,revision:result[0].results[0].revision,scoped:true};
+}
 function scopedRecordStorageEligible941(changes){
  const allowed=new Set(['root','projects','cases','platingProjects','wireReels','wireCuts','materialLog','materialLogOrder','log']);
  return changes.every(c=>{const [kind]=JSON.parse(c.key);if(!allowed.has(kind)||c.deleted)return false;if(recordCollections.includes(kind)&&kind!=='wireCuts'&&c.version===0)return false;return true;});
@@ -257,7 +287,7 @@ export async function api(request,env,ctx){
   for(let attempt=0;attempt<4;attempt++){
    const committed=await env.DB.prepare('SELECT signature,result FROM state_commits WHERE request_id=?').bind(input.requestId).first();
    if(committed){if(committed.signature!==signature)return json({error:'儲存編號重複，請重新載入'},409);return json(JSON.parse(committed.result));}
-   let current=await readScopedRecordStorage941(env,input.changes)||await readRecordStorage(env);
+   let current=await readPlatingCreate169(env,input.changes)||await readScopedRecordStorage941(env,input.changes)||await readRecordStorage(env);
    // Name/number edits need collection-wide uniqueness checks.  They are much
    // less frequent than quantity, status and note edits, so keep the strict
    // full validation path for those operations.
