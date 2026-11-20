@@ -76,7 +76,7 @@ function pcbOpen171(id,tab='pcb'){
  if(!pcbTabs172().some(([key])=>key===tab))tab='pcb';
  const p=pcbData171.projects.find(x=>x.id===id);if(!p)return;
  pcbProjectId171=id;pcbTab171=tab;const links=pcbLinks171(id),fixtures=pcbData171.fixtures.filter(f=>f.project_id===id);
- let body='<div class="pcb-case-head171"><p class="muted">'+pcbEsc171(p.note)+'</p>'+(pcbCanUI171('manage')?'<button type="button" data-pcb-edit-project171>修改案件</button>':'')+'</div><div class="pcb-tabs171">'+pcbTabs172().map(([k,label])=>'<button type="button" data-pcb-tab171="'+k+'" class="'+(tab===k?'selected':'')+'">'+label+'</button>').join('')+'</div>';
+ let body='<div class="pcb-case-controls173"><div class="pcb-tabs171">'+pcbTabs172().map(([k,label])=>'<button type="button" data-pcb-tab171="'+k+'" class="'+(tab===k?'selected':'')+'">'+label+'</button>').join('')+'</div>'+(pcbCanUI171('manage')?'<button type="button" data-pcb-edit-project171>修改案件</button>':'')+'</div>';
  if(tab==='pcb'){
   const sets=pcbSets171(links);
   body+='<div class="pcb-toolbar171"><strong>'+(sets===null?'整案可製作套數：未設定':'整案可製作 '+sets+' 套')+'</strong><div>'+(pcbCanUI171('stock')?'<button type="button" data-pcb-set171>整套領料</button>':'')+(pcbCanUI171('manage')?'<button type="button" data-pcb-add-link171>＋ 新增PCB</button>':'')+'</div></div><div class="pcb-scroll171"><table class="pcb-table171"><thead><tr><th>照片</th><th>PCB編號</th><th>存量</th><th>每套用量</th><th>可製作套數</th><th>操作</th></tr></thead><tbody>'+
