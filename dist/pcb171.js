@@ -5,7 +5,8 @@ const pcbCanUI171=cap=>canDo('pcb.'+cap);
 const pcbAuditAllowed172=()=>currentUser.role==='supervisor';
 const pcbTabs172=()=>[['pcb','PCB庫存'],['fixture','治具管理'],...(pcbAuditAllowed172()?[['events','異動紀錄']]:[])];
 const pcbTime171=x=>x?receiptTime(x):'';
-const pcbLinks171=id=>pcbData171.links.filter(l=>l.project_id===id);
+const pcbCompare176=(a,b)=>String(a).localeCompare(String(b),'zh-Hant',{numeric:true,sensitivity:'base'});
+const pcbLinks171=id=>pcbData171.links.filter(l=>l.project_id===id).sort((a,b)=>pcbCompare176(a.label,b.label));
 function pcbSets171(links){
  if(!links.length||links.some(l=>!Number.isInteger(l.per_set)||l.per_set<=0))return null;
  const map=new Map();for(const l of links){const x=map.get(l.item_id)||{stock:l.stock,need:0};x.need+=l.per_set;map.set(l.item_id,x);}
@@ -15,7 +16,7 @@ function pcbOptions171(values,value=''){return values.map(([id,label])=>'<option
 function pcbPhotoList171(type,id){return pcbData171.photos.filter(p=>p.entity_type===type&&p.entity_id===id);}
 function pcbThumb171(type,id){
  const photos=pcbPhotoList171(type,id);
- return '<button type="button" class="pcb-thumb171" data-pcb-photos171="'+pcbEsc171(type)+'" data-pcb-entity171="'+pcbEsc171(id)+'" aria-label="'+(photos.length?'查看照片，共 '+photos.length+' 張':'新增照片')+'">'+(photos.length?'<img loading="lazy" src="/api/pcb?photo='+encodeURIComponent(photos[0].id)+'" alt="照片">':'+ 照片')+'</button>';
+ return '<button type="button" class="pcb-thumb171" data-pcb-photos171="'+pcbEsc171(type)+'" data-pcb-entity171="'+pcbEsc171(id)+'" aria-label="'+(photos.length?'查看照片，共 '+photos.length+' 張':'新增照片')+'">'+(photos.length?'<img loading="lazy" src="/api/pcb?photo='+encodeURIComponent(photos[0].id)+'" alt="照片">':'<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 5h8l2 3h3v12H3V8h3z"/><circle cx="12" cy="13" r="3"/></svg>')+'</button>';
 }
 async function pcbFetch171(project=''){
  const response=await apiFetch('/api/pcb'+(project?'?project='+encodeURIComponent(project):'')),data=await response.json();
@@ -40,10 +41,10 @@ function pcbForm171(title,body,submit,getInput,after){
 }
 function pcbPaint171(){
  const root=$('.pcb-workspace171');if(!root)return;
- const filtered=pcbData171.projects.filter(p=>(p.name+' '+p.note+' '+pcbLinks171(p.id).map(l=>l.label).join(' ')).toLowerCase().includes(pcbSearch171.toLowerCase()));
+ const filtered=pcbData171.projects.filter(p=>(p.name+' '+p.note+' '+pcbLinks171(p.id).map(l=>l.label).join(' ')).toLowerCase().includes(pcbSearch171.toLowerCase())).sort((a,b)=>pcbCompare176(a.name,b.name));
  root.querySelector('[data-pcb-grid171]').innerHTML=filtered.map(p=>{
   const links=pcbLinks171(p.id),sets=pcbSets171(links),missing=links.filter(l=>l.per_set&&l.stock<l.per_set).map(l=>l.label),taken=pcbData171.fixtures.filter(f=>f.project_id===p.id&&f.holder_id);
-  return '<button type="button" class="pcb-project171" data-pcb-project171="'+pcbEsc171(p.id)+'"><strong>'+pcbEsc171(p.name)+'</strong><span>'+(sets===null?'每套用量未設定':'可製作 '+sets+' 套')+'</span><small>'+links.length+' 種PCB'+(taken.length?' · '+taken.length+' 組治具領用中':'')+'</small>'+(missing.length?'<small class="error">不足一套：'+pcbEsc171(missing.join('、'))+'</small>':'')+'</button>';
+  return '<button type="button" class="pcb-project171" data-pcb-project171="'+pcbEsc171(p.id)+'"><strong>'+pcbEsc171(p.name)+'</strong><span>'+(!links.length?'尚未建立PCB':sets===null?'每套用量未設定':'可製作 '+sets+' 套')+'</span>'+((links.length||taken.length)?'<small>'+(links.length?'<span>'+links.length+' 種PCB</span>':'')+(taken.length?'<span>'+taken.length+' 組治具領用中</span>':'')+'</small>':'')+(missing.length?'<small class="error">不足一套：'+pcbEsc171(missing.join('、'))+'</small>':'')+'</button>';
  }).join('')||'<p class="muted">'+(pcbSearch171?'找不到符合的案件':'尚無PCB案件，請新增案件開始登記。')+'</p>';
  root.querySelectorAll('[data-pcb-project171]').forEach(b=>b.onclick=async()=>{try{pcbProjectId171=b.dataset.pcbProject171;pcbTab171='pcb';await pcbRefresh171()}catch(e){toast(e.message)}});
 }
@@ -59,8 +60,10 @@ function pcbRender171(){
  $('.pcb-workspace171')?.remove();pcbProjectId171='';
  const main=$('main');if(!main)return;
  const root=document.createElement('section');root.className='workspace pcb-workspace171';
- root.innerHTML='<div class="pcb-head171"><h2>PCB管理</h2><div class="pcb-tools171"><input type="search" data-pcb-search171 placeholder="搜尋案名、PCB編號" aria-label="搜尋PCB案件" value="'+pcbEsc171(pcbSearch171)+'">'+(pcbCanUI171('fixture')?'<button type="button" data-pcb-holders171>治具領用總覽</button>':'')+(pcbCanUI171('export')?'<button type="button" data-pcb-export171>匯出PCB資料</button>':'')+(pcbCanUI171('manage')&&pcbCanUI171('stock')?'<button type="button" data-pcb-import171>匯入原表</button>':'')+(pcbCanUI171('manage')?'<button type="button" class="primary" data-pcb-new171>＋ 新增案件</button>':'')+'</div></div><div data-pcb-grid171 class="pcb-grid171">正在載入PCB資料…</div>';
+ const tools=(pcbCanUI171('fixture')?'<button type="button" data-pcb-holders171>治具領用總覽</button>':'')+(pcbCanUI171('export')?'<button type="button" data-pcb-export171>匯出PCB資料</button>':'')+(pcbCanUI171('manage')&&pcbCanUI171('stock')?'<button type="button" data-pcb-import171>匯入原表</button>':'');
+ root.innerHTML='<div class="pcb-head171"><h2>PCB管理</h2><div class="pcb-tools171"><input type="search" data-pcb-search171 placeholder="搜尋案件或PCB編號" aria-label="搜尋PCB案件" value="'+pcbEsc171(pcbSearch171)+'">'+(pcbCanUI171('manage')?'<button type="button" class="primary" data-pcb-new171>＋ 新增案件</button>':'')+(tools?'<details class="pcb-more-menu176"><summary>更多</summary><div class="pcb-menu-items176">'+tools+'</div></details>':'')+'</div></div><div data-pcb-grid171 class="pcb-grid171">正在載入PCB資料…</div>';
  main.append(root);
+ root.querySelector('.pcb-menu-items176')?.addEventListener('click',e=>{if(e.target.closest('button'))root.querySelector('.pcb-more-menu176').open=false});
  root.querySelector('[data-pcb-search171]').oninput=e=>{pcbSearch171=e.target.value;pcbPaint171()};
  root.querySelector('[data-pcb-import171]')?.addEventListener('click',()=>pcbImport171());
  root.querySelector('[data-pcb-new171]')?.addEventListener('click',()=>pcbProjectForm171());
@@ -70,7 +73,7 @@ function pcbRender171(){
  pcbFetch171().then(data=>{if(token!==pcbLoadToken171||!root.isConnected)return;pcbData171=data;pcbPaint171()}).catch(error=>{if(!root.isConnected)return;root.querySelector('[data-pcb-grid171]').textContent='載入失敗：'+error.message+'。請重新開啟PCB管理重試。'});
 }
 function pcbProjectForm171(p){
- pcbForm171(p?'修改案件':'新增PCB案件',field('案名','name',p?.name||'','required maxlength="100"')+'<label class="field">備註<textarea name="note" maxlength="1000">'+pcbEsc171(p?.note||'')+'</textarea></label>','儲存',fd=>({action:'project',...(p?{id:p.id,revision:p.revision}:{}),name:String(fd.get('name')).trim(),note:String(fd.get('note')||'')}),async result=>{pcbProjectId171=result.id;pcbTab171='pcb';await pcbRefresh171()});
+ pcbForm171(p?'修改案件':'新增PCB案件',field('案名','name',p?.name||'','required maxlength="100"')+'<label class="field">備註<textarea class="pcb-edit-note176" name="note" rows="2" maxlength="1000">'+pcbEsc171(p?.note||'')+'</textarea></label>','儲存',fd=>({action:'project',...(p?{id:p.id,revision:p.revision}:{}),name:String(fd.get('name')).trim(),note:String(fd.get('note')||'')}),async result=>{pcbProjectId171=result.id;pcbTab171='pcb';await pcbRefresh171()});
 }
 function pcbOpen171(id,tab='pcb'){
  if(!pcbTabs172().some(([key])=>key===tab))tab='pcb';
@@ -79,15 +82,15 @@ function pcbOpen171(id,tab='pcb'){
  let body='<div class="pcb-case-controls173"><div class="pcb-tabs171">'+pcbTabs172().map(([k,label])=>'<button type="button" data-pcb-tab171="'+k+'" class="'+(tab===k?'selected':'')+'">'+label+'</button>').join('')+'</div>'+(pcbCanUI171('manage')?'<button type="button" data-pcb-edit-project171>修改案件</button>':'')+'</div>';
  if(tab==='pcb'){
   const sets=pcbSets171(links);
-  body+='<div class="pcb-toolbar171"><strong>'+(sets===null?'整案可製作套數：未設定':'整案可製作 '+sets+' 套')+'</strong><div>'+(pcbCanUI171('stock')?'<button type="button" data-pcb-set171>整套領料</button>':'')+(pcbCanUI171('manage')?'<button type="button" data-pcb-add-link171>＋ 新增PCB</button>':'')+'</div></div><div class="pcb-scroll171"><table class="pcb-table171"><thead><tr><th>照片</th><th>PCB編號</th><th>存量</th><th>每套用量</th><th>可製作套數</th><th>操作</th></tr></thead><tbody>'+
+  body+='<div class="pcb-toolbar171"><strong>'+(sets===null?'整案可製作套數：未設定':'整案可製作 '+sets+' 套')+'</strong><div>'+(pcbCanUI171('stock')?'<button type="button" data-pcb-set171>整套領料</button>':'')+(pcbCanUI171('manage')?'<button type="button" data-pcb-add-link171>＋ 新增PCB</button>':'')+'</div></div><div class="pcb-scroll171"><table class="pcb-table171 pcb-inventory176"><thead><tr><th>照片</th><th>PCB編號</th><th>存量</th><th>每套用量</th><th>可製作套數</th><th>操作</th></tr></thead><tbody>'+
    links.map(l=>{
     const shared=[...new Set(pcbData171.links.filter(x=>x.item_id===l.item_id&&x.project_id!==id).map(x=>pcbData171.projects.find(p=>p.id===x.project_id)?.name).filter(Boolean))];
-    return '<tr><td>'+pcbThumb171('pcb',l.item_id)+'</td><td><strong>'+pcbEsc171(l.label)+'</strong>'+(l.note?'<small>'+pcbEsc171(l.note)+'</small>':'')+(shared.length?'<small class="pcb-shared171">共用：'+pcbEsc171(shared.join('、'))+'</small>':'')+'</td><td class="'+(l.per_set&&l.stock<l.per_set?'error':'')+'">'+l.stock+'</td><td>'+(l.per_set??'未設定')+'</td><td>'+(l.per_set?Math.floor(l.stock/l.per_set):'未設定')+'</td><td><div class="pcb-row-actions171">'+(pcbCanUI171('stock')?'<button type="button" data-pcb-stock171="receipt" data-link="'+l.id+'">收料</button><button type="button" data-pcb-stock171="issue" data-link="'+l.id+'">領料</button>':'')+'<button type="button" data-pcb-detail171="'+l.id+'">明細</button></div></td></tr>';
-   }).join('')+'</tbody></table></div>'+(!links.length?'<p class="muted">尚無PCB，請新增編號與每套用量。</p>':'')+'<small class="muted">共用PCB使用同一份存量，各案件可製作套數不可直接相加。</small>';
+    return '<tr><td>'+pcbThumb171('pcb',l.item_id)+'</td><td><strong>'+pcbEsc171(l.label)+'</strong>'+(l.note?'<small class="pcb-note176" title="'+pcbEsc171(l.note)+'">'+pcbEsc171(l.note)+'</small>':'')+(shared.length?'<small class="pcb-shared171" title="共用同一份庫存，收料與領料會同步">共用：'+pcbEsc171(shared.join('、'))+'</small>':'')+'</td><td class="'+(l.per_set&&l.stock<l.per_set?'error':'')+'">'+l.stock+'</td><td>'+(l.per_set??'未設定')+'</td><td>'+(l.per_set?Math.floor(l.stock/l.per_set):'未設定')+'</td><td><div class="pcb-row-actions171">'+(pcbCanUI171('stock')?'<button type="button" data-pcb-stock171="receipt" data-link="'+l.id+'">收料</button><button type="button" data-pcb-stock171="issue" data-link="'+l.id+'">領料</button>':'')+'<button type="button" class="pcb-text-action176" data-pcb-detail171="'+l.id+'">'+(pcbCanUI171('manage')?'修改':'查看')+'</button></div></td></tr>';
+   }).join('')+'</tbody></table></div>'+(!links.length?'<p class="muted">尚無PCB，請新增編號與每套用量。</p>':'');
  }else if(tab==='fixture'){
-  body+='<div class="pcb-toolbar171"><span>每個治具可適用多種PCB，各自記錄領用人。</span>'+(pcbCanUI171('manage')?'<button type="button" data-pcb-add-fixture171>＋ 新增治具</button>':'')+'</div><div class="pcb-fixtures171">'+fixtures.map(f=>{
+  body+='<div class="pcb-toolbar171"><strong>治具清單</strong>'+(pcbCanUI171('manage')?'<button type="button" data-pcb-add-fixture171>＋ 新增治具</button>':'')+'</div><div class="pcb-fixtures171">'+fixtures.map(f=>{
    let applies=[];try{applies=JSON.parse(f.applies)}catch{}
-   return '<article class="pcb-fixture171">'+pcbThumb171('fixture',f.id)+'<div><strong>'+pcbEsc171(f.name)+'</strong><small>適用：'+pcbEsc171(applies.map(id=>links.find(l=>l.id===id)?.label).filter(Boolean).join('、')||'未設定')+'</small><span class="pcb-status171 '+(f.holder_id?'taken':'')+'">'+(f.holder_id?'領用中 · '+pcbEsc171(f.holder_name):'在庫')+'</span>'+(f.taken_at?'<small>領用時間：'+pcbEsc171(pcbTime171(f.taken_at))+'</small>':'')+(f.note?'<small>'+pcbEsc171(f.note)+'</small>':'')+'</div><div class="pcb-fixture-actions171">'+(pcbCanUI171('fixture')?'<button type="button" data-pcb-take171="'+f.id+'">'+(f.holder_id?'歸還':'領用')+'</button>':'')+(pcbCanUI171('manage')?'<button type="button" data-pcb-edit-fixture171="'+f.id+'">修改</button>':'')+'</div></article>';
+   return '<article class="pcb-fixture171 pcb-fixture176">'+pcbThumb171('fixture',f.id)+'<div><strong>'+pcbEsc171(f.name)+'</strong><small>適用：'+pcbEsc171(applies.map(id=>links.find(l=>l.id===id)?.label).filter(Boolean).join('、')||'未設定')+'</small><span class="pcb-status171 '+(f.holder_id?'taken':'')+'">'+(f.holder_id?'領用中 · '+pcbEsc171(f.holder_name):'在庫')+'</span>'+(f.taken_at?'<small class="pcb-fixture-time176">'+pcbEsc171(pcbTime171(f.taken_at))+'</small>':'')+(f.note?'<small class="pcb-note176" title="'+pcbEsc171(f.note)+'">'+pcbEsc171(f.note)+'</small>':'')+'</div><div class="pcb-fixture-actions171">'+(pcbCanUI171('fixture')?'<button type="button" data-pcb-take171="'+f.id+'">'+(f.holder_id?'歸還':'領用')+'</button>':'')+(pcbCanUI171('manage')?'<button type="button" class="pcb-text-action176" data-pcb-edit-fixture171="'+f.id+'">修改</button>':'')+'</div></article>';
   }).join('')+'</div>'+(!fixtures.length?'<p class="muted">尚無治具。可建立一組適用A、B、C，或分別建立三組治具。</p>':'');
  }else{
   body+='<label class="field pcb-event-filter171">紀錄類型<select data-pcb-event-filter171><option value="">全部</option><option value="PCB">PCB收領料</option><option value="治具">治具領用／歸還</option></select></label><div class="pcb-scroll171"><table class="pcb-audit172"><thead><tr><th>時間</th><th>操作人</th><th>動作</th><th>內容</th></tr></thead><tbody>'+pcbData171.events.filter(ev=>ev.project_id===id).map(ev=>'<tr data-pcb-event-type171="'+(ev.type.includes('治具')?'治具':ev.type.includes('料')||ev.type==='庫存校正'||ev.type==='變更庫存來源'?'PCB':'其他')+'"><td class="pcb-audit-time172">'+pcbEsc171(pcbTime171(ev.created_at))+'</td><td>'+pcbEsc171(ev.actor_name)+'</td><td class="pcb-audit-action172">'+pcbEsc171(ev.type)+'</td><td class="pcb-audit-detail172">'+pcbEsc171(pcbEventDetail171(ev)||'—')+'</td></tr>').join('')+'</tbody></table></div><small class="muted">'+(pcbData171.events.some(ev=>ev.project_id===id)?'顯示最近300筆紀錄。':'尚無異動紀錄。')+'</small>';
@@ -100,7 +103,7 @@ function pcbOpen171(id,tab='pcb'){
  $('[data-pcb-set171]')?.addEventListener('click',()=>pcbSetForm171());
  $('[data-pcb-add-fixture171]')?.addEventListener('click',()=>pcbFixtureForm171());
  $('#modal').querySelectorAll('[data-pcb-stock171]').forEach(b=>b.onclick=()=>pcbStockForm171(links.find(l=>l.id===b.dataset.link),b.dataset.pcbStock171));
- $('#modal').querySelectorAll('[data-pcb-detail171]').forEach(b=>b.onclick=()=>pcbLinkDetail171(links.find(l=>l.id===b.dataset.pcbDetail171)));
+ $('#modal').querySelectorAll('[data-pcb-detail171]').forEach(b=>b.onclick=()=>{const l=links.find(l=>l.id===b.dataset.pcbDetail171);if(pcbCanUI171('manage'))pcbLinkForm171(l);else pcbLinkDetail171(l)});
  $('#modal').querySelectorAll('[data-pcb-edit-fixture171]').forEach(b=>b.onclick=()=>pcbFixtureForm171(fixtures.find(f=>f.id===b.dataset.pcbEditFixture171)));
  $('#modal').querySelectorAll('[data-pcb-take171]').forEach(b=>b.onclick=()=>pcbTakeForm171(fixtures.find(f=>f.id===b.dataset.pcbTake171)));
  pcbBindPhotos171();
@@ -131,13 +134,16 @@ function pcbLinkForm171(l){
  const sourceLabel=x=>{const aliases=pcbData171.links.filter(y=>y.item_id===x.item_id&&y.id!==l?.id),rows=aliases.length?aliases:[x];return rows.map(y=>(pcbData171.projects.find(p=>p.id===y.project_id)?.name||'')+' · '+y.label).join('／')+'（存量 '+x.stock+'）'};
  const locked=canChange?'':'disabled';
  pcbForm171(l?'修改PCB':'新增PCB',
-  field('PCB編號／版本','label',l?.label||'','required maxlength="100"')+
+  '<div class="pcb-basic-grid176">'+field('PCB編號／版本','label',l?.label||'','required maxlength="100"')+field('每套用量','perSet',l?.per_set??'','type="number" min="1" max="1000000" step="1" placeholder="未設定"')+'</div>'+
+  (!l?'<div data-pcb-initial175>'+field('初始庫存','stock','0','type="number" min="0" max="1000000000" step="1" required')+'</div>':'<div class="pcb-stock-summary176"><span>庫存 <strong>'+l.stock+'</strong> 片</span><span>'+(l.per_set?'可製作 '+Math.floor(l.stock/l.per_set)+' 套':'每套用量未設定')+'</span></div>')+
+  '<label class="field">備註<textarea class="pcb-edit-note176" name="note" rows="2" maxlength="1000">'+pcbEsc171(l?.note||'')+'</textarea></label>'+
+  '<details class="pcb-source-settings176" data-pcb-source-settings176><summary><span>庫存來源</span><span data-pcb-source-summary176>'+(initialMode==='shared'?'共用 · '+pcbEsc171(sourceLabel(items.get(initialSource))):'獨立庫存')+'</span><em>變更</em></summary><div class="pcb-source-body176">'+
   '<label class="field">庫存來源<select name="sourceMode" '+locked+'>'+pcbOptions171([['independent','獨立庫存'],['shared','共用其他 PCB']],initialMode)+'</select></label>'+
-  '<label class="field" data-pcb-source175>共用來源<select name="sharedItemId" '+locked+'><option value="">請選擇案件／PCB</option>'+pcbOptions171([...items.values()].map(x=>[x.item_id,sourceLabel(x)]),initialSource)+'</select></label>'+
-  (!l?'<div data-pcb-initial175>'+field('初始庫存','stock','0','type="number" min="0" max="1000000000" step="1" required')+'</div>':'<p class="muted pcb-source-current175">目前'+(sourceCount>1?'共用':'獨立')+'庫存：'+l.stock+' 片'+(!canChange?'；變更來源需要庫存操作權限。':'')+'</p>')+
+  '<label class="field" data-pcb-source175>共用來源<select name="sharedItemId" '+locked+'><option value="">請選擇案件／PCB</option>'+pcbOptions171([...items.values()].sort((a,b)=>pcbCompare176(sourceLabel(a),sourceLabel(b))).map(x=>[x.item_id,sourceLabel(x)]),initialSource)+'</select></label>'+
+  (!canChange?'<p class="muted">變更來源需要庫存操作權限。</p>':'')+
   (l?'<div data-pcb-split175>'+field('分配到獨立庫存的數量','transferQuantity','','type="number" min="0" max="'+l.stock+'" step="1"')+'</div><label class="field" data-pcb-merge175>原庫存如何處理<select name="mergeMode"><option value="">請選擇</option><option value="same">同一批庫存，使用來源數量（不相加）</option><option value="combine">兩批不同庫存，數量合併相加</option></select></label><div class="pcb-source-preview175" data-pcb-preview175 aria-live="polite"></div><label class="pcb-source-confirm175" data-pcb-confirm175><input type="checkbox" name="confirmSource">已確認以上庫存處理方式</label>':'')+
-  field('每套用量（未設定可留空）','perSet',l?.per_set??'','type="number" min="1" max="1000000" step="1"')+
-  '<label class="field">特殊規格／備註<textarea name="note" maxlength="1000">'+pcbEsc171(l?.note||'')+'</textarea></label>',
+  '<small class="muted">共用庫存會連動，各案件可製作套數不可相加。</small></div></details>'+
+  (l&&pcbCanUI171('stock')?'<details class="pcb-extra176"><summary>其他操作</summary><button type="button" data-pcb-correct176>盤點校正</button></details>':''),
   '儲存',fd=>{
    const mode=canChange?String(fd.get('sourceMode')):initialMode,sharedItemId=mode==='shared'?(canChange?String(fd.get('sharedItemId')||''):initialSource):'';
    if(mode==='shared'&&!sharedItemId)throw Error('請選擇共用來源');
@@ -147,6 +153,7 @@ function pcbLinkForm171(l){
  const update=(reset=true)=>{
   const shared=mode.value==='shared',plan=pcbSourcePlan175(l,sourceCount,mode.value,source.value),changing=['split','join','switch'].includes(plan),target=items.get(source.value);
   root.querySelector('[data-pcb-source175]').hidden=!shared;source.disabled=!shared||!canChange;source.required=shared;
+  root.querySelector('[data-pcb-source-summary176]').textContent=shared?(target?'共用 · '+sourceLabel(target):'尚未選擇來源'):'獨立庫存';
   if(!l){root.querySelector('[data-pcb-initial175]').hidden=shared;root.querySelector('[name=stock]').disabled=shared;return}
   root.querySelector('[data-pcb-split175]').hidden=plan!=='split';quantity.disabled=plan!=='split';quantity.required=plan==='split';
   root.querySelector('[data-pcb-merge175]').hidden=plan!=='join';merge.disabled=plan!=='join';merge.required=plan==='join';
@@ -159,6 +166,8 @@ function pcbLinkForm171(l){
   preview.textContent=text;
  };
  mode.onchange=source.onchange=()=>update();if(quantity)quantity.oninput=()=>update();if(merge)merge.onchange=()=>update();update();
+ root.querySelector('[data-pcb-correct176]')?.addEventListener('click',async()=>{const fd=new FormData(root.querySelector('#dialog-form')),dirty=String(fd.get('label')).trim()!==l.label||String(fd.get('note')||'')!==l.note||(String(fd.get('perSet')).trim()?Number(fd.get('perSet')):null)!==l.per_set||mode.value!==initialMode||source.value!==initialSource;if(dirty&&!await confirmAction('有尚未儲存的修改，是否放棄並進行盤點校正？'))return;pcbStockForm171(l,'adjust')});
+ root.querySelector('#dialog-form').addEventListener('invalid',e=>{const details=e.target.closest('details');if(details)details.open=true},true);
 }
 
 function pcbLinkDetail171(l){
@@ -191,11 +200,11 @@ async function pcbTakeForm171(f){
 function pcbBindPhotos171(){
  $('#modal').querySelectorAll('[data-pcb-photos171]').forEach(b=>b.onclick=()=>pcbPhotos171(b.dataset.pcbPhotos171,b.dataset.pcbEntity171));
 }
-function pcbPhotos171(type,id){
+function pcbPhotos171(type,id,pending=[]){
  const photos=pcbPhotoList171(type,id);
  let queue=[],urls=[],uploadId=crypto.randomUUID(),uploadFiles=null;
- modal(type==='pcb'?'PCB照片':'治具照片','<div class="pcb-gallery171">'+photos.map(p=>'<figure><a href="/api/pcb?photo='+encodeURIComponent(p.id)+'" target="_blank" rel="noopener"><img loading="lazy" src="/api/pcb?photo='+encodeURIComponent(p.id)+'" alt="'+pcbEsc171(p.file_name)+'"></a><figcaption>'+pcbEsc171(p.actor_name)+' · '+pcbEsc171(pcbTime171(p.created_at))+'</figcaption>'+(pcbCanUI171('photos')?'<button type="button" data-pcb-remove-photo171="'+p.id+'">移除照片</button>':'')+'</figure>').join('')+'</div>'+
-  (pcbCanUI171('photos')?'<label class="field">新增照片（最多10張）<input type="file" name="pcbPhotos" accept="image/*" multiple></label><div class="pcb-tools171"><button type="button" data-pcb-camera171>直接拍照</button><button type="button" data-pcb-paste171>點此後 Ctrl＋V 貼上照片</button><input hidden type="file" name="pcbCamera" accept="image/*" capture="environment"></div><p class="muted">照片會自動壓縮；選完後按「上傳照片」。</p><div class="pcb-gallery171" data-pcb-queue171></div>':''),
+ modal(type==='pcb'?'PCB照片':'治具照片','<div class="pcb-gallery171 pcb-photo-view176" data-photo-size176="'+(photos.length<=1?'single':photos.length===2?'double':'multiple')+'">'+photos.map(p=>'<figure><a aria-label="查看大圖" href="/api/pcb?photo='+encodeURIComponent(p.id)+'" target="_blank" rel="noopener"><img loading="lazy" src="/api/pcb?photo='+encodeURIComponent(p.id)+'" alt="'+pcbEsc171(p.file_name)+'"></a><figcaption>'+pcbEsc171([p.actor_name,pcbTime171(p.created_at)].filter(Boolean).join(' · '))+'</figcaption>'+(pcbCanUI171('photos')?'<button type="button" class="pcb-text-action176 pcb-photo-remove176" data-pcb-remove-photo171="'+p.id+'">移除照片</button>':'')+'</figure>').join('')+'</div>'+
+  (pcbCanUI171('photos')?'<details class="pcb-upload176" data-pcb-upload176 '+(!photos.length?'open':'')+'><summary>＋ 新增照片</summary><div class="pcb-tools171"><button type="button" data-pcb-choose176>選擇照片</button><button type="button" data-pcb-camera171>直接拍照</button><button type="button" class="pcb-paste176" data-pcb-paste171>貼上照片（Ctrl＋V）</button><input hidden type="file" name="pcbPhotos" accept="image/*" multiple><input hidden type="file" name="pcbCamera" accept="image/*" capture="environment"></div><small class="muted">一次最多10張，會自動壓縮。</small><div class="pcb-gallery171" data-pcb-queue171></div></details>':''),
   pcbCanUI171('photos')?'上傳照片':null,async()=>{
    if(!queue.length)throw Error('請先選擇照片');
    const form=new FormData();form.set('requestId',uploadId);form.set('projectId',pcbProjectId171);form.set('entityType',type);form.set('entityId',id);
@@ -206,19 +215,22 @@ function pcbPhotos171(type,id){
   });
  const back=()=>{if($('#dialog-form')?.dataset.busy==='1')return;urls.forEach(URL.revokeObjectURL);pcbOpen171(pcbProjectId171,pcbTab171)};
  $('#cancel-modal').textContent='返回案件';$('#cancel-modal').onclick=$('#close-modal').onclick=back;
+ const upload=rootPhotoUpload176();
+ function rootPhotoUpload176(){const d=$('#modal [data-pcb-upload176]'),button=$('#submit-modal');if(d&&button){button.hidden=!d.open;d.ontoggle=()=>{if(!d.open&&$('#dialog-form')?.dataset.busy==='1'){d.open=true;return}button.hidden=!d.open}}return d}
  const add=files=>{
   const next=[...files].filter(f=>f.type.startsWith('image/'));if(queue.length+next.length>10)return toast('一次最多10張，請先移除待上傳照片');
-  uploadId=crypto.randomUUID();uploadFiles=null;queue.push(...next);urls.forEach(URL.revokeObjectURL);urls=[];
+  if(upload)upload.open=true;uploadId=crypto.randomUUID();uploadFiles=null;queue.push(...next);urls.forEach(URL.revokeObjectURL);urls=[];
   $('[data-pcb-queue171]').innerHTML=queue.map((f,i)=>{const url=URL.createObjectURL(f);urls.push(url);return '<figure><img src="'+url+'" alt="待上傳照片"><button type="button" data-pcb-drop171="'+i+'">移除</button></figure>'}).join('');
   $('#modal').querySelectorAll('[data-pcb-drop171]').forEach(b=>b.onclick=()=>{queue.splice(Number(b.dataset.pcbDrop171),1);add([])});
  };
  if(pcbCanUI171('photos')){
   const input=$('#modal [name=pcbPhotos]'),camera=$('#modal [name=pcbCamera]');
   input.onchange=()=>{add(input.files);input.value=''};camera.onchange=()=>{add(camera.files);camera.value=''};
-  $('[data-pcb-camera171]').onclick=()=>camera.click();$('[data-pcb-paste171]').onclick=e=>e.currentTarget.focus();
+  $('[data-pcb-choose176]').onclick=()=>input.click();$('[data-pcb-camera171]').onclick=()=>camera.click();$('[data-pcb-paste171]').onclick=e=>e.currentTarget.focus();
   $('#modal').onpaste=e=>{const files=[...e.clipboardData?.items||[]].filter(x=>x.kind==='file').map(x=>x.getAsFile()).filter(Boolean);if(files.length){e.preventDefault();add(files)}};
  }
- $('#modal').querySelectorAll('[data-pcb-remove-photo171]').forEach(b=>b.onclick=async()=>{try{if(!await confirmAction('確定移除這張照片？'))return;await pcbSend171({action:'remove_photo',requestId:crypto.randomUUID(),projectId:photos.find(p=>p.id===b.dataset.pcbRemovePhoto171).project_id,id:b.dataset.pcbRemovePhoto171});pcbData171=await pcbFetch171(pcbProjectId171);pcbPhotos171(type,id)}catch(e){toast(e.message)}});
+ $('#modal').querySelectorAll('[data-pcb-remove-photo171]').forEach(b=>b.onclick=async()=>{try{if(!await confirmAction('確定移除這張照片？'))return;await pcbSend171({action:'remove_photo',requestId:crypto.randomUUID(),projectId:photos.find(p=>p.id===b.dataset.pcbRemovePhoto171).project_id,id:b.dataset.pcbRemovePhoto171});pcbData171=await pcbFetch171(pcbProjectId171);urls.forEach(URL.revokeObjectURL);pcbPhotos171(type,id,queue)}catch(e){toast(e.message)}});
+ if(pending.length&&pcbCanUI171('photos'))add(pending);
 }
 function pcbHolders171(){
  const fixtures=pcbData171.fixtures.filter(f=>f.holder_id);
@@ -265,4 +277,10 @@ function pcbImport171(){
   if(names.some(name=>pcbData171.projects.some(p=>p.name.trim().toLowerCase()===name.trim().toLowerCase())))throw Error('案名已存在，請先移除原表中重複的案件');
   rows=candidate;requestId=crypto.randomUUID();$('[data-pcb-import-preview171]').innerHTML='<p>共 '+names.length+' 個案件、'+rows.length+' 項PCB。完整套數採無條件捨去，每套用量空白會顯示「未設定」。</p><div class="pcb-scroll171"><table class="pcb-table171"><thead><tr><th>案名</th><th>編號</th><th>存量</th><th>每套</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+pcbEsc171(r.project)+'</td><td>'+pcbEsc171(r.label)+(r.sharedKey?'（共用）':'')+'</td><td>'+r.stock+'</td><td>'+(r.perSet??'未設定')+'</td></tr>').join('')+'</tbody></table></div>';
  }catch(e){$('#form-error').textContent=e.message}};
+}
+
+// The utility menu closes after an action, an outside click, or Escape.
+if(typeof document!=='undefined'&&document.addEventListener){
+ document.addEventListener('click',event=>{document.querySelectorAll('.pcb-more-menu176[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelectorAll('.pcb-more-menu176[open]').forEach(menu=>menu.open=false)});
 }

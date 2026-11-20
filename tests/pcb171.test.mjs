@@ -117,7 +117,7 @@ test('frontend navigation, original-table parser, complete-set calculation and H
  assert.throws(()=>vm.runInContext("pcbImportRows171([['案名','編號','存量','一套所需量'],['案','A',-1,4]])",context));
  assert.equal(vm.runInContext("pcbEsc171('<script>')",context),'&lt;script>');
  assert.match(source,/form.set\('requestId',uploadId\)/);assert.doesNotMatch(source,/downloadBlob\(/);
- const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=175/);assert.match(build,/worker\/pcb171.mjs/);
+ const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=176/);assert.match(build,/worker\/pcb171.mjs/);
 });
 
 test('PCB data joins the existing full backup and remains separate from legacy state snapshots',async()=>{
@@ -205,4 +205,13 @@ test('merging carries unique original photos into the target and avoids duplicat
 test('source plan supports independent, shared, unchanged, split and reassign states without UEA-specific names',()=>{
  const ctx=vm.createContext({managementPages:()=>[],render(){}});vm.runInContext(fs.readFileSync('dist/pcb171.js','utf8'),ctx);
  for(const [l,count,mode,id,expected]of [[null,0,'shared','','missing'],[null,0,'independent','','new'],[{item_id:'old'},1,'independent','','none'],[{item_id:'old'},2,'shared','old','none'],[{item_id:'old'},2,'independent','','split'],[{item_id:'old'},1,'shared','new','join'],[{item_id:'old'},2,'shared','new','switch']]){ctx.args=[l,count,mode,id];assert.equal(vm.runInContext('pcbSourcePlan175(...args)',ctx),expected)}
+});
+
+test('PCB display sorts mixed codes naturally and leaves stored records and other projects untouched',()=>{
+ const context=vm.createContext({managementPages:()=>[],render(){}});vm.runInContext(fs.readFileSync('dist/pcb171.js','utf8'),context);
+ vm.runInContext("pcbData171.links=[{id:'10',project_id:'p',label:'A10'},{id:'b',project_id:'p',label:'B'},{id:'other',project_id:'q',label:'A1'},{id:'2',project_id:'p',label:'A2'},{id:'a',project_id:'p',label:'A'}]",context);
+ const original=vm.runInContext('JSON.stringify(pcbData171.links)',context);
+ assert.deepEqual([...vm.runInContext("pcbLinks171('p').map(l=>l.label)",context)],['A','A2','A10','B']);
+ assert.equal(vm.runInContext('JSON.stringify(pcbData171.links)',context),original);
+ assert.deepEqual([...vm.runInContext("pcbLinks171('q').map(l=>l.id)",context)],['other']);
 });
