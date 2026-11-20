@@ -23,7 +23,7 @@ async function pcbRead171(env,project,e){
   env.DB.prepare('SELECT l.*,i.name AS item_name,i.stock,i.note AS item_note,i.revision AS stock_revision FROM pcb_links171 l JOIN pcb_items171 i ON i.id=l.item_id JOIN pcb_projects171 p ON p.id=l.project_id WHERE p.archived=0 ORDER BY l.created_at,l.id').all(),
   env.DB.prepare('SELECT f.* FROM pcb_fixtures171 f JOIN pcb_projects171 p ON p.id=f.project_id WHERE p.archived=0 ORDER BY f.created_at,f.id').all(),
   env.DB.prepare("SELECT id,project_id,entity_type,entity_id,file_name,actor_name,created_at FROM pcb_photos171 WHERE deleted_at=''"+(project?" AND (project_id=? OR (entity_type='pcb' AND entity_id IN (SELECT item_id FROM pcb_links171 WHERE project_id=?)))":'')+' ORDER BY created_at,id').bind(...(project?[project,project]:[])).all(),
-  env.DB.prepare('SELECT * FROM pcb_events171'+(project?' WHERE project_id=?':'')+' ORDER BY created_at DESC,id DESC LIMIT 300').bind(...(project?[project]:[])).all()
+  e.role==='supervisor'?env.DB.prepare('SELECT * FROM pcb_events171'+(project?' WHERE project_id=?':'')+' ORDER BY created_at DESC,id DESC LIMIT 300').bind(...(project?[project]:[])).all():Promise.resolve({results:[]})
  ]);
  const people=pcbCan171(e,'fixture')?(await env.DB.prepare("SELECT id,name FROM employees WHERE status='active' ORDER BY name,id").all()).results:[];
  return{people,projects:projects.results,links:links.results,fixtures:fixtures.results,photos:photos.results,events:events.results};

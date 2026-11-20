@@ -7,7 +7,7 @@ import {migrations85} from './helpers/migrations85.mjs';
 import {backupData85,backupTables85} from '../worker/backup85.mjs';
 import {pcbApi171,pcbCapacity171} from '../worker/pcb171.mjs';
 import {pcbCapabilities171,builtinProfiles,ensurePermissions,employeePermissions} from '../worker/wire-permissions.mjs';
-const caps=Object.keys(pcbCapabilities171),actor={id:1,name:'登記人',status:'active',permissions:caps};
+const caps=Object.keys(pcbCapabilities171),actor={id:1,name:'登記人',role:'supervisor',status:'active',permissions:caps};
 function fixture(){
  const {DB,db}=database();migrations85(db);
  db.exec("INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(1,'u1','a@test','登記人','supervisor','active','now','now'),(2,'u2','b@test','實際領用人','viewer','active','now','now'),(3,'u3','c@test','停用人','viewer','inactive','now','now')");
@@ -117,10 +117,27 @@ test('frontend navigation, original-table parser, complete-set calculation and H
  assert.throws(()=>vm.runInContext("pcbImportRows171([['案名','編號','存量','一套所需量'],['案','A',-1,4]])",context));
  assert.equal(vm.runInContext("pcbEsc171('<script>')",context),'&lt;script>');
  assert.match(source,/form.set\('requestId',uploadId\)/);assert.doesNotMatch(source,/downloadBlob\(/);
- const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=171/);assert.match(build,/worker\/pcb171.mjs/);
+ const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=172/);assert.match(build,/worker\/pcb171.mjs/);
 });
 
 test('PCB data joins the existing full backup and remains separate from legacy state snapshots',async()=>{
  const f=fixture();await f.project();const data=await backupData85(f.env,{},()=>({}));assert.equal(data.tables.pcb_projects171.length,1);assert.ok(backupTables85.includes('pcb_photos171'));
  const sql=[];const prepare=f.DB.prepare;f.DB.prepare=query=>{sql.push(query);return prepare(query)};await f.read();assert.ok(sql.every(q=>!q.includes('state_records')&&!q.includes('company_state')));
+});
+
+test('audit payload and database query are restricted to supervisors even with all PCB capabilities',async()=>{
+ const f=fixture();const p=await f.project();await f.link(p);assert.ok((await f.read(p)).events.length>0);
+ const queries=[],prepare=f.DB.prepare;f.DB.prepare=sql=>{queries.push(sql);return prepare(sql)};
+ for(const role of ['viewer','warehouse','custom',undefined]){const d=await f.read(p,{...actor,role});assert.equal(d.status,200);assert.deepEqual(d.events,[]);assert.equal(d.projects.length,1);assert.equal(d.links.length,1);}
+ assert.ok(queries.every(q=>!q.includes('FROM pcb_events171')));
+ const response=await pcbApi171(new Request('https://app.test/api/pcb?export=1'),f.env,{...actor,role:'viewer'});assert.equal(response.status,200);assert.deepEqual((await response.json()).events,[]);
+});
+test('audit tabs are supervisor-only and compact rows keep escaped details and correct import units',()=>{
+ const ctx=vm.createContext({managementPages:()=>[],render(){},currentUser:{role:'viewer'},canDo:()=>true,esc:s=>s.replaceAll('<','&lt;')});vm.runInContext(fs.readFileSync('dist/pcb171.js','utf8'),ctx);
+ assert.deepEqual([...vm.runInContext('pcbTabs172().map(t=>t[0])',ctx)],['pcb','fixture']);
+ vm.runInContext("currentUser.role='supervisor'",ctx);assert.deepEqual([...vm.runInContext('pcbTabs172().map(t=>t[0])',ctx)],['pcb','fixture','events']);
+ assert.equal(vm.runInContext("pcbEventDetail171({type:'原表匯入',detail:'{\"count\":7}'})",ctx),'PCB 7 項');
+ assert.equal(vm.runInContext("pcbEventDetail171({type:'新增照片',detail:'{\"count\":1}'})",ctx),'照片 1 張');
+ assert.equal(vm.runInContext("pcbEventDetail171({type:'移除照片',detail:'{\"file\":\"x.jpg\"}'})",ctx),'x.jpg');
+ const source=fs.readFileSync('dist/pcb171.js','utf8');assert.match(source,/class="pcb-audit172"/);assert.match(source,/pcbEsc171\(pcbEventDetail171/);assert.match(source,/if\(!pcbTabs172\(\).some/);
 });
