@@ -15,7 +15,7 @@ function pcbOptions171(values,value=''){return values.map(([id,label])=>'<option
 function pcbPhotoList171(type,id){return pcbData171.photos.filter(p=>p.entity_type===type&&p.entity_id===id);}
 function pcbThumb171(type,id){
  const photos=pcbPhotoList171(type,id);
- return '<button type="button" class="pcb-thumb171" data-pcb-photos171="'+pcbEsc171(type)+'" data-pcb-entity171="'+pcbEsc171(id)+'" aria-label="查看或新增照片">'+(photos.length?'<img loading="lazy" src="/api/pcb?photo='+encodeURIComponent(photos[0].id)+'" alt="照片"><small>'+photos.length+' 張</small>':'+ 照片')+'</button>';
+ return '<button type="button" class="pcb-thumb171" data-pcb-photos171="'+pcbEsc171(type)+'" data-pcb-entity171="'+pcbEsc171(id)+'" aria-label="'+(photos.length?'查看照片，共 '+photos.length+' 張':'新增照片')+'">'+(photos.length?'<img loading="lazy" src="/api/pcb?photo='+encodeURIComponent(photos[0].id)+'" alt="照片">':'+ 照片')+'</button>';
 }
 async function pcbFetch171(project=''){
  const response=await apiFetch('/api/pcb'+(project?'?project='+encodeURIComponent(project):'')),data=await response.json();
@@ -87,7 +87,7 @@ function pcbOpen171(id,tab='pcb'){
  }else if(tab==='fixture'){
   body+='<div class="pcb-toolbar171"><span>每個治具可適用多種PCB，各自記錄領用人。</span>'+(pcbCanUI171('manage')?'<button type="button" data-pcb-add-fixture171>＋ 新增治具</button>':'')+'</div><div class="pcb-fixtures171">'+fixtures.map(f=>{
    let applies=[];try{applies=JSON.parse(f.applies)}catch{}
-   return '<article class="pcb-fixture171">'+pcbThumb171('fixture',f.id)+'<div><strong>'+pcbEsc171(f.name)+'</strong><small>適用：'+pcbEsc171(applies.map(id=>links.find(l=>l.id===id)?.label).filter(Boolean).join('、')||'未設定')+'</small><small>存放位置：'+pcbEsc171(f.location||'未設定')+'</small><span class="pcb-status171 '+(f.holder_id?'taken':'')+'">'+(f.holder_id?'領用中 · '+pcbEsc171(f.holder_name):'在庫')+'</span>'+(f.taken_at?'<small>領用時間：'+pcbEsc171(pcbTime171(f.taken_at))+'</small>':'')+(f.note?'<small>'+pcbEsc171(f.note)+'</small>':'')+'</div><div class="pcb-fixture-actions171">'+(pcbCanUI171('fixture')?'<button type="button" data-pcb-take171="'+f.id+'">'+(f.holder_id?'歸還':'領用')+'</button>':'')+(pcbCanUI171('manage')?'<button type="button" data-pcb-edit-fixture171="'+f.id+'">修改</button>':'')+'</div></article>';
+   return '<article class="pcb-fixture171">'+pcbThumb171('fixture',f.id)+'<div><strong>'+pcbEsc171(f.name)+'</strong><small>適用：'+pcbEsc171(applies.map(id=>links.find(l=>l.id===id)?.label).filter(Boolean).join('、')||'未設定')+'</small><span class="pcb-status171 '+(f.holder_id?'taken':'')+'">'+(f.holder_id?'領用中 · '+pcbEsc171(f.holder_name):'在庫')+'</span>'+(f.taken_at?'<small>領用時間：'+pcbEsc171(pcbTime171(f.taken_at))+'</small>':'')+(f.note?'<small>'+pcbEsc171(f.note)+'</small>':'')+'</div><div class="pcb-fixture-actions171">'+(pcbCanUI171('fixture')?'<button type="button" data-pcb-take171="'+f.id+'">'+(f.holder_id?'歸還':'領用')+'</button>':'')+(pcbCanUI171('manage')?'<button type="button" data-pcb-edit-fixture171="'+f.id+'">修改</button>':'')+'</div></article>';
   }).join('')+'</div>'+(!fixtures.length?'<p class="muted">尚無治具。可建立一組適用A、B、C，或分別建立三組治具。</p>':'');
  }else{
   body+='<label class="field pcb-event-filter171">紀錄類型<select data-pcb-event-filter171><option value="">全部</option><option value="PCB">PCB收領料</option><option value="治具">治具領用／歸還</option></select></label><div class="pcb-scroll171"><table class="pcb-audit172"><thead><tr><th>時間</th><th>操作人</th><th>動作</th><th>內容</th></tr></thead><tbody>'+pcbData171.events.filter(ev=>ev.project_id===id).map(ev=>'<tr data-pcb-event-type171="'+(ev.type.includes('治具')?'治具':ev.type.includes('料')||ev.type==='庫存校正'?'PCB':'其他')+'"><td class="pcb-audit-time172">'+pcbEsc171(pcbTime171(ev.created_at))+'</td><td>'+pcbEsc171(ev.actor_name)+'</td><td class="pcb-audit-action172">'+pcbEsc171(ev.type)+'</td><td class="pcb-audit-detail172">'+pcbEsc171(pcbEventDetail171(ev)||'—')+'</td></tr>').join('')+'</tbody></table></div><small class="muted">'+(pcbData171.events.some(ev=>ev.project_id===id)?'顯示最近300筆紀錄。':'尚無異動紀錄。')+'</small>';
@@ -142,7 +142,7 @@ function pcbFixtureForm171(f){
  let applies=[];try{applies=JSON.parse(f?.applies||'[]')}catch{}
  pcbForm171(f?'修改治具':'新增治具',field('治具名稱','name',f?.name||'','required maxlength="100"')+
   '<fieldset class="pcb-applies171"><legend>適用PCB（可複選）</legend>'+pcbLinks171(pcbProjectId171).map(l=>'<label><input type="checkbox" name="applies" value="'+l.id+'" '+(applies.includes(l.id)?'checked':'')+'> '+pcbEsc171(l.label)+'</label>').join('')+'</fieldset>'+
-  field('存放位置','location',f?.location||'','maxlength="160"')+'<label class="field">備註<textarea name="note" maxlength="1000">'+pcbEsc171(f?.note||'')+'</textarea></label>','儲存',fd=>({action:'fixture',projectId:pcbProjectId171,...(f?{id:f.id,revision:f.revision}:{}),name:String(fd.get('name')).trim(),location:String(fd.get('location')||''),note:String(fd.get('note')||''),applies:fd.getAll('applies').map(String)}));
+  '<label class="field">備註<textarea class="pcb-fixture-note174" name="note" rows="2" maxlength="1000">'+pcbEsc171(f?.note||'')+'</textarea></label>','儲存',fd=>({action:'fixture',projectId:pcbProjectId171,...(f?{id:f.id,revision:f.revision}:{}),name:String(fd.get('name')).trim(),location:f?.location||'',note:String(fd.get('note')||''),applies:fd.getAll('applies').map(String)}));
 }
 async function pcbTakeForm171(f){
  try{

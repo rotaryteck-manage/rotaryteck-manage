@@ -117,7 +117,7 @@ test('frontend navigation, original-table parser, complete-set calculation and H
  assert.throws(()=>vm.runInContext("pcbImportRows171([['案名','編號','存量','一套所需量'],['案','A',-1,4]])",context));
  assert.equal(vm.runInContext("pcbEsc171('<script>')",context),'&lt;script>');
  assert.match(source,/form.set\('requestId',uploadId\)/);assert.doesNotMatch(source,/downloadBlob\(/);
- const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=173/);assert.match(build,/worker\/pcb171.mjs/);
+ const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=174/);assert.match(build,/worker\/pcb171.mjs/);
 });
 
 test('PCB data joins the existing full backup and remains separate from legacy state snapshots',async()=>{
