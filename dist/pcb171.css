@@ -11,3 +11,7 @@
 #modal textarea.pcb-fixture-note174{height:72px;min-height:72px;resize:vertical}
 
 .pcb-thumb171{display:inline-flex;align-items:center;justify-content:center}
+
+.pcb-source-current175{margin:0 0 16px}.pcb-source-preview175{padding:12px 14px;background:#f0f5eb;border:1px solid var(--border);border-radius:6px;line-height:1.6;margin:0 0 12px;white-space:pre-wrap}.pcb-source-confirm175{display:flex;align-items:center;gap:8px;margin-bottom:18px}.pcb-source-confirm175 input{width:auto}.pcb-source-confirm175[hidden],.pcb-source-preview175[hidden]{display:none}
+
+[data-pcb-source175][hidden],[data-pcb-merge175][hidden],[data-pcb-split175][hidden],[data-pcb-initial175][hidden]{display:none!important}

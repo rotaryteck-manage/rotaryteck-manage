@@ -117,7 +117,7 @@ test('frontend navigation, original-table parser, complete-set calculation and H
  assert.throws(()=>vm.runInContext("pcbImportRows171([['案名','編號','存量','一套所需量'],['案','A',-1,4]])",context));
  assert.equal(vm.runInContext("pcbEsc171('<script>')",context),'&lt;script>');
  assert.match(source,/form.set\('requestId',uploadId\)/);assert.doesNotMatch(source,/downloadBlob\(/);
- const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=174/);assert.match(build,/worker\/pcb171.mjs/);
+ const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=175/);assert.match(build,/worker\/pcb171.mjs/);
 });
 
 test('PCB data joins the existing full backup and remains separate from legacy state snapshots',async()=>{
@@ -140,4 +140,69 @@ test('audit tabs are supervisor-only and compact rows keep escaped details and c
  assert.equal(vm.runInContext("pcbEventDetail171({type:'新增照片',detail:'{\"count\":1}'})",ctx),'照片 1 張');
  assert.equal(vm.runInContext("pcbEventDetail171({type:'移除照片',detail:'{\"file\":\"x.jpg\"}'})",ctx),'x.jpg');
  const source=fs.readFileSync('dist/pcb171.js','utf8');assert.match(source,/class="pcb-audit172"/);assert.match(source,/pcbEsc171\(pcbEventDetail171/);assert.match(source,/if\(!pcbTabs172\(\).some/);
+});
+
+const editSource175=(l,extra={})=>({action:'link',projectId:l.project_id,id:l.id,revision:l.revision,label:l.label,perSet:l.per_set,note:l.note,stockRevision:l.stock_revision,sourceCount:l.source_count,confirmSource:true,...extra});
+async function twoSources175(){const f=fixture(),p=await f.project('甲'),q=await f.project('乙'),a=await f.link(p),b=await f.link(q,'B',{stock:30});const data=await f.read();return{...f,p,q,a:data.links.find(l=>l.id===a.id),b:data.links.find(l=>l.id===b.id)}};
+test('existing independent PCB can share the same physical batch without double-counting, and retries are idempotent',async()=>{
+ const f=await twoSources175(),input=editSource175(f.a,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision,mergeMode:'same',requestId:'same-batch'});
+ assert.equal((await f.call(input)).status,200);assert.equal((await f.call(input)).status,200);
+ const d=await f.read();assert.ok(d.links.every(l=>l.item_id===f.b.item_id&&l.stock===30));assert.equal(f.db.prepare('SELECT stock FROM pcb_items171 WHERE id=?').get(f.a.item_id).stock,0);
+ assert.equal(f.db.prepare("SELECT COUNT(*) n FROM pcb_events171 WHERE type='變更庫存來源'").get().n,1);
+});
+test('existing independent PCB can combine separate physical batches, maintaining their total stock',async()=>{
+ const f=await twoSources175();assert.equal((await f.call(editSource175(f.a,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision,mergeMode:'combine'}))).status,200);
+ assert.ok((await f.read()).links.every(l=>l.stock===50));assert.equal(f.db.prepare('SELECT SUM(stock) n FROM pcb_items171').get().n,50);
+ const event=JSON.parse(f.db.prepare("SELECT detail FROM pcb_events171 WHERE type='變更庫存來源'").get().detail);assert.equal(event.mode,'合併兩批庫存');assert.equal(event.changes[1].after,50);
+});
+test('unlinking a shared PCB splits the allocated stock, leaves the other projects correct and preserves photos',async()=>{
+ const f=await twoSources175();await f.call(editSource175(f.a,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision,mergeMode:'combine'}));
+ const l=(await f.read()).links.find(l=>l.id===f.a.id);assert.equal(l.source_count,2);
+ assert.equal((await pcbApi171(photoRequest(f.p,l.item_id),f.env,actor)).status,200);
+ assert.equal((await f.call(editSource175(l,{sharedItemId:'',transferQuantity:12}))).status,200);
+ const d=await f.read(),a=d.links.find(x=>x.id===f.a.id),b=d.links.find(x=>x.id===f.b.id);
+ assert.notEqual(a.item_id,b.item_id);assert.equal(a.stock,12);assert.equal(b.stock,38);assert.equal(a.source_count,1);assert.equal(b.source_count,1);assert.equal(f.db.prepare('SELECT SUM(stock) n FROM pcb_items171').get().n,50);
+ assert.equal(d.photos.filter(x=>x.entity_id===a.item_id).length,1);assert.equal(d.photos.filter(x=>x.entity_id===b.item_id).length,1);assert.equal(f.objects.size,1);
+});
+test('splitting zero or all pieces is explicit and source changes cannot exceed available stock',async()=>{
+ const f=await twoSources175();await f.link(f.p,'C',{sharedItemId:f.b.item_id});let l=(await f.read()).links.find(x=>x.id!==f.a.id&&x.project_id===f.p);
+ assert.equal((await f.call(editSource175(l,{sharedItemId:'',transferQuantity:31}))).status,400);
+ assert.equal((await f.call(editSource175(l,{sharedItemId:'',transferQuantity:0}))).status,200);assert.equal((await f.read()).links.find(x=>x.id===l.id).stock,0);
+ await f.link(f.p,'D',{sharedItemId:f.b.item_id});l=(await f.read()).links.find(x=>x.label==='D');assert.equal((await f.call(editSource175(l,{sharedItemId:'',transferQuantity:30}))).status,200);assert.equal((await f.read()).links.find(x=>x.id===f.b.id).stock,0);
+});
+test('switching from one shared pool to another leaves the original pool for its remaining PCB',async()=>{
+ const f=await twoSources175();await f.link(f.q,'C',{sharedItemId:f.a.item_id});const l=(await f.read()).links.find(x=>x.id===f.a.id);
+ assert.equal((await f.call(editSource175(l,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision}))).status,200);
+ const d=await f.read();assert.equal(d.links.find(x=>x.id===f.a.id).stock,30);assert.equal(d.links.find(x=>x.label==='C').stock,20);assert.equal(f.db.prepare('SELECT SUM(stock) n FROM pcb_items171').get().n,50);
+});
+test('source changes require management, stock permission, acknowledgement and a complete merge choice',async()=>{
+ const f=await twoSources175(),input=editSource175(f.a,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision,mergeMode:'same'});
+ assert.equal((await f.call(input,{...actor,permissions:['pcb.view','pcb.manage']})).status,403);
+ assert.equal((await f.call(input,{...actor,permissions:['pcb.view','pcb.stock']})).status,403);
+ assert.equal((await f.call({...input,confirmSource:false})).status,400);assert.equal((await f.call({...input,mergeMode:''})).status,400);
+ assert.equal((await f.call(editSource175(f.a,{sharedItemId:'',note:'仍可修改備註'}),{...actor,permissions:['pcb.view','pcb.manage']})).status,200);
+ assert.equal(f.db.prepare('SELECT SUM(stock) n FROM pcb_items171').get().n,50);
+});
+test('source changes reject stale target stock and changed sharing topology before any write',async()=>{
+ const f=await twoSources175(),input=editSource175(f.a,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision,mergeMode:'combine'});
+ await f.call({action:'receipt',projectId:f.q,linkId:f.b.id,stockRevision:f.b.stock_revision,quantity:1,reason:'另一人收料'});
+ assert.equal((await f.call(input)).status,409);assert.equal((await f.read()).links.find(x=>x.id===f.a.id).stock,20);
+ await f.link(f.q,'C',{sharedItemId:f.a.item_id});assert.equal((await f.call({...input,targetStockRevision:2})).status,409);
+});
+test('concurrent attachment to an independent pool cannot have its stock cleared by a merge',async()=>{
+ const f=await twoSources175(),batch=f.DB.batch;let injected=false;
+ f.DB.batch=async stmts=>{if(!injected){injected=true;f.db.prepare("INSERT INTO pcb_links171(id,project_id,item_id,label,per_set,created_at,updated_at) VALUES('concurrent',?,?, 'C',1,'now','now')").run(f.q,f.a.item_id)}return batch(stmts)};
+ assert.equal((await f.call(editSource175(f.a,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision,mergeMode:'combine'}))).status,409);
+ assert.equal(f.db.prepare('SELECT SUM(stock) n FROM pcb_items171').get().n,50);assert.equal((await f.read()).links.find(x=>x.id==='concurrent').stock,20);
+ assert.equal(f.db.prepare("SELECT COUNT(*) n FROM pcb_events171 WHERE type='變更庫存來源'").get().n,0);
+});
+test('merging carries unique original photos into the target and avoids duplicate image references',async()=>{
+ const f=await twoSources175(),now='2026-11-20';
+ for(const [id,item,key,project]of [['a',f.a.item_id,'same',f.p],['b',f.b.item_id,'same',f.q],['c',f.a.item_id,'unique',f.p]])f.db.prepare("INSERT INTO pcb_photos171(id,project_id,entity_type,entity_id,storage_key,file_name,actor_name,created_at) VALUES(?,?,'pcb',?,?,?,'原上傳人',?)").run(id,project,item,key,id+'.jpg',now);
+ assert.equal((await f.call(editSource175(f.a,{sharedItemId:f.b.item_id,targetStockRevision:f.b.stock_revision,mergeMode:'same'}))).status,200);
+ const photos=(await f.read()).photos.filter(x=>x.entity_id===f.b.item_id);assert.equal(photos.length,2);assert.ok(photos.every(x=>x.actor_name==='原上傳人'));assert.equal(f.db.prepare("SELECT COUNT(*) n FROM pcb_photos171 WHERE entity_id=? AND deleted_at=''").get(f.a.item_id).n,0);
+});
+test('source plan supports independent, shared, unchanged, split and reassign states without UEA-specific names',()=>{
+ const ctx=vm.createContext({managementPages:()=>[],render(){}});vm.runInContext(fs.readFileSync('dist/pcb171.js','utf8'),ctx);
+ for(const [l,count,mode,id,expected]of [[null,0,'shared','','missing'],[null,0,'independent','','new'],[{item_id:'old'},1,'independent','','none'],[{item_id:'old'},2,'shared','old','none'],[{item_id:'old'},2,'independent','','split'],[{item_id:'old'},1,'shared','new','join'],[{item_id:'old'},2,'shared','new','switch']]){ctx.args=[l,count,mode,id];assert.equal(vm.runInContext('pcbSourcePlan175(...args)',ctx),expected)}
 });

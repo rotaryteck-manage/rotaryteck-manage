@@ -9,7 +9,7 @@ async function pcbProject171(env,id){
  const p=await env.DB.prepare('SELECT * FROM pcb_projects171 WHERE id=? AND archived=0').bind(id).first();
  pcbAssert171(p,'找不到案件或案件已封存',404);return p;
 }
-async function pcbLink171(env,id){const row=await env.DB.prepare('SELECT l.*,i.stock,i.revision AS stock_revision,i.name AS item_name FROM pcb_links171 l JOIN pcb_items171 i ON i.id=l.item_id JOIN pcb_projects171 p ON p.id=l.project_id WHERE l.id=? AND p.archived=0').bind(id).first();pcbAssert171(row,'找不到PCB項目',404);return row;}
+async function pcbLink171(env,id){const row=await env.DB.prepare('SELECT l.*,i.stock,i.revision AS stock_revision,i.name AS item_name,(SELECT COUNT(*) FROM pcb_links171 src WHERE src.item_id=l.item_id) AS source_count FROM pcb_links171 l JOIN pcb_items171 i ON i.id=l.item_id JOIN pcb_projects171 p ON p.id=l.project_id WHERE l.id=? AND p.archived=0').bind(id).first();pcbAssert171(row,'找不到PCB項目',404);return row;}
 export function pcbCapacity171(links){
  if(!links.length||links.some(x=>!pcbInt171(x.per_set,1)))return null;
  const needs=new Map();
@@ -20,7 +20,7 @@ async function pcbRead171(env,project,e){
  if(project)await pcbProject171(env,project);
  const [projects,links,fixtures,photos,events]=await Promise.all([
   env.DB.prepare('SELECT * FROM pcb_projects171 WHERE archived=0 ORDER BY created_at,id').all(),
-  env.DB.prepare('SELECT l.*,i.name AS item_name,i.stock,i.note AS item_note,i.revision AS stock_revision FROM pcb_links171 l JOIN pcb_items171 i ON i.id=l.item_id JOIN pcb_projects171 p ON p.id=l.project_id WHERE p.archived=0 ORDER BY l.created_at,l.id').all(),
+  env.DB.prepare('SELECT l.*,i.name AS item_name,i.stock,i.note AS item_note,i.revision AS stock_revision,(SELECT COUNT(*) FROM pcb_links171 src WHERE src.item_id=l.item_id) AS source_count FROM pcb_links171 l JOIN pcb_items171 i ON i.id=l.item_id JOIN pcb_projects171 p ON p.id=l.project_id WHERE p.archived=0 ORDER BY l.created_at,l.id').all(),
   env.DB.prepare('SELECT f.* FROM pcb_fixtures171 f JOIN pcb_projects171 p ON p.id=f.project_id WHERE p.archived=0 ORDER BY f.created_at,f.id').all(),
   env.DB.prepare("SELECT id,project_id,entity_type,entity_id,file_name,actor_name,created_at FROM pcb_photos171 WHERE deleted_at=''"+(project?" AND (project_id=? OR (entity_type='pcb' AND entity_id IN (SELECT item_id FROM pcb_links171 WHERE project_id=?)))":'')+' ORDER BY created_at,id').bind(...(project?[project,project]:[])).all(),
   e.role==='supervisor'?env.DB.prepare('SELECT * FROM pcb_events171'+(project?' WHERE project_id=?':'')+' ORDER BY created_at DESC,id DESC LIMIT 300').bind(...(project?[project]:[])).all():Promise.resolve({results:[]})
@@ -55,6 +55,43 @@ async function pcbCommit171(env,e,input,stmts,guards,event,result={}){
 }
 const pcbGuard171=(table,row)=>({sql:'SELECT revision=? FROM '+table+' WHERE id=?',args:[row.revision,row.id]});
 const pcbProjectGuard171=p=>({sql:'SELECT revision=? AND archived=0 FROM pcb_projects171 WHERE id=?',args:[p.revision,p.id]});
+// Change the alias and its stock atomically; the form must acknowledge the preview.
+async function pcbSourceChange175(env,e,input,old,p,stmts,guards,now){
+ if(!Object.hasOwn(input,'sharedItemId'))return null; // Existing open forms keep their source.
+ pcbAssert171(typeof input.sharedItemId==='string','庫存來源不正確');
+ const requested=input.sharedItemId;
+ if(requested===old.item_id)return null;
+ const count=(await env.DB.prepare('SELECT COUNT(*) n FROM pcb_links171 WHERE item_id=?').bind(old.item_id).first()).n;
+ if(!requested&&count===1)return null;
+ pcbAssert171(pcbCan171(e,'stock'),'變更庫存來源需要庫存操作權限',403);
+ pcbAssert171(input.confirmSource===true,'請確認庫存來源與數量處理方式');
+ pcbAssert171(input.stockRevision===old.stock_revision&&input.sourceCount===count,'庫存或共用關係已更新，請重新開啟',409);
+ guards.push({sql:'SELECT revision=? AND stock=? FROM pcb_items171 WHERE id=?',args:[old.stock_revision,old.stock,old.item_id]},{sql:'SELECT COUNT(*)=? FROM pcb_links171 WHERE item_id=?',args:[count,old.item_id]});
+ let itemId,mode,oldAfter=old.stock,targetBefore=0,targetAfter=0,targetLabel;
+ if(!requested){
+  pcbAssert171(pcbInt171(input.transferQuantity,0,1000000000)&&input.transferQuantity<=old.stock,'分配數量需介於0與目前共用存量之間');
+  itemId=crypto.randomUUID();mode='拆分獨立庫存';oldAfter=old.stock-input.transferQuantity;targetAfter=input.transferQuantity;targetLabel='獨立庫存';
+  stmts.push(env.DB.prepare('INSERT INTO pcb_items171(id,name,stock,note,created_at,updated_at) VALUES(?,?,?,?,?,?)').bind(itemId,input.label.trim(),targetAfter,input.note.trim(),now,now));
+ }else{
+  const target=await env.DB.prepare('SELECT i.*,p.name AS project_name,l.label FROM pcb_items171 i JOIN pcb_links171 l ON l.item_id=i.id JOIN pcb_projects171 p ON p.id=l.project_id WHERE i.id=? AND p.archived=0 ORDER BY p.created_at,p.id,l.id LIMIT 1').bind(requested).first();
+  pcbAssert171(target,'共用庫存來源不存在',404);pcbAssert171(input.targetStockRevision===target.revision,'來源庫存已更新，請重新開啟',409);
+  guards.push(pcbGuard171('pcb_items171',target));itemId=target.id;targetBefore=target.stock;targetLabel=target.project_name+' · '+target.label;
+  if(count===1){pcbAssert171(['same','combine'].includes(input.mergeMode),'請選擇同一批庫存或合併兩批庫存');mode=input.mergeMode==='same'?'同一批庫存，不相加':'合併兩批庫存';targetAfter=target.stock+(input.mergeMode==='combine'?old.stock:0);oldAfter=0;}
+  else{mode='改用另一份共用庫存';targetAfter=target.stock;}
+  pcbAssert171(pcbInt171(targetAfter,0,1000000000),'合併後存量超出範圍');
+  stmts.push(env.DB.prepare('UPDATE pcb_items171 SET stock=?,revision=revision+1,updated_at=? WHERE id=?').bind(targetAfter,now,itemId));
+ }
+ stmts.push(env.DB.prepare('UPDATE pcb_items171 SET stock=?,revision=revision+1,updated_at=? WHERE id=?').bind(oldAfter,now,old.item_id));
+ // Preserve photographs on this PCB without duplicating an existing image in its new pool.
+ if(count===1){
+  stmts.push(env.DB.prepare("UPDATE pcb_photos171 SET deleted_at=? WHERE entity_type='pcb' AND entity_id=? AND deleted_at='' AND EXISTS(SELECT 1 FROM pcb_photos171 dest WHERE dest.entity_type='pcb' AND dest.entity_id=? AND dest.storage_key=pcb_photos171.storage_key AND dest.deleted_at='')").bind(now,old.item_id,itemId));
+  stmts.push(env.DB.prepare("UPDATE pcb_photos171 SET entity_id=? WHERE entity_type='pcb' AND entity_id=? AND deleted_at=''").bind(itemId,old.item_id));
+ }else{
+  stmts.push(env.DB.prepare("INSERT INTO pcb_photos171(id,project_id,entity_type,entity_id,storage_key,file_name,actor_name,created_at) SELECT lower(hex(randomblob(16))),?,'pcb',?,src.storage_key,src.file_name,src.actor_name,src.created_at FROM pcb_photos171 src WHERE src.entity_type='pcb' AND src.entity_id=? AND src.deleted_at='' AND NOT EXISTS(SELECT 1 FROM pcb_photos171 dest WHERE dest.entity_type='pcb' AND dest.entity_id=? AND dest.storage_key=src.storage_key AND dest.deleted_at='')").bind(p.id,itemId,old.item_id,itemId));
+ }
+ return{itemId,detail:{label:input.label,perSet:input.perSet,note:input.note,fromItemId:old.item_id,toItemId:itemId,mode,reason:p.name+' · '+old.label+'：'+mode+' → '+targetLabel,items:[{itemId:old.item_id,label:'原庫存'},{itemId,label:'新來源庫存'}],changes:[{itemId:old.item_id,before:old.stock,after:oldAfter,delta:oldAfter-old.stock},{itemId,before:targetBefore,after:targetAfter,delta:targetAfter-targetBefore}]}};
+}
+
 export async function pcbApi171(request,env,e){
  try{
   pcbAssert171(e&&e.status==='active','請先登入',401);pcbAssert171(pcbCan171(e,'view'),'沒有PCB管理查看權限',403);
@@ -109,7 +146,8 @@ export async function pcbApi171(request,env,e){
    const old=input.id?await pcbLink171(env,input.id):null;
    pcbAssert171(!old||old.project_id===p.id,'PCB不屬於此案件',403);
    if(old){pcbAssert171(input.revision===old.revision,'PCB資料已更新',409);guards.push(pcbGuard171('pcb_links171',old));}
-   let itemId=old?.item_id||input.sharedItemId||crypto.randomUUID();
+   const sourceChange=old?await pcbSourceChange175(env,e,input,old,p,stmts,guards,now):null;
+   let itemId=sourceChange?.itemId||old?.item_id||input.sharedItemId||crypto.randomUUID();
    if(!old&&!input.sharedItemId){
     pcbAssert171(pcbInt171(input.stock,0,1000000000),'初始庫存需為非負整數');
     stmts.push(env.DB.prepare('INSERT INTO pcb_items171(id,name,stock,note,created_at,updated_at) VALUES(?,?,?,?,?,?)').bind(itemId,input.label.trim(),input.stock,input.note.trim(),now,now));
@@ -119,9 +157,9 @@ export async function pcbApi171(request,env,e){
    }
    const id=old?.id||crypto.randomUUID();
    stmts.push(env.DB.prepare('UPDATE pcb_projects171 SET revision=revision+1,updated_at=? WHERE id=?').bind(now,p.id));
-   stmts.push(old?env.DB.prepare('UPDATE pcb_links171 SET label=?,per_set=?,note=?,revision=revision+1,updated_at=? WHERE id=?').bind(input.label.trim(),input.perSet,input.note.trim(),now,id):
+   stmts.push(old?env.DB.prepare('UPDATE pcb_links171 SET item_id=?,label=?,per_set=?,note=?,revision=revision+1,updated_at=? WHERE id=?').bind(itemId,input.label.trim(),input.perSet,input.note.trim(),now,id):
     env.DB.prepare('INSERT INTO pcb_links171(id,project_id,item_id,label,per_set,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').bind(id,p.id,itemId,input.label.trim(),input.perSet,input.note.trim(),now,now));
-   return pcbJSON171(await pcbCommit171(env,e,input,stmts,guards,{project:p.id,type:old?'修改PCB':'新增PCB',detail:{label:input.label,perSet:input.perSet,itemId,shared:!!input.sharedItemId}},{id}));
+   return pcbJSON171(await pcbCommit171(env,e,input,stmts,guards,{project:p.id,type:sourceChange?'變更庫存來源':old?'修改PCB':'新增PCB',detail:sourceChange?.detail||{label:input.label,perSet:input.perSet,itemId,shared:!!input.sharedItemId}},{id}));
   }
   if(['receipt','issue','adjust','issue_set'].includes(action)){
    pcbAssert171(pcbText171(input.reason,500),'請填寫用途或原因');
