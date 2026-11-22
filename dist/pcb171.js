@@ -70,7 +70,7 @@ function pcbRender171(){
  root.querySelector('[data-pcb-export171]')?.addEventListener('click',()=>pcbExport171());
  root.querySelector('[data-pcb-holders171]')?.addEventListener('click',()=>pcbHolders171());
  const token=++pcbLoadToken171;
- pcbFetch171().then(data=>{if(token!==pcbLoadToken171||!root.isConnected)return;pcbData171=data;pcbPaint171()}).catch(error=>{if(!root.isConnected)return;root.querySelector('[data-pcb-grid171]').textContent='載入失敗：'+error.message+'。請重新開啟PCB管理重試。'});
+ pcbFetch171().then(data=>{if(token!==pcbLoadToken171||!root.isConnected)return;pcbData171=data;pcbPaint171()}).catch(error=>{if(!root.isConnected)return;const grid=root.querySelector('[data-pcb-grid171]');if(grid)grid.textContent='載入失敗：'+error.message+'。請重新開啟PCB管理重試。'});
 }
 function pcbProjectForm171(p){
  pcbForm171(p?'修改案件':'新增PCB案件',field('案名','name',p?.name||'','required maxlength="100"')+'<label class="field">備註<textarea class="pcb-edit-note176" name="note" rows="2" maxlength="1000">'+pcbEsc171(p?.note||'')+'</textarea></label>','儲存',fd=>({action:'project',...(p?{id:p.id,revision:p.revision}:{}),name:String(fd.get('name')).trim(),note:String(fd.get('note')||'')}),async result=>{pcbProjectId171=result.id;pcbTab171='pcb';await pcbRefresh171()});

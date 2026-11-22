@@ -1,3 +1,4 @@
+import {pcbAccessState177} from './pcb-access177.mjs';
 const pcbJSON171=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const pcbError171=(message,status=400)=>Object.assign(Error(message),{status});
 const pcbCan171=(e,cap)=>e?.permissions?.includes('pcb.'+cap);
@@ -94,7 +95,9 @@ async function pcbSourceChange175(env,e,input,old,p,stmts,guards,now){
 
 export async function pcbApi171(request,env,e){
  try{
-  pcbAssert171(e&&e.status==='active','請先登入',401);pcbAssert171(pcbCan171(e,'view'),'沒有PCB管理查看權限',403);
+  pcbAssert171(e&&e.status==='active','請先登入',401);
+  const access=await pcbAccessState177(env,e);if(!access.allowed)return pcbJSON171({error:'施工中',code:'PCB_CONSTRUCTION'},423);
+  pcbAssert171(pcbCan171(e,'view'),'沒有PCB管理查看權限',403);
   const url=new URL(request.url),project=url.searchParams.get('project')||'';
   if(request.method==='GET'){
    if(url.searchParams.get('photo'))return await pcbPhotoRead171(env,url.searchParams.get('photo'));

@@ -9,7 +9,7 @@ import {pcbApi171,pcbCapacity171} from '../worker/pcb171.mjs';
 import {pcbCapabilities171,builtinProfiles,ensurePermissions,employeePermissions} from '../worker/wire-permissions.mjs';
 const caps=Object.keys(pcbCapabilities171),actor={id:1,name:'登記人',role:'supervisor',status:'active',permissions:caps};
 function fixture(){
- const {DB,db}=database();migrations85(db);
+ const {DB,db}=database();migrations85(db);db.exec('UPDATE pcb_access177 SET enabled=0');
  db.exec("INSERT INTO employees(id,account_user_id,email,name,role,status,created_at,updated_at) VALUES(1,'u1','a@test','登記人','supervisor','active','now','now'),(2,'u2','b@test','實際領用人','viewer','active','now','now'),(3,'u3','c@test','停用人','viewer','inactive','now','now')");
  const objects=new Map(),env={DB,UPLOADS:{async put(key,stream,options){objects.set(key,{body:await new Response(stream).arrayBuffer(),httpMetadata:options.httpMetadata})},async get(key){return objects.get(key)},async delete(key){objects.delete(key)}}};
  const call=async(input,e=actor)=>{const request=new Request('https://app.test/api/pcb',{method:'POST',headers:{origin:'https://app.test','content-type':'application/json'},body:JSON.stringify({requestId:crypto.randomUUID(),...input})});const r=await pcbApi171(request,env,e);return {status:r.status,...await r.json()}};
@@ -117,7 +117,7 @@ test('frontend navigation, original-table parser, complete-set calculation and H
  assert.throws(()=>vm.runInContext("pcbImportRows171([['案名','編號','存量','一套所需量'],['案','A',-1,4]])",context));
  assert.equal(vm.runInContext("pcbEsc171('<script>')",context),'&lt;script>');
  assert.match(source,/form.set\('requestId',uploadId\)/);assert.doesNotMatch(source,/downloadBlob\(/);
- const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=176/);assert.match(build,/worker\/pcb171.mjs/);
+ const build=fs.readFileSync('build.mjs','utf8');assert.match(build,/pcb171.js\?v=177/);assert.match(build,/worker\/pcb171.mjs/);
 });
 
 test('PCB data joins the existing full backup and remains separate from legacy state snapshots',async()=>{
